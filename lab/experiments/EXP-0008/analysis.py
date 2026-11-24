@@ -73,6 +73,8 @@ SETTINGS: dict[str, dict[str, Any]] = {
     "n1m": {"nodes": 1_000_000},
     "n3m": {"nodes": 3_000_000},
     "ref": {"nodes": 30_000_000, "hash_mb": 128, "syzygy": True},
+    # The step up's check (section 9): a reference three times deeper, on a seeded 40 games.
+    "deep": {"nodes": 100_000_000, "hash_mb": 256, "syzygy": True},
 }
 CANDIDATES = ("n50k", "n100k", "n300k", "n1m")
 # The settings whose disagreements always get the reference: the two contrasts that decide
@@ -84,14 +86,21 @@ LABELS = ("none", "inaccuracy", "mistake", "blunder")
 # Section 5 and 9.
 DELTA = 0.01
 LEVEL = 0.95
+# The step down's "within" end is read at 99%: on 40 games the per-game totals are skewed and the
+# 95% t interval let a step down at the boundary through about 5% of the time (section 6).
+LEVEL_DOWN = 0.99
 # The concordant moves (every candidate gives the same label) whose reference is searched.
 CONCORDANT_PILOT = 40
 CONCORDANT_CONFIRMATORY = 100
 RECHECK = 12
+# The step down's contrast is read on a seeded 40 of the confirmatory games, the step up on all
+# of them; the step up's 100-million-node check on another seeded 40 (section 7).
+STEP_DOWN_GAMES = 40
+DEEP_GAMES = 40
 BOOT = 2000
 
 # Section 6.
-N_GRID = (40, 60, 80, 100, 120, 140, 160, 200, 240, 300, 400)
+N_GRID = (40, 60, 80, 100, 120, 140, 160, 180, 200, 240, 300, 400)
 POWER_SIMS = 2000
 TARGET_POWER = 0.80
 # Section 0: the confirmatory run may plan at most this many CPU-hours (at the pilot's rate).
@@ -99,17 +108,17 @@ CEILING_CPU_HOURS = 12.0
 
 # Section 0: the registered run's budget, in nodes the design asks for (filled from section 6).
 BUDGET: dict[str, float] = {
-    # 100 games, about 6,370 positions, at 50,000 + 100,000 + 300,000 + 1 million nodes.
-    "candidate_nodes": 9.3e9,
-    # About 1,605 positions at 30 million: 14.05 a game for the deciding disagreements and two
-    # for each of the 100 concordant moves.
-    "reference_nodes": 4.9e10,
-    # Whichever conditional branch section 9 reaches (they exclude each other): 3 million on every
-    # position and the reference on the moves it adds (about 2.8e10), or the reference on the
-    # moves 50,000 adds (about 1.3e10).
-    "branch_nodes": 2.8e10,
+    # 160 games, about 10,190 positions, at 50,000 + 100,000 + 300,000 + 1 million nodes.
+    "candidate_nodes": 1.5e10,
+    # About 1,536 positions at 30 million: 6.45 a game for the step up's disagreements, 7.6 more
+    # a game in the 40 step-down games, and two for each of the 100 concordant moves.
+    "reference_nodes": 4.7e10,
+    # Whichever conditional branch section 9 reaches (they exclude each other): the step up's
+    # check, about 258 positions at 100 million (2.6e10), or the reference on the moves 50,000 adds
+    # in the step-down games (about 5e9).
+    "branch_nodes": 2.6e10,
     # 12 positions of each setting run, searched again without the cache.
-    "recheck_nodes": 4.0e8,
+    "recheck_nodes": 1.6e9,
 }
 CAP = 1.5
 
@@ -288,13 +297,38 @@ def cmd_sample(stage: str, n: int | None) -> None:
 # ---- searches, with the cache ----------------------------------------------------------------
 
 
-def stockfish_id() -> str:
-    sf = rematch_lab.algorithm()["components"]["facts"]["stockfish"]
-    return str(sf["sha256"])[:12]
+@lru_cache(maxsize=None)
+def engine_id() -> str:
+    """The Stockfish build and the engine crate's source digest (the UCI protocol): a cached
+    search is reused only when both are the ones this cli was built with."""
+    facts = rematch_lab.algorithm()["components"]["facts"]
+    return f"{str(facts['stockfish']['sha256'])[:12]}-{facts['source_digest']['backend/crates/engine/src'][:12]}"
 
 
 def cache_path(setting: str) -> Path:
-    return external_input(f"{CACHE}/{setting}-{stockfish_id()}.jsonl")
+    """One file per setting, named by everything that decides a search: the nodes, the hash, the
+    tables and the engine."""
+    cfg = SETTINGS[setting]
+    key = f"{cfg['nodes']}n-{cfg.get('hash_mb', 16)}mb-{'tb' if cfg.get('syzygy') else 'notb'}"
+    return external_input(f"{CACHE}/{setting}-{key}-{engine_id()}.jsonl")
+
+
+# A copy of `backend/crates/lichess-db/data/syzygy-345.sha256`, the pinned set (an input).
+SYZYGY_MANIFEST = HERE / "syzygy-345.sha256"
+
+
+@lru_cache(maxsize=None)
+def check_tables() -> int:
+    """The Syzygy 3-4-5 tables at `SYZYGY_PATH` are the pinned set, file for file (Stockfish loads
+    an empty or partial directory without a word, so the run checks it first)."""
+    root = Path(os.environ.get("SYZYGY_PATH", ""))
+    lines = [ln.split() for ln in SYZYGY_MANIFEST.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    bad = [name for want, name in lines
+           if not (root / Path(name).name).is_file() or sha256_file(root / Path(name).name) != want]
+    if not lines or bad:
+        raise SystemExit(f"SYZYGY_PATH={root}: {len(bad)} of {len(lines)} pinned tables missing or "
+                         f"different, for example {bad[:1]}")
+    return len(lines)
 
 
 def load_cache(setting: str) -> dict[str, dict[str, Any]]:
@@ -323,6 +357,8 @@ def search_row(s: Any) -> dict[str, Any]:
 def search(setting: str, fens: list[str]) -> list[dict[str, Any]]:
     """One `cli lab evaluate` call at a setting, without the cache."""
     cfg = SETTINGS[setting]
+    if cfg.get("syzygy"):
+        check_tables()
     resp = rematch_lab.evaluate(
         fens,
         nodes=cfg["nodes"],
@@ -338,6 +374,8 @@ def searches(setting: str, fens: list[str], budget: Budget | None, unit: str | N
     budget counts the design's nodes (each distinct FEN at the setting's count) before anything
     is searched, so an over-budget plan stops before it spends."""
     want = list(dict.fromkeys(fens))
+    if SETTINGS[setting].get("syzygy") and want:
+        check_tables()  # every time, cached or not: a cached search must have had the tables too
     if budget is not None and unit is not None:
         budget.spend(unit, SETTINGS[setting]["nodes"] * len(want))
     cache = load_cache(setting)
@@ -430,7 +468,7 @@ def ratio(e: np.ndarray, m: np.ndarray, level: float) -> dict[str, Any]:
     resid = e - r * m
     se = float(math.sqrt(n / (n - 1) * float((resid**2).sum())) / m.sum()) if n > 1 else math.inf
     out = {"estimate": r, "se": se}
-    for name, lv in (("ci80", 0.80), ("ci95", 0.95), ("ci_decision", level)):
+    for name, lv in (("ci80", 0.80), ("ci95", 0.95), ("ci99", 0.99), ("ci_decision", level)):
         t = t_crit(lv, n)
         out[name] = [r - t * se, r + t * se]
     return out
@@ -455,20 +493,26 @@ def contrast_totals(games, labs, ref: dict[str, list[str | None]], a: str, b: st
     return np.array(e, dtype=float), np.array(m, dtype=float)
 
 
+def within(c: dict) -> bool:
+    """A step down's upper end, at LEVEL_DOWN, below the tolerance."""
+    return c["ci99"][1] < DELTA
+
+
 def step_down_shown(c100: dict, g1m: dict) -> bool:
-    return g1m["ci_decision"][1] < DELTA and c100["ci_decision"][1] < DELTA
+    return g1m["ci_decision"][1] < DELTA and within(c100)
 
 
-def decide(c100: dict, c50: dict | None, g1m: dict, g3m: dict | None) -> dict[str, Any]:
-    """Section 9, read on the 95% intervals."""
+def decide(c100: dict, c50: dict | None, g1m: dict, deep: dict | None) -> dict[str, Any]:
+    """Section 9, read on the 95% intervals. The step up needs its lower end above the tolerance
+    against the 30-million-node reference and, on the seeded 40 games, against the 100-million."""
     lo_g, hi_g = g1m["ci_decision"]
     lo_d, hi_d = c100["ci_decision"]
     if lo_g > DELTA:
-        if g3m is not None and g3m["ci_decision"][0] > DELTA:
-            return {"outcome": "300k falls short", "setting": "n3m"}
-        return {"outcome": "300k falls short", "setting": "n1m"}
-    if hi_g < DELTA and hi_d < DELTA:
-        if c50 is not None and c50["ci_decision"][1] < DELTA:
+        if deep is not None and deep["ci_decision"][0] > DELTA:
+            return {"outcome": "300k falls short", "setting": "n1m"}
+        return {"outcome": "need more data", "setting": PRODUCTION}
+    if step_down_shown(c100, g1m):
+        if c50 is not None and within(c50):
             return {"outcome": "100k is enough", "setting": "n50k"}
         return {"outcome": "100k is enough", "setting": "n100k"}
     if hi_g < DELTA and lo_d > DELTA:
@@ -500,93 +544,116 @@ def stratified(games, per_game: list[tuple[float, float]], name: str) -> dict[st
 
 
 def evaluate_stage(games, budget: Budget | None, concordant: int, stage: str,
-                   with_3m: bool | None, rechecks: bool) -> dict[str, Any]:
-    """Searches the candidates on every position; the reference on every move where 100,000,
-    300,000 and 1 million disagree and on `concordant` seeded moves where they agree; on the moves
-    50,000 adds only when section 9 reaches its test; 3M always (`with_3m` True), never (False) or
-    only when section 9's step up needs it (None)."""
+                   pilot: bool, rechecks: bool) -> dict[str, Any]:
+    """Searches the candidates on every position, then the reference on: every move where
+    300,000 and 1 million disagree; in the step-down games (all of them in the pilot, a seeded 40
+    in the confirmatory run) every move where 100,000, 300,000 and 1 million disagree; and
+    `concordant` seeded moves of the rest. Conditional branches (section 9): the moves 50,000 adds
+    in the step-down games when the step down is shown; the 100-million-node check of the step up
+    on a seeded 40 games when the step up is shown. The pilot runs both branches and 3 million
+    nodes, for the record."""
     all_fens = sorted({f for g in games for f in g["pos"].fens})
     found: dict[str, dict[str, dict[str, Any]]] = {}
     for s in CANDIDATES:
         found[s] = searches(s, all_fens, budget, "candidate_nodes")
     judged = {s: judge(games, found[s]) for s in CANDIDATES}
     labs = labels_by_setting(games, judged)
+    by_id = {g["id"]: g for g in games}
 
-    def disc_moves(settings: tuple[str, ...]) -> set[tuple[str, int]]:
+    def subset(name: str, k: int) -> list[dict[str, Any]]:
+        if pilot or k >= len(games):
+            return list(games)
+        rng = np.random.default_rng(seed(EXP, f"{name}/{stage}"))
+        pick = sorted(int(i) for i in rng.choice(len(games), size=k, replace=False))
+        return [games[i] for i in pick]
+
+    down_games = subset("step-down", STEP_DOWN_GAMES)
+    down_ids = {g["id"] for g in down_games}
+
+    def disc_in(gs, settings: tuple[str, ...]) -> set[tuple[str, int]]:
         out = set()
-        for g in games:
+        for g in gs:
             cols = [labs[s][g["id"]] for s in settings]
             for p, row in enumerate(zip(*cols, strict=True), start=1):
                 if len(set(row)) > 1:
                     out.add((g["id"], p))
         return out
 
-    def reference_for(moves: set[tuple[str, int]], unit: str = "reference_nodes") -> None:
-        by_id = {g["id"]: g for g in games}
-        have = found.get("ref", {})
+    def reference_for(moves: set[tuple[str, int]], unit: str, setting: str = "ref") -> None:
+        have = found.get(setting, {})
         fens = sorted({f for gid, p in moves for f in move_fens(by_id[gid]["pos"], p)} - set(have))
-        found["ref"] = {**have, **searches("ref", fens, budget, unit)}
+        found[setting] = {**have, **searches(setting, fens, budget, unit)}
 
-    referenced = DECIDING
-    settings = CANDIDATES
-    discordant = disc_moves(referenced)
+    # The referenced stratum: every move whose disagreement gets the reference, game by game.
+    discordant = disc_in(games, ("n300k", "n1m")) | disc_in(down_games, DECIDING)
     concordant_all = sorted((g["id"], p) for g in games for p in range(1, g["plies"] + 1)
                             if (g["id"], p) not in discordant)
     rng = np.random.default_rng(seed(EXP, f"concordant/{stage}"))
     pick = rng.choice(len(concordant_all), size=min(concordant, len(concordant_all)), replace=False)
     conc_sample = {concordant_all[int(i)] for i in pick}
     found["ref"] = {}
-    reference_for(discordant | conc_sample)
+    reference_for(discordant | conc_sample, "reference_nodes")
     deciding_positions = len(found["ref"])
 
-    def ref_labels() -> tuple[dict[str, list[str | None]], dict[str, Any]]:
-        # The reference where both of a move's positions have it, else no label: the hybrid
-        # search set is the reference's on every searched move (a move reads only its two).
-        hybrid = {**found[PRODUCTION], **found["ref"]}
-        jr = judge(games, hybrid)
+    def labels_on(setting: str, gs) -> tuple[dict[str, list[str | None]], dict[str, Any]]:
+        # A deep setting's label where both of a move's positions have its search, else none: the
+        # hybrid search set is the deep setting's on every searched move (a move reads only its
+        # two positions).
+        hybrid = {**found[PRODUCTION], **found[setting]}
+        jr = judge(gs, hybrid)
         out = {}
-        for g in games:
+        for g in gs:
             row = []
             for p, m in enumerate(jr[g["id"]].moves, start=1):
                 fens = move_fens(g["pos"], p)
-                row.append(label(m) if all(f in found["ref"] for f in fens) else None)
+                row.append(label(m) if all(f in found[setting] for f in fens) else None)
             out[g["id"]] = row
         return out, jr
 
-    ref, jref = ref_labels()
-    e, m = contrast_totals(games, labs, ref, "n100k", PRODUCTION)
-    c100 = ratio(e, m, LEVEL)
-    e, m = contrast_totals(games, labs, ref, PRODUCTION, "n1m")
-    g1m = ratio(e, m, LEVEL)
-    totals = {"n100k-n300k": contrast_totals(games, labs, ref, "n100k", PRODUCTION),
+    ref, jref = labels_on("ref", games)
+    totals = {"n100k-n300k": contrast_totals(down_games, labs, ref, "n100k", PRODUCTION),
               "n300k-n1m": contrast_totals(games, labs, ref, PRODUCTION, "n1m")}
-
-    def add_reference(setting: str) -> None:
-        nonlocal referenced, discordant, ref, jref
-        referenced = (*referenced, setting)
-        extra = disc_moves(referenced) - discordant
-        if extra:
-            reference_for(extra, "branch_nodes")
-            ref, jref = ref_labels()
-        discordant = disc_moves(referenced)
+    c100 = ratio(*totals["n100k-n300k"], LEVEL)
+    g1m = ratio(*totals["n300k-n1m"], LEVEL)
+    settings: tuple[str, ...] = CANDIDATES
 
     c50 = None
-    if step_down_shown(c100, g1m) or with_3m:
-        add_reference("n50k")
-        totals["n50k-n300k"] = contrast_totals(games, labs, ref, "n50k", PRODUCTION)
+    if step_down_shown(c100, g1m) or pilot:
+        extra = disc_in(down_games, (*DECIDING, "n50k")) - discordant
+        if extra:
+            reference_for(extra, "branch_nodes")
+            discordant |= extra
+            ref, jref = labels_on("ref", games)
+        totals["n50k-n300k"] = contrast_totals(down_games, labs, ref, "n50k", PRODUCTION)
         c50 = ratio(*totals["n50k-n300k"], LEVEL)
 
-    run_3m = with_3m if with_3m is not None else g1m["ci_decision"][0] > DELTA
-    g3m = None
-    if run_3m:
+    deep = None
+    if g1m["ci_decision"][0] > DELTA or pilot:
+        # The step up, checked against a reference three times deeper on a seeded 40 games
+        # (section 9): the contrast is exact on the moves where 300,000 and 1 million disagree.
+        deep_games = subset("deep", DEEP_GAMES)
+        moves = disc_in(deep_games, ("n300k", "n1m"))
+        reference_for(moves, "branch_nodes", "deep")
+        deep_labels, _ = labels_on("deep", deep_games)
+        e, m = contrast_totals(deep_games, labs, deep_labels, PRODUCTION, "n1m")
+        totals["n300k-n1m-deep"] = (e, m)
+        deep = ratio(e, m, LEVEL)
+        changed = sum(ref[gid][p - 1] != deep_labels[gid][p - 1] for gid, p in moves)
+        deep["games"] = len(deep_games)
+        deep["moves"] = len(moves)
+        deep["reference_label_changed"] = changed / len(moves) if moves else 0.0
+
+    if pilot:
         found["n3m"] = searches("n3m", all_fens, budget, "branch_nodes")
         judged["n3m"] = judge(games, found["n3m"])
         labs = labels_by_setting(games, judged)
-        add_reference("n3m")
+        extra = disc_in(games, ("n1m", "n3m")) - discordant
+        reference_for(extra, "branch_nodes")
+        discordant |= extra
+        ref, jref = labels_on("ref", games)
         totals["n1m-n3m"] = contrast_totals(games, labs, ref, "n1m", "n3m")
-        g3m = ratio(*totals["n1m-n3m"], LEVEL)
         settings = (*CANDIDATES, "n3m")
-    decision = decide(c100, c50, g1m, g3m)
+    decision = decide(c100, c50, g1m, deep)
 
     # The strata of the exploratory, absolute measures: every discordant move (weight 1) and the
     # seeded concordant moves (weight = concordant moves / sampled).
@@ -614,8 +681,10 @@ def evaluate_stage(games, budget: Budget | None, concordant: int, stage: str,
             for p in range(1, g["plies"] + 1):
                 w = weight(gid, p)
                 r = ref[gid][p - 1]
-                if w == 0 or r is None:
+                if w == 0:
                     continue
+                if r is None:
+                    raise SystemExit(f"{gid} ply {p}: a weighted move has no reference")
                 ys += w * (labs[s][gid][p - 1] != r)
                 if s != "lichess":
                     rm = jref[gid].moves[p - 1]
@@ -677,10 +746,12 @@ def evaluate_stage(games, budget: Budget | None, concordant: int, stage: str,
     for name, _, _ in BANDS:
         sub = [g for g in games if band_of(g["mean_elo"]) == name]
         if len(sub) >= 2:
-            e, m = contrast_totals(sub, labs, ref, "n100k", PRODUCTION)
             e2, m2 = contrast_totals(sub, labs, ref, PRODUCTION, "n1m")
-            by_band[name] = {"games": len(sub), "n100k-n300k": ratio(e, m, 0.95),
-                             "n300k-n1m": ratio(e2, m2, 0.95)}
+            by_band[name] = {"games": len(sub), "n300k-n1m": ratio(e2, m2, 0.95)}
+            down = [g for g in sub if g["id"] in down_ids]
+            if len(down) >= 2:
+                e, m = contrast_totals(down, labs, ref, "n100k", PRODUCTION)
+                by_band[name]["n100k-n300k"] = {**ratio(e, m, 0.95), "games": len(down)}
 
     stage_rechecks = {}
     if rechecks:
@@ -690,6 +761,7 @@ def evaluate_stage(games, budget: Budget | None, concordant: int, stage: str,
         log(f"{s}: {len(found[s])} positions, {cpu_hours(found[s]):.3f} CPU-hours searched")
 
     return {
+        **({"_found_fens": {s: sorted(v) for s, v in found.items()}} if pilot else {}),
         "games": len(games),
         "moves": int(sum(g["plies"] for g in games)),
         "positions": len(all_fens),
@@ -698,13 +770,15 @@ def evaluate_stage(games, budget: Budget | None, concordant: int, stage: str,
         # The reference positions of the deciding settings' disagreements and the concordant
         # sample, before any conditional branch (the power analysis's cost model).
         "reference_positions_deciding": deciding_positions,
+        "reference_positions_step_up": len({f for gid, p in disc_in(games, ("n300k", "n1m"))
+                                            for f in move_fens(by_id[gid]["pos"], p)}),
+        "step_down_games": sorted(down_ids),
         "discordant_moves": len(discordant),
         "concordant_sampled": len(conc_sample),
         "concordant_moves": n_conc,
         "primary": {"n100k-n300k": c100, "n300k-n1m": g1m,
                     **({"n50k-n300k": c50} if c50 else {}),
-                    **({"n1m-n3m": g3m} if g3m else {})},
-        "referenced_settings": list(referenced),
+                    **({"n300k-n1m-deep": deep} if deep else {})},
         "decision": decision,
         "totals": {k: {"e": [float(x) for x in v[0]], "m": [float(x) for x in v[1]]}
                    for k, v in totals.items()},
@@ -736,9 +810,13 @@ def sample_games(name: str, pop_pos: tuple[list[dict[str, Any]], dict[str, Any]]
 
 def cmd_pilot(out: Path) -> None:
     games = sample_games("sample-pilot.csv")
-    result = evaluate_stage(games, None, CONCORDANT_PILOT, "pilot", with_3m=True, rechecks=False)
+    result = evaluate_stage(games, None, CONCORDANT_PILOT, "pilot", pilot=True, rechecks=False)
     result["algorithm_id"] = rematch_lab.algorithm()["id"]
-    result["cpu_hours"] = {s: cpu_hours(load_cache(s)) for s in SETTINGS}
+    # The stage's own searches only (the cache can hold others).
+    own = result.pop("_found_fens")
+    result["cpu_hours"] = {s: cpu_hours({f: r for f, r in load_cache(s).items() if f in set(fens)})
+                           for s, fens in own.items()}
+    result["searched"] = {s: len(fens) for s, fens in own.items()}
     out.mkdir(parents=True, exist_ok=True)
     (out / "pilot.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n",
                                     encoding="utf-8")
@@ -751,7 +829,10 @@ def simulate(e100, e1m, m, n: int, target100: float, target1m: float, k: float,
              rng: np.random.Generator, sims: int) -> dict[str, float]:
     """Section 6: the section 9 rule on n games drawn with replacement from the pilot's, each
     game's two contrast totals shifted so the population contrasts are the targets and their
-    spread around the targets scaled by k (the variance inflation)."""
+    spread around the targets scaled by k (the variance inflation). The step down is read on 40
+    of the n, the step up on all n and its deep check on another 40, which the simulation takes
+    to agree with the 30-million-node reference (the bias the check guards against is not
+    modelled, so the step up's power here is an upper bound)."""
     r100 = e100.sum() / m.sum()
     r1m = e1m.sum() / m.sum()
     a = target100 * m + k * ((e100 - r100 * m))
@@ -759,10 +840,13 @@ def simulate(e100, e1m, m, n: int, target100: float, target1m: float, k: float,
     out = defaultdict(int)
     for _ in range(sims):
         idx = rng.integers(0, len(m), size=n)
-        c100 = ratio(a[idx], m[idx], LEVEL)
+        down = idx[rng.choice(n, size=min(STEP_DOWN_GAMES, n), replace=False)]
+        deep = idx[rng.choice(n, size=min(DEEP_GAMES, n), replace=False)]
+        c100 = ratio(a[down], m[down], LEVEL)
         g1m = ratio(b[idx], m[idx], LEVEL)
-        # 50k and 3M do not change which of the four outcomes is reached.
-        d = decide(c100, {"ci_decision": [math.inf, math.inf]}, g1m, None)
+        gdeep = ratio(b[deep], m[deep], LEVEL)
+        # 50,000 does not change which of the four outcomes is reached.
+        d = decide(c100, None, g1m, gdeep)
         out[d["outcome"]] += 1
     return {kk: v / sims for kk, v in out.items()}
 
@@ -790,23 +874,23 @@ def cmd_power(pilot_path: Path) -> None:
                 rng = np.random.default_rng(seed(EXP, f"power/simulation/{k_name}/{n}/{sname}"))
                 row[sname] = simulate(e100, e1m, m, n, x, y, k, rng, POWER_SIMS)
             table.append(row)
-    def ok(row: dict[str, Any]) -> bool:
-        return (row["100k is enough"].get("100k is enough", 0) >= TARGET_POWER
-                and row["300k falls short"].get("300k falls short", 0) >= TARGET_POWER
-                and row["300k is right"].get("300k is right", 0) >= TARGET_POWER)
-    powered = next((r["n"] for r in table if r["variance"] == "upper80" and ok(r)), None)
-    rate = {s: pilot["cpu_hours"][s] / max(1, pilot["positions"] if s != "ref"
-                                            else pilot["reference_positions"])
-            for s in SETTINGS}
+    rate = {s: pilot["cpu_hours"][s] / pilot["searched"][s] for s in pilot["cpu_hours"]}
     per_game_positions = pilot["positions"] / pilot["games"]
-    # The deciding disagreements grow with the games; the concordant sample is fixed (two
-    # positions a move at most).
-    per_game_ref = (pilot["reference_positions_deciding"] - 2 * pilot["concordant_sampled"]) / pilot["games"]
+    # The step up's disagreements on every game; the step down's extra ones on 40; the concordant
+    # sample fixed (two positions a move at most).
+    up = pilot["reference_positions_step_up"] / pilot["games"]
+    down_extra = (pilot["reference_positions_deciding"] - 2 * pilot["concordant_sampled"]
+                  - pilot["reference_positions_step_up"]) / pilot["games"]
     def cost(n: int) -> float:
-        return (n * (per_game_positions * sum(rate[s] for s in CANDIDATES)
-                     + per_game_ref * rate["ref"])
+        return (n * (per_game_positions * sum(rate[s] for s in CANDIDATES) + up * rate["ref"])
+                + STEP_DOWN_GAMES * down_extra * rate["ref"]
                 + 2 * CONCORDANT_CONFIRMATORY * rate["ref"])
-    # Section 6's ceiling: the powered size if it fits in it, else the largest size that does.
+    # The step up's check, if reached: 40 games' step-up positions at the deep setting.
+    branch = DEEP_GAMES * up * rate["deep"]
+    def ok(row: dict[str, Any]) -> bool:
+        return all(row[s].get(s, 0) >= TARGET_POWER
+                   for s in ("100k is enough", "300k falls short", "300k is right"))
+    powered = next((r["n"] for r in table if r["variance"] == "upper80" and ok(r)), None)
     affordable = [n for n in N_GRID if cost(n) <= CEILING_CPU_HOURS]
     if powered is not None and cost(powered) <= CEILING_CPU_HOURS:
         chosen = powered
@@ -822,14 +906,16 @@ def cmd_power(pilot_path: Path) -> None:
         "chosen_n": chosen,
         "cpu_hours_per_position": rate,
         "positions_per_game": per_game_positions,
-        "reference_positions_per_game": per_game_ref,
+        "reference_positions_per_game_step_up": up,
+        "reference_positions_per_game_step_down_extra": down_extra,
         "planned_cpu_hours": {n: cost(n) for n in N_GRID},
+        "branch_cpu_hours": branch,
         "ceiling_cpu_hours": CEILING_CPU_HOURS,
     }
     (HERE / "power.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n",
                                      encoding="utf-8")
     figure_power(result, HERE / "figures" / "power.png")
-    log(f"chosen n: {chosen}; planned CPU-hours {cost(chosen) if chosen else 'n/a'}")
+    log(f"chosen n: {chosen}; planned CPU-hours {cost(chosen) if chosen else 'n/a'}, branch {branch:.2f}")
 
 
 def figure_power(result: dict[str, Any], path: Path) -> None:
@@ -891,7 +977,7 @@ def cmd_run(out: Path, algorithm: str | None) -> None:
     if pilot & {g["id"] for g in games} or players(pilot_games) & players(games):
         raise SystemExit("the confirmatory sample shares a game or a player with the pilot")
     stage = evaluate_stage(games, budget, CONCORDANT_CONFIRMATORY, "confirmatory",
-                           with_3m=None, rechecks=True)
+                           pilot=False, rechecks=True)
     results = {
         "experiment": EXP,
         "algorithm_id": algorithm_id,

@@ -1,6 +1,8 @@
 # The registered run reads the population, the pilot's ids (to check that no game or player is shared), the
-# confirmatory sample and the pinned Lichess extract (external: in the data directory, git-ignored; section 7).
+# confirmatory sample, the pinned Syzygy set it checks the tables against, and the pinned Lichess extract
+# (external: in the data directory, git-ignored; section 7).
 33d61f67c5d2abb36cc64a1bcc1fc584ee85479bb952732f51f6b785891eb8c2  population.csv
 dd24f8045a9b5e506e937881e287f16f47b3de002283a346b3e302479f0d9d5b  sample-pilot.csv
-ec16c53868b3737f1ae38b27f6e49a16718bbb9aeae97a7f60b5bd7fbb90d68b  sample.csv
+39b5f7398130b31bba986298f917429f60f964e41e73ebcbd10cffbb8c11f789  sample.csv
+9db345be24baf2ffb97ab29e27ec72d109005e00640f32efb0be46386890f0db  syzygy-345.sha256
 ee83071caabf515c7df5ebb03b8b6246be1a887689135c9f5e0d952409e21604  external:lichess-games/lichess_db_standard_rated_2026-10.head.pgn
