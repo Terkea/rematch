@@ -21,7 +21,7 @@ export function TrajectorySection({ view }: { view: TrajectoryView }) {
       <SectionHead
         id="trajectory-heading"
         title="Rating trajectory"
-        explain={TRAJECTORY_GLOSSARY.trajectory}
+        explain={view.state === "ready" ? view.explain : TRAJECTORY_GLOSSARY.trajectory}
       />
       {view.state === "not_enough_games" ? (
         <div data-surface="sheet" className={sheet}>
@@ -62,7 +62,7 @@ export function TrajectorySection({ view }: { view: TrajectoryView }) {
             view={view.compare}
             id="then-now-heading"
             title="Then and now"
-            explain={TRAJECTORY_GLOSSARY.trajectory}
+            explain={view.explain}
             slot="then-now"
             head={
               <h3 id="then-now-heading" className="m-0 font-serif text-xl font-semibold text-ink">

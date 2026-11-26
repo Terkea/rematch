@@ -562,8 +562,12 @@ impl Checker {
     fn trajectory(&mut self, p: &str, t: &Trajectory) {
         self.count(join(p, "ratedGames"), t.rated_games);
         self.need_more(p, t.sufficient, t.need_more);
+        // `kind` is null when sufficient too while the rating's verdict is withheld (ADR 0116);
+        // an input stored before then still carries it.
+        if t.kind.is_some() && !t.sufficient {
+            self.push(join(p, "kind"), "kind must be null when not sufficient");
+        }
         let stated = [
-            ("kind", t.kind.is_some()),
             ("peak", t.peak.is_some()),
             ("current", t.current.is_some()),
             ("change", t.change.is_some()),
@@ -614,6 +618,22 @@ impl Checker {
         }
         if let Some(v) = &t.then_vs_now {
             self.then_vs_now(&join(p, "thenVsNow"), v);
+            // The cut is all or nothing (ADR 0116): a withheld rating has no `kind`, and a
+            // sufficient trajectory without `kind` has a withheld (or uncalled) rating.
+            use crate::types::ChangeVerdict;
+            let r = v.rating.verdict;
+            if r == ChangeVerdict::Withheld && t.kind.is_some() {
+                self.push(
+                    join(p, "kind"),
+                    "kind must be null when the rating is withheld",
+                );
+            }
+            if t.sufficient
+                && t.kind.is_none()
+                && !matches!(r, ChangeVerdict::Withheld | ChangeVerdict::NotEnoughGames)
+            {
+                self.push(join(p, "kind"), "kind is required with a called rating");
+            }
         }
     }
 
@@ -648,6 +668,25 @@ impl Checker {
             ("score", &v.score, MetricUnit::Rate),
         ] {
             self.then_now_metric(&join(p, field), m, unit);
+            if field != "rating" && m.verdict == crate::types::ChangeVerdict::Withheld {
+                self.push(
+                    join(&join(p, field), "verdict"),
+                    "only the rating's verdict can be withheld",
+                );
+            }
+        }
+        // A withheld rating drops each window's range too: it is the same too-narrow bootstrap.
+        if v.rating.verdict == crate::types::ChangeVerdict::Withheld {
+            for (side, m) in [("then", &v.rating.then), ("now", &v.rating.now)] {
+                for (field, x) in [("low", m.low), ("high", m.high)] {
+                    if x.is_some() {
+                        self.push(
+                            join(&join(&join(p, "rating"), side), field),
+                            format!("{field} must be null when withheld"),
+                        );
+                    }
+                }
+            }
         }
         self.items(
             join(p, "weaknesses"),
@@ -662,23 +701,32 @@ impl Checker {
     fn then_now_metric(&mut self, p: &str, m: &ThenNowMetric, unit: MetricUnit) {
         self.color_metric(&join(p, "then"), &m.then, unit);
         self.color_metric(&join(p, "now"), &m.now, unit);
-        let called = m.verdict != crate::types::ChangeVerdict::NotEnoughGames;
+        use crate::types::ChangeVerdict;
+        let called = m.verdict != ChangeVerdict::NotEnoughGames;
+        // A withheld verdict (ADR 0116) keeps the difference and drops its interval.
+        let withheld = m.verdict == ChangeVerdict::Withheld;
         let diff = [
-            ("diff", m.diff),
-            ("diffLow", m.diff_low),
-            ("diffHigh", m.diff_high),
+            ("diff", m.diff, called),
+            ("diffLow", m.diff_low, called && !withheld),
+            ("diffHigh", m.diff_high, called && !withheld),
         ];
-        for (field, v) in diff {
+        for (field, v, required) in diff {
             match v {
                 Some(v) => {
-                    if self.finite(join(p, field), v) && !called {
-                        self.push(
-                            join(p, field),
-                            format!("{field} must be null when not_enough_games"),
-                        );
+                    let null_when = if !called {
+                        Some("not_enough_games")
+                    } else if !required {
+                        Some("withheld")
+                    } else {
+                        None
+                    };
+                    if self.finite(join(p, field), v)
+                        && let Some(when) = null_when
+                    {
+                        self.push(join(p, field), format!("{field} must be null when {when}"));
                     }
                 }
-                None if called => self.push(
+                None if required => self.push(
                     join(p, field),
                     format!("{field} is required with a verdict"),
                 ),
@@ -701,6 +749,12 @@ impl Checker {
         self.label(join(p, "label"), &w.label);
         self.color_metric(&join(p, "then"), &w.then, MetricUnit::Rate);
         self.color_metric(&join(p, "now"), &w.now, MetricUnit::Rate);
+        if w.verdict == crate::types::ChangeVerdict::Withheld {
+            self.push(
+                join(p, "verdict"),
+                "only the rating's verdict can be withheld",
+            );
+        }
         for (field, v) in [
             ("thenEvents", w.then_events),
             ("thenOpportunities", w.then_opportunities),

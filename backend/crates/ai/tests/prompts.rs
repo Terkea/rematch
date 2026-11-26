@@ -185,7 +185,8 @@ fn report_prompt_set_is_the_brief_list() {
         "report/section-areas",
     ];
     let want = |id: &str| match id {
-        "report/report" => 4,
+        // ADR 0116: report v5 withholds the rating's verdict (EXP-0015).
+        "report/report" => 5,
         // ADR 0112: glossary v3 names only the motifs EXP-0007 cleared (#122).
         "core/glossary" => 3,
         id if v2.contains(&id) => 2,
@@ -788,7 +789,7 @@ fn report_blocks_use_the_set_versions() {
     assert!(
         req.system[1]
             .text
-            .starts_with(load_prompt("report/report", 4).unwrap().text)
+            .starts_with(load_prompt("report/report", 5).unwrap().text)
     );
     assert!(
         req.system[1]
@@ -838,18 +839,23 @@ fn v3_prompts_teach_the_trajectory_and_its_honest_words() {
     for (id, v) in [("report/report", 2), ("chat/system", 3)] {
         assert!(!load_prompt(id, v).unwrap().text.contains("trajectory"));
     }
-    assert!(REPORT_PROMPT_SET.contains(&("report/report", 4)));
-    // ADR 0094 moved the chat set to v5 and ADR 0101 to v6; both keep the trajectory text.
-    assert!(ai::prompts::CHAT_PROMPT_SET.contains(&("chat/system", 6)));
+    // ADR 0101 moved the report set to v4 and ADR 0116 to v5; ADR 0094 moved the chat set to
+    // v5, ADR 0101 to v6 and ADR 0116 to v7. All keep the trajectory text.
+    assert!(REPORT_PROMPT_SET.contains(&("report/report", 5)));
+    assert!(ai::prompts::CHAT_PROMPT_SET.contains(&("chat/system", 7)));
 }
 
 /// The chat context a v3 input gives the model (a snapshot of its trajectory part): the peak,
 /// the current rating, then against now, and the paths to cite them.
 #[test]
 fn the_chat_context_carries_the_trajectory_and_its_refs() {
-    let input = ai::testing::v3_input("b2-rapid");
+    // As the coach reads every input since ADR 0116: cut by `parse_for_coach`.
+    let input = ai::input::parse::parse_for_coach(&ai::testing::v3_input("b2-rapid").to_json())
+        .expect("the fixture validates");
     let ctx = ai::chat::context::build_chat_context(&input);
     let t = &ctx["trajectory"];
+    assert!(t["kind"].is_null());
+    assert_eq!(t["thenVsNow"]["rating"]["verdict"], "withheld");
     assert_eq!(
         t["peak"],
         serde_json::json!({"rating": 1097, "date": "2026-04-18"})
@@ -871,6 +877,15 @@ fn the_chat_context_carries_the_trajectory_and_its_refs() {
         "trajectory.thenVsNow.weaknesses.W3_shallow.now.value",
     ] {
         assert!(nums.contains(&p), "refs list {p}");
+    }
+    // The rating's too-narrow ranges are not citable.
+    for p in [
+        "trajectory.thenVsNow.rating.then.low",
+        "trajectory.thenVsNow.rating.now.high",
+        "trajectory.thenVsNow.rating.diffLow",
+        "trajectory.thenVsNow.rating.diffHigh",
+    ] {
+        assert!(!nums.contains(&p), "refs list {p}");
     }
     let dates: Vec<&str> = ctx["refs"]["date"]
         .as_array()
@@ -949,9 +964,10 @@ fn plan_prompts_teach_the_plan_and_its_honest_words() {
             .text
             .contains("`plan`")
     );
-    assert!(ai::prompts::CHAT_PROMPT_SET.contains(&("chat/system", 6)));
+    assert!(ai::prompts::CHAT_PROMPT_SET.contains(&("chat/system", 7)));
     assert!(ai::prompts::WEEKLY_PROMPT_SET.contains(&("weekly-review/system", 2)));
-    // The requests send the set versions.
+    // The requests send the set versions (chat v7 since ADR 0116).
+    let chat = load_prompt("chat/system", 7).unwrap().text;
     assert!(
         ai::chat::engine::chat_system_blocks()[1]
             .text
@@ -1085,6 +1101,54 @@ fn w5_median_is_named_as_the_evaluation() {
             "{id} v{v}"
         );
     }
-    assert!(REPORT_PROMPT_SET.contains(&("report/report", 4)));
-    assert!(ai::prompts::CHAT_PROMPT_SET.contains(&("chat/system", 6)));
+    // ADR 0116 moved both sets on; v5 and v7 keep the text.
+    for (id, v) in [("report/report", 5), ("chat/system", 7)] {
+        assert!(
+            load_prompt(id, v)
+                .unwrap()
+                .text
+                .contains("The conversion weakness"),
+            "{id} v{v}"
+        );
+    }
+    assert!(REPORT_PROMPT_SET.contains(&("report/report", 5)));
+    assert!(ai::prompts::CHAT_PROMPT_SET.contains(&("chat/system", 7)));
+}
+
+/// ADR 0116 (EXP-0015): report v5 and chat v7 withhold the rating's verdict. The peak, the
+/// current rating and the change stay as numbers; no word gives the rating a direction. Each is
+/// its predecessor with only the trajectory's rating lines changed, and v4 and v6 stay for
+/// stored hashes.
+#[test]
+fn the_rating_verdict_is_withheld_from_the_coach() {
+    let pairs = [
+        (("report/report", 4), ("report/report", 5)),
+        (("chat/system", 6), ("chat/system", 7)),
+    ];
+    for ((id, old), (_, new)) in pairs {
+        let (a, b) = (
+            load_prompt(id, old).unwrap().text,
+            load_prompt(id, new).unwrap().text,
+        );
+        for f in [
+            "`withheld`",
+            "do not say the rating is rising, falling",
+            "`{{num:trajectory.peak.rating}}`",
+            "`not_enough_games`",
+        ] {
+            assert!(
+                b.to_lowercase().contains(&f.to_lowercase()),
+                "{id} v{new} says {f:?}"
+            );
+        }
+        assert!(!a.contains("`withheld`"), "{id} v{old} is unchanged");
+        assert!(!b.contains("With `kind` `flat`"), "{id} v{new}");
+        let gone: Vec<&str> = a.lines().filter(|l| !b.lines().any(|m| m == *l)).collect();
+        assert!(
+            gone.len() <= 2,
+            "{id}: only the rating lines change: {gone:#?}"
+        );
+    }
+    assert!(REPORT_PROMPT_SET.contains(&("report/report", 5)));
+    assert!(ai::prompts::CHAT_PROMPT_SET.contains(&("chat/system", 7)));
 }

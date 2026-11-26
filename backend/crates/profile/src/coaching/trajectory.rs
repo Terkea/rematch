@@ -11,6 +11,10 @@
 //! only on evidence (ADR 0083 §6): both windows hold `KPI_MIN_GAMES` games and the 80% interval
 //! of the difference excludes 0 (a mean), or P(better) reaches 0.8 with a 15% relative change
 //! (a rate).
+//!
+//! [`contract`] is the rule's whole output, which `cli lab trajectory` returns. The builder
+//! passes it through `coaching_input::trajectory::player_visible`, which withholds `kind` and the
+//! rating's verdict from the coach since EXP-0015 (ADR 0116); the web does the same in its view.
 
 use std::collections::{BTreeMap, HashMap};
 

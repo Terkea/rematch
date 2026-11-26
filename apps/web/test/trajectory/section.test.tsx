@@ -77,6 +77,18 @@ describe("TrajectorySection", () => {
     expect(container.textContent).not.toMatch(BAD);
   });
 
+  it("shows the rating row with no verdict and the other rows with theirs (ADR 0116)", () => {
+    const { container } = render(<TrajectorySection view={view()} />);
+    const rating = container.querySelector('[data-row="rating"] [data-verdict]');
+    expect(rating?.getAttribute("data-verdict")).toBe("withheld");
+    expect(rating).toHaveTextContent("Not called");
+    expect(rating?.className).not.toContain("font-medium");
+    const accuracy = container.querySelector('[data-row="accuracy"] [data-verdict]');
+    expect(accuracy?.getAttribute("data-verdict")).toBe("worse");
+    expect(accuracy?.className).toContain("font-medium");
+    expect(container.querySelector('[data-row="rating"]')?.textContent).not.toMatch(/80% range/);
+  });
+
   it("says how many more rated games it needs, with no chart", () => {
     const t = computeTrajectory({
       games: [{ id: "a", playedAt: new Date(START), rating: 900 }],

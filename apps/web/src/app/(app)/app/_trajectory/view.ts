@@ -1,5 +1,6 @@
+import { ALGORITHM_MANIFEST } from "../../../../lib/algorithm";
 import type { TimeClass } from "../../../../server/games/types";
-import { WEAKNESS_GLOSSARY } from "../../../../server/profile/glossary";
+import { type GlossaryEntry, WEAKNESS_GLOSSARY } from "../../../../server/profile/glossary";
 import type { Estimate } from "../../../../server/stats/estimate";
 import type {
   RateEstimate,
@@ -23,6 +24,22 @@ import { TRAJECTORY_GLOSSARY } from "./glossary";
 // "since then" sentence, the then | now table (the period comparison's block) and the chart's
 // points. A change is "clearly better" or "clearly worse" only when its verdict says so (ADR 0083
 // §6); a window below the minimum says what it still needs. Never NaN, never an arrow.
+//
+// The rating's own verdict is computed and not stated while the manifest's
+// `profile.trajectory_rating_verdict.shown` is false (EXP-0015, ADR 0116): it told most players
+// whose strength had not changed that their rating was falling. The headline then states the
+// peak, the current rating and the change as numbers, and the table's rating row shows both
+// windows' averages and the difference, with no range and no "Worse" or "Better". Accuracy,
+// blunders, score and the weaknesses keep their verdicts.
+
+/** Whether the rating's verdict is stated (Rust `coaching_input::trajectory::RATING_VERDICT_SHOWN`). */
+export const RATING_VERDICT_SHOWN: boolean =
+  ALGORITHM_MANIFEST.components.profile.trajectory_rating_verdict.shown;
+
+export type TrajectoryViewOptions = {
+  /** Defaults to `RATING_VERDICT_SHOWN`; a test passes `true` for the copy a cleared rule gets. */
+  ratingVerdict?: boolean;
+};
 
 export type TrajectoryChartPoint = { id: string; date: string; rating: number };
 
@@ -38,8 +55,11 @@ export type TrajectoryView =
   | { state: "not_enough_games"; text: string; games: number }
   | {
       state: "ready";
-      kind: TrajectoryKind;
+      /** The rating's verdict, or `null` while it is withheld. */
+      kind: TrajectoryKind | null;
       timeClass: TimeClass;
+      /** The section's "What is this?": it says the rating is not called while it is withheld. */
+      explain: GlossaryEntry;
       headline: string;
       since: string;
       /** "Based on 523 rated rapid games." */
@@ -86,7 +106,24 @@ function verdictWords(v: string): string {
   }
 }
 
-function headline(t: Extract<Trajectory, { kind: TrajectoryKind }>, tc: TimeClass): string {
+type Ready = Extract<Trajectory, { kind: TrajectoryKind }>;
+
+/** The peak, the current rating and the change, with no word for a direction (ADR 0116). */
+function factHeadline(t: Ready, tc: TimeClass): string {
+  const now = rating(t.current.rating);
+  const delta = signed(t.change);
+  if (t.then.basis === "peak") {
+    return `Your ${tc} rating peaked at ${rating(t.peak.rating)} in ${monthOf(t.peak.at)} and is ${now} now (${delta}).`;
+  }
+  const peak =
+    t.peak.gameId !== null && t.peak.rating > t.current.rating
+      ? ` Your peak was ${rating(t.peak.rating)} in ${monthOf(t.peak.at)}.`
+      : "";
+  return `Your ${tc} rating is ${now} now; it averaged ${rating(t.then.meanRating)} over your first ${t.then.games} rated games (${delta}).${peak}`;
+}
+
+function headline(t: Ready, tc: TimeClass, shown: boolean): string {
+  if (!shown) return factHeadline(t, tc);
   const now = rating(t.current.rating);
   const delta = signed(t.change);
   if (t.then.basis === "peak") {
@@ -140,8 +177,10 @@ function phrase(r: ThenNowRow): string {
   return `${name} ${a} then, ${b} now (${verdict})`;
 }
 
-function ratingCell(e: Estimate, games: number): CompareCell {
+function ratingCell(e: Estimate, games: number, shown: boolean): CompareCell {
   if (e.kind !== "estimate") return { value: DASH, detail: gamesText(games, "rated") };
+  // The window's range is the rule's evidence, as narrow as its verdict is wrong (EXP-0015).
+  if (!shown) return { value: `${rating(e.value)} on average`, detail: gamesText(games, "rated") };
   const range = e.interval
     ? `80% range ${rating(Math.floor(e.interval.low))} to ${rating(Math.ceil(e.interval.high))}`
     : "Every game had the same rating, so there is no range";
@@ -166,19 +205,26 @@ function change(r: { result: ThenNowRow["result"] }, detail: string | null): Com
   };
 }
 
-function compareRows(t: Extract<Trajectory, { kind: TrajectoryKind }>): CompareViewRow[] {
-  const ratingDiff =
-    t.rating.verdict === "not_enough_games"
-      ? null
-      : `Difference ${signed(Math.round(t.rating.diff.value))} points, 80% range ${signed(Math.floor(t.rating.diff.interval.low))} to ${signed(Math.ceil(t.rating.diff.interval.high))}`;
+/** The rating row's change: its verdict, or "Not called" with the difference alone. */
+function ratingChange(t: Ready, shown: boolean): CompareChange {
+  if (t.rating.verdict === "not_enough_games") return change({ result: t.rating }, null);
+  const diff = `Difference ${signed(Math.round(t.rating.diff.value))} points`;
+  if (!shown) return { verdict: "withheld", text: "Not called", detail: diff };
+  return change(
+    { result: t.rating },
+    `${diff}, 80% range ${signed(Math.floor(t.rating.diff.interval.low))} to ${signed(Math.ceil(t.rating.diff.interval.high))}`,
+  );
+}
+
+function compareRows(t: Ready, shown: boolean): CompareViewRow[] {
   const rows: CompareViewRow[] = [
     {
       key: "rating",
       label: "Rating",
-      explain: TRAJECTORY_GLOSSARY.rating,
-      a: ratingCell(t.ratingSides.a, t.then.games),
-      b: ratingCell(t.ratingSides.b, t.now.games),
-      change: change({ result: t.rating }, ratingDiff),
+      explain: shown ? TRAJECTORY_GLOSSARY.rating : TRAJECTORY_GLOSSARY.ratingNotCalled,
+      a: ratingCell(t.ratingSides.a, t.then.games, shown),
+      b: ratingCell(t.ratingSides.b, t.now.games, shown),
+      change: ratingChange(t, shown),
     },
   ];
   for (const r of t.rows) {
@@ -229,7 +275,11 @@ function compareRows(t: Extract<Trajectory, { kind: TrajectoryKind }>): CompareV
 }
 
 /** The trajectory's view for one time class (module docs). */
-export function trajectoryView(t: Trajectory, tc: TimeClass): TrajectoryView {
+export function trajectoryView(
+  t: Trajectory,
+  tc: TimeClass,
+  { ratingVerdict = RATING_VERDICT_SHOWN }: TrajectoryViewOptions = {},
+): TrajectoryView {
   if (t.kind === "not_enough_games") {
     return {
       state: "not_enough_games",
@@ -244,9 +294,12 @@ export function trajectoryView(t: Trajectory, tc: TimeClass): TrajectoryView {
   const lead = t.then.basis === "peak" ? "Since then" : "Since your first games";
   return {
     state: "ready",
-    kind: t.kind,
+    kind: ratingVerdict ? t.kind : null,
     timeClass: tc,
-    headline: headline(t, tc),
+    explain: ratingVerdict
+      ? TRAJECTORY_GLOSSARY.trajectory
+      : TRAJECTORY_GLOSSARY.trajectoryNotCalled,
+    headline: headline(t, tc, ratingVerdict),
     since: phrases.length > 0 ? `${lead}: ${phrases.join(", ")}.` : "",
     basis: `Based on ${count.format(t.games)} rated ${tc} ${t.games === 1 ? "game" : "games"}.`,
     chart: {
@@ -280,7 +333,7 @@ export function trajectoryView(t: Trajectory, tc: TimeClass): TrajectoryView {
         detail: `${gamesText(t.then.games, "rated")}, ${windowRange(t.then)}`,
       },
       b: { label: nowLabel, detail: `${gamesText(t.now.games, "rated")}, ${windowRange(t.now)}` },
-      rows: compareRows(t),
+      rows: compareRows(t, ratingVerdict),
     },
   };
 }

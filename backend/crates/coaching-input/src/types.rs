@@ -703,12 +703,16 @@ wire_enum!(
 );
 
 wire_enum!(
-    /// v3: a then-against-now verdict, from the player's point of view (ADR 0083 §6).
+    /// v3: a then-against-now verdict, from the player's point of view (ADR 0083 §6). `withheld`
+    /// (ADR 0116) only on the rating row.
     ChangeVerdict, "change verdict", "snake_case", {
         Better => "better",
         Worse => "worse",
         NoClearChange => "no_clear_change",
         NotEnoughGames => "not_enough_games",
+        // `thenVsNow.rating` only, while `trajectory::RATING_VERDICT_SHOWN` is false (EXP-0015,
+        // ADR 0116): the rule computed a verdict and the coach is not told it.
+        Withheld => "withheld",
     }
 );
 
@@ -823,7 +827,8 @@ pub struct ThenVsNow {
 /// v3 (ADR 0089): the rating trajectory of the time class. Ratings are pre-game (on chess.com
 /// the rating after the previous rated game, ADR-FIX-C-1). Below 20 rated games it is not
 /// `sufficient`: `kind`, `peak`, `current`, `change` and `thenVsNow` are null and `needMore`
-/// says how many more rated games it needs.
+/// says how many more rated games it needs. `kind` is also null when the rating's verdict is
+/// withheld (ADR 0116, [`crate::trajectory::RATING_VERDICT_SHOWN`]).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Trajectory {

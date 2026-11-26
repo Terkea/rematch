@@ -560,8 +560,9 @@ class ThenVsNow(Camel):
 
 
 class Trajectory(Camel):
-    """The CoachingInput's `trajectory` (ADR 0089), as the coach receives it. `kind == "falling"`
-    (`then_vs_now.rating.verdict == "worse"`) is "clearly worse than your peak"."""
+    """The CoachingInput's `trajectory` (ADR 0089) as the rule computes it. `kind == "falling"`
+    (`then_vs_now.rating.verdict == "worse"`) is "clearly worse than your peak"; since
+    algo-5.0.0 the coach never receives either (EXP-0015, ADR 0116)."""
 
     rated_games: int
     sufficient: bool

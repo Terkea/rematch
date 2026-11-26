@@ -16,7 +16,8 @@ import { diffRange, diffValue, gamesText, type StatUnit, statRange, statValue } 
 
 export type CompareCell = { value: string; detail: string };
 export type CompareChange = {
-  verdict: Called | "not_enough_games";
+  /** `withheld`: the trajectory's rating row, whose verdict is not stated (EXP-0015, ADR 0116). */
+  verdict: Called | "not_enough_games" | "withheld";
   text: string;
   detail: string | null;
 };

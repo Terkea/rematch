@@ -383,12 +383,13 @@
       "type": "object"
     },
     "ChangeVerdict": {
-      "description": "v3: a then-against-now verdict, from the player's point of view (ADR 0083 §6).",
+      "description": "v3: a then-against-now verdict, from the player's point of view (ADR 0083 §6). `withheld`\n(ADR 0116) only on the rating row.",
       "enum": [
         "better",
         "worse",
         "no_clear_change",
-        "not_enough_games"
+        "not_enough_games",
+        "withheld"
       ],
       "type": "string"
     },
@@ -1558,7 +1559,7 @@
     },
     "Trajectory": {
       "additionalProperties": false,
-      "description": "v3 (ADR 0089): the rating trajectory of the time class. Ratings are pre-game (on chess.com\nthe rating after the previous rated game, ADR-FIX-C-1). Below 20 rated games it is not\n`sufficient`: `kind`, `peak`, `current`, `change` and `thenVsNow` are null and `needMore`\nsays how many more rated games it needs.",
+      "description": "v3 (ADR 0089): the rating trajectory of the time class. Ratings are pre-game (on chess.com\nthe rating after the previous rated game, ADR-FIX-C-1). Below 20 rated games it is not\n`sufficient`: `kind`, `peak`, `current`, `change` and `thenVsNow` are null and `needMore`\nsays how many more rated games it needs. `kind` is also null when the rating's verdict is\nwithheld (ADR 0116, [`crate::trajectory::RATING_VERDICT_SHOWN`]).",
       "properties": {
         "change": {
           "description": "`current - peak` with a `peak` \"then\" window, else `current` minus the first window's\nmean, in rating points.",
