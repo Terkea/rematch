@@ -548,7 +548,7 @@ Shipped: Stockfish analysis of every move, explained weaknesses and strengths, t
   - The scientific method for the algorithm (13 sub-issues)
   - Are the facts right? (11 sub-issues)
   - Do we recommend the right thing? (6 sub-issues)
-  - Is the profile right? (4 sub-issues)
+  - Is the profile right? (6 sub-issues)
   - Is the AI faithful? (1 sub-issue)
   - A pipeline speed scorecard, stages 1 to 4 (4 sub-issues)
 - [v0.4 Patterns and progression](https://github.com/Terkea/rematch/issues?q=is%3Aissue+milestone%3A%22v0.4+Patterns+and+progression%22)
