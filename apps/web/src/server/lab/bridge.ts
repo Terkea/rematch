@@ -3,7 +3,7 @@ import { ALGORITHM_ID } from "../../lib/algorithm";
 import { chooseTarget, FOCUS_VERSION, focusProgress } from "../focus/goal";
 import { isHeldOut, keepCandidate, primarySource, SOURCES, TRAINER_VERSION } from "../train/model";
 
-// The lab's bridge to the web's rules (#125, ADR 0115): `node lab-bridge.mjs <step>` reads one
+// The lab's bridge to the web's rules (issue 125, ADR 0115): `node lab-bridge.mjs <step>` reads one
 // JSON request on stdin and writes one JSON response on stdout, as `cli lab` does for the Rust
 // rules (ADR 0106). Each step calls the exported functions of `focus/goal.ts` or `train/model.ts`
 // and nothing else, so the lab measures the rule the app runs (ADR 0104: one implementation).
