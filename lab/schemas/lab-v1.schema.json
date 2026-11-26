@@ -881,7 +881,7 @@
       }
     },
     "Trajectory": {
-      "description": "The CoachingInput's v3 `trajectory` (backend/crates/coaching-input, ADR 0089), exactly as the coach receives it. `kind` falling and `thenVsNow.rating.verdict` worse are the headline 'worse than your peak'.",
+      "description": "The CoachingInput's v3 `trajectory` (backend/crates/coaching-input, ADR 0089), as the rule computes it. `kind` falling and `thenVsNow.rating.verdict` worse are the headline 'worse than your peak'; since algo-5.0.0 the coach never receives either (EXP-0015, ADR 0116).",
       "type": "object",
       "additionalProperties": false,
       "required": [

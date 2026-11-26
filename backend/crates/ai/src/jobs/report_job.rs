@@ -75,7 +75,7 @@ use crate::generate::payload::REPORT_PAYLOAD_SCHEMA_VERSION;
 use crate::generate::report::{REPORT_CONCURRENCY, ReportCause, ReportError, generate_report};
 use crate::generate::request::build_section_request;
 use crate::generate::section::{CallRecord, SectionOutcome, SectionStatus};
-use crate::input::parse::parse_coaching_input;
+use crate::input::parse::parse_for_coach;
 use crate::input::types::{CoachingInput, TimeClass};
 use crate::output::codes::{SECTION_KEYS, SectionKey};
 use crate::output::disclosure::make_disclosure;
@@ -719,7 +719,7 @@ impl Run<'_> {
                 }
             },
         };
-        let input = match parse_coaching_input(&raw) {
+        let input = match parse_for_coach(&raw) {
             Ok(i) => i,
             Err(issues) => {
                 tracing::warn!(run = %self.claim.id, issues = issues.len(), "invalid coaching input");

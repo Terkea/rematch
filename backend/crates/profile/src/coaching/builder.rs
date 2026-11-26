@@ -1087,7 +1087,8 @@ pub async fn build_coaching_input_report(
         changes,
         by_color: Some(by_color),
         benchmark,
-        trajectory: Some(trajectory),
+        // EXP-0015 (ADR 0116): the rating's verdict is computed and not stated to the coach.
+        trajectory: Some(coaching_input::trajectory::player_visible(trajectory)),
     };
     input.validate().map_err(BuildError::Contract)?;
     if skipped.get() > 0 {

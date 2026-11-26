@@ -23,7 +23,7 @@ use sha2::{Digest, Sha256};
 /// The algorithm's version, for people (the hash is the proof). Bump it by the policy in
 /// `algorithm/CHANGELOG.md`: major when layer 1 to 3 output can change, minor when only the
 /// language layer changes, patch when nothing a replay can see changes.
-pub const VERSION: &str = "4.0.1";
+pub const VERSION: &str = "5.0.0";
 
 /// The manifest's path in the repository.
 pub const MANIFEST_PATH: &str = "algorithm/manifest.json";
@@ -285,6 +285,11 @@ pub fn build(root: &Path) -> anyhow::Result<Manifest> {
         "player_visible_motifs": {
             "source": coaching_input::motifs::PLAYER_VISIBLE_MOTIFS_SOURCE,
             "tags": coaching_input::motifs::PLAYER_VISIBLE_MOTIFS,
+        },
+        // The trajectory's rating verdict, stated or withheld (#136, ADR 0116): always computed.
+        "trajectory_rating_verdict": {
+            "source": coaching_input::trajectory::RATING_VERDICT_SOURCE,
+            "shown": coaching_input::trajectory::RATING_VERDICT_SHOWN,
         },
         "source_digest": digests(root, &[
             "backend/crates/profile-core/src",

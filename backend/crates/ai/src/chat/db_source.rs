@@ -40,7 +40,7 @@ use super::data_source::{
     GamesQuery, Judgement, LOSING_TO, MoveFilter, Phase, PositionRecord, Standing, WINNING_FROM,
 };
 use super::tools::{MAX_EXAMPLES, MAX_GAMES};
-use crate::input::parse::parse_coaching_input;
+use crate::input::parse::parse_for_coach;
 use crate::input::types::{
     CoachingInput, ExemplarPosition, InputVersion, MoveRef, OpeningVerdict, PlayerColor,
     RankedWeakness, Score, TimeClass,
@@ -824,7 +824,7 @@ fn is_motif_tag(tag: &str) -> bool {
 }
 
 fn checked(raw: &Value, account_id: Uuid, what: &'static str) -> Option<CoachingInput> {
-    match parse_coaching_input(raw) {
+    match parse_for_coach(raw) {
         Ok(i) if i.account_id == account_id => Some(without_hidden_motifs(i)),
         Ok(_) => {
             tracing::warn!(
@@ -899,6 +899,27 @@ fn version_rank(v: InputVersion) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// ADR 0116: an input stored before `algo-5.0.0` reaches the coach without the trajectory's
+    /// rating verdict (`kind`, the rating row's verdict and its ranges); the rest stays.
+    #[test]
+    fn a_stored_input_loses_the_rating_verdict() {
+        let i = crate::testing::v3_input("b2-rapid");
+        let stored = i.trajectory.clone().expect("a trajectory");
+        assert!(
+            stored.kind.is_some(),
+            "the fixture is a stored input with a verdict"
+        );
+        let out = checked(&i.to_json(), i.account_id, "test").expect("it validates");
+        let t = out.trajectory.expect("a trajectory");
+        assert_eq!(t.kind, None);
+        let (a, b) = (stored.then_vs_now.unwrap(), t.then_vs_now.unwrap());
+        assert_eq!(b.rating.verdict, coaching_input::ChangeVerdict::Withheld);
+        assert_eq!(b.rating.diff, a.rating.diff);
+        assert_eq!((b.rating.diff_low, b.rating.now.low), (None, None));
+        assert_eq!(b.accuracy, a.accuracy);
+        assert_eq!((t.peak, t.change), (stored.peak, stored.change));
+    }
 
     /// ADR 0112: an input stored before `algo-3.0.0` reaches the coach without the hidden motifs.
     #[test]

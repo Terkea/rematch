@@ -97,3 +97,10 @@ pub fn parse_coaching_input(raw: &Value) -> Result<CoachingInput, Vec<CoachingIn
         Err(issues)
     }
 }
+
+/// [`parse_coaching_input`], then cut to what the coach may read: the trajectory's rating
+/// verdict, withheld since `algo-5.0.0` (EXP-0015, ADR 0116), is removed from an input stored
+/// before it as well. Every report, batch and chat read of a stored input goes through this.
+pub fn parse_for_coach(raw: &Value) -> Result<CoachingInput, Vec<CoachingInputIssue>> {
+    parse_coaching_input(raw).map(coaching_input::trajectory::player_visible_input)
+}

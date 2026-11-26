@@ -1352,8 +1352,12 @@ async fn trajectory_finds_the_peak_and_compares_it_with_the_latest_games(pool: P
     let v = t.then_vs_now.as_ref().unwrap();
     assert_eq!(v.then.basis, coaching_input::WindowBasis::Peak);
     assert_eq!(v.now.basis, coaching_input::WindowBasis::Last);
-    assert_eq!(t.kind, Some(coaching_input::TrajectoryKind::Falling));
-    assert_eq!(v.rating.verdict, coaching_input::ChangeVerdict::Worse);
+    // The rule calls this a fall; the coach is not told it (EXP-0015, ADR 0116).
+    const { assert!(!coaching_input::trajectory::RATING_VERDICT_SHOWN) };
+    assert_eq!(t.kind, None);
+    assert_eq!(v.rating.verdict, coaching_input::ChangeVerdict::Withheld);
+    assert_eq!((v.rating.diff_low, v.rating.diff_high), (None, None));
+    assert!(v.rating.diff.unwrap() < 0.0, "the difference stays");
     assert_eq!(v.rating.then.unit, coaching_input::MetricUnit::Elo);
     assert!(t.change.unwrap() < 0);
     assert_eq!(

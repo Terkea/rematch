@@ -73,7 +73,7 @@ macro_rules! prompt {
     };
 }
 
-static TABLE: [Prompt; 48] = [
+static TABLE: [Prompt; 50] = [
     prompt!("core/rules", 1),
     prompt!("core/tokens", 1),
     prompt!("core/tokens", 2),
@@ -88,6 +88,9 @@ static TABLE: [Prompt; 48] = [
     prompt!("report/report", 3),
     // ADR 0101: v4 names W5's median as the evaluation's prediction, never the players faced.
     prompt!("report/report", 4),
+    // ADR 0116: v5 withholds the rating's verdict (EXP-0015): the peak, the current rating and
+    // the change as numbers, never rising or falling.
+    prompt!("report/report", 5),
     prompt!("report/output", 1),
     prompt!("report/section-overview", 1),
     prompt!("report/section-overview", 2),
@@ -128,6 +131,8 @@ static TABLE: [Prompt; 48] = [
     prompt!("chat/system", 5),
     // ADR 0101: v6 names W5's median as the evaluation's prediction.
     prompt!("chat/system", 6),
+    // ADR 0116: v7 withholds the rating's verdict (EXP-0015).
+    prompt!("chat/system", 7),
     prompt!("chat/repair", 1),
     prompt!("chat-summary/system", 1),
     prompt!("chat-summary/task", 1),
@@ -155,7 +160,8 @@ pub const REPORT_PROMPT_SET: &[(&str, u32)] = &[
     // glossary gives the plain words. v1 stays for stored hashes.
     // ADR 0089: v3 adds the rating trajectory and then against now. v2 stays for stored hashes.
     // ADR 0101: v4 names W5's median as the evaluation's prediction. v3 stays for stored hashes.
-    ("report/report", 4),
+    // ADR 0116: v5 withholds the rating's verdict (EXP-0015). v4 stays for stored hashes.
+    ("report/report", 5),
     ("report/output", 1),
     // Holistic F5: v2 drops the band's rating range, so the model never names it in place of the
     // peer benchmark. v1 stays for stored hashes.
@@ -200,7 +206,8 @@ pub const CHAT_PROMPT_SET: &[(&str, u32)] = &[
     // focus rate to games, suggest the next drill, and say "too early" honestly. v4 stays for
     // stored hashes.
     // ADR 0101: v6 names W5's median as the evaluation's prediction. v5 stays for stored hashes.
-    ("chat/system", 6),
+    // ADR 0116: v7 withholds the rating's verdict (EXP-0015). v6 stays for stored hashes.
+    ("chat/system", 7),
     // The Rematch brand: the coach's voice, the same file as the report's.
     ("tone/voice", 1),
     ("chat/repair", 1),

@@ -307,8 +307,9 @@ def bench(
 def trajectory(players: list[TrajectoryPlayer] | TrajectoryRequest) -> TrajectoryResponse:
     """Rated games to the trajectory (EXP-0015): `cli lab trajectory`, the loader's
     `trajectory_input`, `compute` and `contract` (ADR 0089). Each player's `trajectory` is the
-    CoachingInput's, as the coach receives it: `kind == "falling"` is "clearly worse than your
-    peak". The bootstrap's seed is the player's `seed`. Pure.
+    CoachingInput's as the rule computes it: `kind == "falling"` is "clearly worse than your
+    peak". Since algo-5.0.0 the coach and the web never see `kind` or the rating's verdict
+    (EXP-0015, ADR 0116); the lab still does. The bootstrap's seed is the player's `seed`. Pure.
 
     The caller passes what the builder reads from the database: the games in `(played_at, id)`
     order, and at most three weaknesses as `trajectory_weaknesses` picks them (the estimates with

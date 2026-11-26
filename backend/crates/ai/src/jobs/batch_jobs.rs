@@ -112,7 +112,7 @@ use crate::generate::context::input_hash;
 use crate::generate::payload::REPORT_PAYLOAD_SCHEMA_VERSION;
 use crate::generate::section::{CallRecord, SectionError};
 use crate::generate::weekly::WeeklyOutcome;
-use crate::input::parse::parse_coaching_input;
+use crate::input::parse::parse_for_coach;
 use crate::input::types::{CoachingInput, TimeClass};
 use crate::output::codes::SECTION_KEYS;
 use crate::output::disclosure::make_disclosure;
@@ -254,7 +254,7 @@ async fn schedule_reports(d: &BatchDeps) -> anyhow::Result<Value> {
                 continue;
             }
         };
-        let input = match parse_coaching_input(&raw) {
+        let input = match parse_for_coach(&raw) {
             Ok(i) if i.account_id == account_id && i.time_class == time_class => i,
             Ok(_) => {
                 tracing::error!(account = %account_id, "provider input names another account or time class");
@@ -851,7 +851,7 @@ async fn waiting_run(
     let input = run
         .input
         .as_ref()
-        .and_then(|raw| parse_coaching_input(raw).ok())
+        .and_then(|raw| parse_for_coach(raw).ok())
         .filter(|i| i.account_id == run.account_id);
     Ok(Some((
         run.account_id,
