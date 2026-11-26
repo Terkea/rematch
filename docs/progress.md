@@ -8,6 +8,12 @@ The site builds this file into /docs/progress/ and shows the newest entry on the
 
 See also the [experiments](/rematch/docs/experiments/) and the [roadmap](/rematch/docs/roadmap/).
 
+## 2026-11-26: EXP-0009, no data-driven teaching order yet
+
+- We followed 16,204 anonymised Lichess rapid players rated below 2000 from July to October 2026, by a salted hash of their name with nothing else kept ([ADR 0114](decisions/0114-following-anonymised-lichess-players-across-months.md)), and measured eight of Rematch's weaknesses, accuracy and the blunder rate from the evaluations Lichess already published, with no engine time ([EXP-0009](https://github.com/Terkea/rematch/tree/main/lab/experiments/EXP-0009)).
+- No weakness whose rate fell from August to September came before a rise in October's rating, and neither did accuracy, the check that the design could see such a link. The likeliest reason is the design itself: September's rating, where the outcome starts, comes from the same games as September's rates, so October's drift back from September's luck pulls every estimate down. A month of 10 to 40 analysed games also measures a player's change with a reliability of only 0.02 to 0.13.
+- So the teaching order stays as the research notes set it, and we say plainly that it is not data-driven yet. The one follow-up the rule allows starts the outcome away from the measured games and uses three-month windows on other months (EXP-0029); measuring the other nine weaknesses with our own analysis would cost about 4,560 CPU-hours at this design and does not run.
+
 ## 2026-11-24: algo-4.0.0 analyses every position at 1 million nodes
 
 - Every position is now searched at 1 million **Stockfish 19** nodes instead of 300,000, the count EXP-0008 chose: 7.45% of move labels change, mostly fewer inaccuracies, and game accuracy falls by 0.42 of a point on average ([ADR 0113](decisions/0113-analyse-at-1-million-nodes.md), #128).

@@ -24,3 +24,19 @@ Its concerns, and what was done about each before the pilot:
 14. **The contemporaneous family is partly mechanical** (minor). Done: it is descriptive for W5, W6 and accuracy (section 4).
 
 Changed after this review and before the pilot, with no number seen: `inputs.sha256` now holds the ten cohort files' checksums (the four months streamed and verified against Lichess's `sha256sums.txt` on 2026-11-24; their sizes and digests are in each `meta.json`), and `read_players` keeps only the P0-eligible players when it reads P1 to P3, which saves memory and changes no result; and `observe_all` sends each batch to the workers as it is read instead of building every request first (the first pilot attempt reached 5.5 GB and was stopped before it observed anything).
+
+## Part two: the result
+
+A second fresh agent, with the same skills, read the frozen registration, `analysis.py`, part one, the pilot, `power.json`, `results.json`, the draft decision and summary and `arena.py`, checked the diff between the critic's fixes and the results commit, and ran nothing heavy. It found section 9 applied as written (Holm, the reliability-scaled minimum, the four "below the minimum effect" reads, the three undetermined, W5 "precedes falling", the control failing and outcome 3 following), `analysis.py`'s sha matching section 10, and the changes after part one memory-only and disclosed. Its verdict: outcome 3 is right; the write-up was not.
+
+1. **The primary is biased against every quantity, and the draft did not say so** (blocking). The outcome starts at R_end(September), which carries September's luck from the same games that produce the improvement, so October's drift back pulls every β negative; with September's change in the model accuracy reads +3.0. Done: `decision.md` has a section "Why the control failed" naming it as a design flaw, section 11 of the registration records it, and EXP-0029 must start the outcome away from the exposure games (a gap month or month-mean ratings).
+2. **"Catch-up happens inside the month" was asserted, not shown** (blocking). Done: it is now one untested reading beside the flaw above, with what argues against it.
+3. **The summary overclaimed the same-month result** (should fix). Done: that family is descriptive for every key, and the summary no longer uses it.
+4. **"This design cannot give one" was wrong** (should fix). The control's simultaneous interval, [−1.49, 1.24], lies inside its minimum of ±3.63: the precision was there and the premise failed. Done.
+5. **The reliabilities' own uncertainty was ignored** (should fix). Done: disclosed in `decision.md` and section 11; EXP-0029 reads them at their lower bound.
+6. **Stage 2 against section 0's "filed"** (should fix). Done: named with its cost and the caveat that it is priced for a design whose control failed; the deviation is in section 11.
+7. **EXP-0029 was underspecified** (should fix). Done: its issue names the months (2025-10 to 2026-06, disjoint), the same salt with EXP-0009's cohort excluded, the baseline fix, the Spearman-Brown limit of longer windows and the lag registered before any new month is read.
+8. **Numbers that disagreed with `results.json`** (minor). Done: 876,947 observed of 877,072 read, 366.2 million games seen, the bands attached to the 17,136, and the two players active in October with too few observed games.
+9. **Missing confounders** (minor). Done: which games are analysed (losses), rating deviation, second accounts and sandbagging.
+10. **W5's reading** (minor). Kept as the leading explanation; the results do not store the adjusted model's coefficient on September's change, which `decision.md` now says.
+11. **`arena.py`'s primary rewarded the wrong thing** (minor). Done: the primary is now the split-half reliability of the keys' August level (how consistently a version measures a player), and the reads are report-only.

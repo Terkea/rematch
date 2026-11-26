@@ -134,4 +134,8 @@ This departs from ADR 0106's measurement rule (one interval in a band): there is
 
 ## 11. Deviations
 
-None.
+- 2026-11-26, after the results, recorded by the lane (Claude) from the critique of the result (`review.md`, part two). None changes the decision.
+  - Section 0 says a stage 2 past its ceiling is "filed with its cost for the owner to decide". It is named with its cost in `decision.md` (about 4,560 CPU-hours) and not filed as an issue: the price is for a design whose positive control failed, and EXP-0029 prices it again.
+  - The primary's outcome baseline, R_end(P2), is built partly from the same games as the exposure, so its drift back from September's luck biases every β towards negative. Sections 2 and 8 did not name this; it is the likeliest reason the control failed, and EXP-0029 must fix it.
+  - The reads use the point estimate of each reliability, whose standard error is near 0.008; section 8 did not register its uncertainty.
+  - The four dumps were streamed with July and October twice, by a mistake in the lane's script; the files are the second, verified copies, identical in content.
