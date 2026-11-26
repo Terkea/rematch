@@ -37,7 +37,7 @@ docker compose --profile lab run --rm lab python -m rematch_lab.experiments chec
 docker compose --profile lab run --rm lab python -m rematch_lab.arena --scope release --dry-run
 
 # With a cli from a Rust lane (what CI does, .github/workflows/lab.yml):
-docker build --build-context rematch=lab-ctx -t rematch-lab lab   # lab-ctx/usr/local/bin/{cli,stockfish}
+docker build --build-context rematch=lab-ctx --build-context repo=. -t rematch-lab lab   # lab-ctx/usr/local/bin/{cli,stockfish}
 docker run --rm rematch-lab pytest
 ```
 
