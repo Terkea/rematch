@@ -1,0 +1,878 @@
+{
+  "rule": "Wilson at 1 - 0.05/3 per cell; keep: every upper <= 0.15; change: a lower > 0.15; hide: a lower > 0.20",
+  "sims": 20000,
+  "grid": [
+    {
+      "players": 200,
+      "true_rate_all_cells": 0.05,
+      "keep": 0.967,
+      "change": 0.0,
+      "hide": 0.0
+    },
+    {
+      "players": 200,
+      "true_rate_all_cells": 0.1,
+      "keep": 0.0219,
+      "change": 0.0,
+      "hide": 0.0
+    },
+    {
+      "players": 200,
+      "true_rate_all_cells": 0.12,
+      "keep": 0.0004,
+      "change": 0.0002,
+      "hide": 0.0
+    },
+    {
+      "players": 200,
+      "true_rate_all_cells": 0.13,
+      "keep": 0.0,
+      "change": 0.0015,
+      "hide": 0.0
+    },
+    {
+      "players": 200,
+      "true_rate_all_cells": 0.14,
+      "keep": 0.0,
+      "change": 0.0087,
+      "hide": 0.0
+    },
+    {
+      "players": 200,
+      "true_rate_all_cells": 0.2,
+      "keep": 0.0,
+      "change": 0.66,
+      "hide": 0.0307
+    },
+    {
+      "players": 200,
+      "true_rate_all_cells": 0.25,
+      "keep": 0.0,
+      "change": 0.3732,
+      "hide": 0.6253
+    },
+    {
+      "players": 200,
+      "true_rate_all_cells": 0.3,
+      "keep": 0.0,
+      "change": 0.004,
+      "hide": 0.996
+    },
+    {
+      "players": 200,
+      "true_rate_all_cells": 0.35,
+      "keep": 0.0,
+      "change": 0.0,
+      "hide": 1.0
+    },
+    {
+      "players": 200,
+      "true_rate_all_cells": 0.4,
+      "keep": 0.0,
+      "change": 0.0,
+      "hide": 1.0
+    },
+    {
+      "players": 200,
+      "true_rate_all_cells": 0.45,
+      "keep": 0.0,
+      "change": 0.0,
+      "hide": 1.0
+    },
+    {
+      "players": 200,
+      "true_rate_all_cells": 0.55,
+      "keep": 0.0,
+      "change": 0.0,
+      "hide": 1.0
+    },
+    {
+      "players": 200,
+      "true_rate_all_cells": 0.65,
+      "keep": 0.0,
+      "change": 0.0,
+      "hide": 1.0
+    },
+    {
+      "players": 200,
+      "true_rate_all_cells": 0.75,
+      "keep": 0.0,
+      "change": 0.0,
+      "hide": 1.0
+    },
+    {
+      "players": 200,
+      "true_rate_all_cells": 0.85,
+      "keep": 0.0,
+      "change": 0.0,
+      "hide": 1.0
+    },
+    {
+      "players": 300,
+      "true_rate_all_cells": 0.05,
+      "keep": 0.9996,
+      "change": 0.0,
+      "hide": 0.0
+    },
+    {
+      "players": 300,
+      "true_rate_all_cells": 0.1,
+      "keep": 0.1661,
+      "change": 0.0,
+      "hide": 0.0
+    },
+    {
+      "players": 300,
+      "true_rate_all_cells": 0.12,
+      "keep": 0.0036,
+      "change": 0.0003,
+      "hide": 0.0
+    },
+    {
+      "players": 300,
+      "true_rate_all_cells": 0.13,
+      "keep": 0.0005,
+      "change": 0.0019,
+      "hide": 0.0
+    },
+    {
+      "players": 300,
+      "true_rate_all_cells": 0.14,
+      "keep": 0.0,
+      "change": 0.0083,
+      "hide": 0.0
+    },
+    {
+      "players": 300,
+      "true_rate_all_cells": 0.2,
+      "keep": 0.0,
+      "change": 0.8598,
+      "hide": 0.0301
+    },
+    {
+      "players": 300,
+      "true_rate_all_cells": 0.25,
+      "keep": 0.0,
+      "change": 0.1969,
+      "hide": 0.8031
+    },
+    {
+      "players": 300,
+      "true_rate_all_cells": 0.3,
+      "keep": 0.0,
+      "change": 0.0001,
+      "hide": 1.0
+    },
+    {
+      "players": 300,
+      "true_rate_all_cells": 0.35,
+      "keep": 0.0,
+      "change": 0.0,
+      "hide": 1.0
+    },
+    {
+      "players": 300,
+      "true_rate_all_cells": 0.4,
+      "keep": 0.0,
+      "change": 0.0,
+      "hide": 1.0
+    },
+    {
+      "players": 300,
+      "true_rate_all_cells": 0.45,
+      "keep": 0.0,
+      "change": 0.0,
+      "hide": 1.0
+    },
+    {
+      "players": 300,
+      "true_rate_all_cells": 0.55,
+      "keep": 0.0,
+      "change": 0.0,
+      "hide": 1.0
+    },
+    {
+      "players": 300,
+      "true_rate_all_cells": 0.65,
+      "keep": 0.0,
+      "change": 0.0,
+      "hide": 1.0
+    },
+    {
+      "players": 300,
+      "true_rate_all_cells": 0.75,
+      "keep": 0.0,
+      "change": 0.0,
+      "hide": 1.0
+    },
+    {
+      "players": 300,
+      "true_rate_all_cells": 0.85,
+      "keep": 0.0,
+      "change": 0.0,
+      "hide": 1.0
+    },
+    {
+      "players": 400,
+      "true_rate_all_cells": 0.05,
+      "keep": 1.0,
+      "change": 0.0,
+      "hide": 0.0
+    },
+    {
+      "players": 400,
+      "true_rate_all_cells": 0.1,
+      "keep": 0.2939,
+      "change": 0.0,
+      "hide": 0.0
+    },
+    {
+      "players": 400,
+      "true_rate_all_cells": 0.12,
+      "keep": 0.0077,
+      "change": 0.0,
+      "hide": 0.0
+    },
+    {
+      "players": 400,
+      "true_rate_all_cells": 0.13,
+      "keep": 0.0004,
+      "change": 0.0007,
+      "hide": 0.0
+    },
+    {
+      "players": 400,
+      "true_rate_all_cells": 0.14,
+      "keep": 0.0,
+      "change": 0.0043,
+      "hide": 0.0
+    },
+    {
+      "players": 400,
+      "true_rate_all_cells": 0.2,
+      "keep": 0.0,
+      "change": 0.9171,
+      "hide": 0.0261
+    },
+    {
+      "players": 400,
+      "true_rate_all_cells": 0.25,
+      "keep": 0.0,
+      "change": 0.1135,
+      "hide": 0.8865
+    },
+    {
+      "players": 400,
+      "true_rate_all_cells": 0.3,
+      "keep": 0.0,
+      "change": 0.0,
+      "hide": 1.0
+    },
+    {
+      "players": 400,
+      "true_rate_all_cells": 0.35,
+      "keep": 0.0,
+      "change": 0.0,
+      "hide": 1.0
+    },
+    {
+      "players": 400,
+      "true_rate_all_cells": 0.4,
+      "keep": 0.0,
+      "change": 0.0,
+      "hide": 1.0
+    },
+    {
+      "players": 400,
+      "true_rate_all_cells": 0.45,
+      "keep": 0.0,
+      "change": 0.0,
+      "hide": 1.0
+    },
+    {
+      "players": 400,
+      "true_rate_all_cells": 0.55,
+      "keep": 0.0,
+      "change": 0.0,
+      "hide": 1.0
+    },
+    {
+      "players": 400,
+      "true_rate_all_cells": 0.65,
+      "keep": 0.0,
+      "change": 0.0,
+      "hide": 1.0
+    },
+    {
+      "players": 400,
+      "true_rate_all_cells": 0.75,
+      "keep": 0.0,
+      "change": 0.0,
+      "hide": 1.0
+    },
+    {
+      "players": 400,
+      "true_rate_all_cells": 0.85,
+      "keep": 0.0,
+      "change": 0.0,
+      "hide": 1.0
+    },
+    {
+      "players": 500,
+      "true_rate_all_cells": 0.05,
+      "keep": 1.0,
+      "change": 0.0,
+      "hide": 0.0
+    },
+    {
+      "players": 500,
+      "true_rate_all_cells": 0.1,
+      "keep": 0.5089,
+      "change": 0.0,
+      "hide": 0.0
+    },
+    {
+      "players": 500,
+      "true_rate_all_cells": 0.12,
+      "keep": 0.0199,
+      "change": 0.0,
+      "hide": 0.0
+    },
+    {
+      "players": 500,
+      "true_rate_all_cells": 0.13,
+      "keep": 0.0006,
+      "change": 0.0002,
+      "hide": 0.0
+    },
+    {
+      "players": 500,
+      "true_rate_all_cells": 0.14,
+      "keep": 0.0,
+      "change": 0.0042,
+      "hide": 0.0
+    },
+    {
+      "players": 500,
+      "true_rate_all_cells": 0.2,
+      "keep": 0.0,
+      "change": 0.957,
+      "hide": 0.0248
+    },
+    {
+      "players": 500,
+      "true_rate_all_cells": 0.25,
+      "keep": 0.0,
+      "change": 0.0478,
+      "hide": 0.9523
+    },
+    {
+      "players": 500,
+      "true_rate_all_cells": 0.3,
+      "keep": 0.0,
+      "change": 0.0,
+      "hide": 1.0
+    },
+    {
+      "players": 500,
+      "true_rate_all_cells": 0.35,
+      "keep": 0.0,
+      "change": 0.0,
+      "hide": 1.0
+    },
+    {
+      "players": 500,
+      "true_rate_all_cells": 0.4,
+      "keep": 0.0,
+      "change": 0.0,
+      "hide": 1.0
+    },
+    {
+      "players": 500,
+      "true_rate_all_cells": 0.45,
+      "keep": 0.0,
+      "change": 0.0,
+      "hide": 1.0
+    },
+    {
+      "players": 500,
+      "true_rate_all_cells": 0.55,
+      "keep": 0.0,
+      "change": 0.0,
+      "hide": 1.0
+    },
+    {
+      "players": 500,
+      "true_rate_all_cells": 0.65,
+      "keep": 0.0,
+      "change": 0.0,
+      "hide": 1.0
+    },
+    {
+      "players": 500,
+      "true_rate_all_cells": 0.75,
+      "keep": 0.0,
+      "change": 0.0,
+      "hide": 1.0
+    },
+    {
+      "players": 500,
+      "true_rate_all_cells": 0.85,
+      "keep": 0.0,
+      "change": 0.0,
+      "hide": 1.0
+    },
+    {
+      "players": 600,
+      "true_rate_all_cells": 0.05,
+      "keep": 1.0,
+      "change": 0.0,
+      "hide": 0.0
+    },
+    {
+      "players": 600,
+      "true_rate_all_cells": 0.1,
+      "keep": 0.7334,
+      "change": 0.0,
+      "hide": 0.0
+    },
+    {
+      "players": 600,
+      "true_rate_all_cells": 0.12,
+      "keep": 0.0553,
+      "change": 0.0,
+      "hide": 0.0
+    },
+    {
+      "players": 600,
+      "true_rate_all_cells": 0.13,
+      "keep": 0.004,
+      "change": 0.0003,
+      "hide": 0.0
+    },
+    {
+      "players": 600,
+      "true_rate_all_cells": 0.14,
+      "keep": 0.0002,
+      "change": 0.004,
+      "hide": 0.0
+    },
+    {
+      "players": 600,
+      "true_rate_all_cells": 0.2,
+      "keep": 0.0,
+      "change": 0.9679,
+      "hide": 0.0282
+    },
+    {
+      "players": 600,
+      "true_rate_all_cells": 0.25,
+      "keep": 0.0,
+      "change": 0.021,
+      "hide": 0.9789
+    },
+    {
+      "players": 600,
+      "true_rate_all_cells": 0.3,
+      "keep": 0.0,
+      "change": 0.0,
+      "hide": 1.0
+    },
+    {
+      "players": 600,
+      "true_rate_all_cells": 0.35,
+      "keep": 0.0,
+      "change": 0.0,
+      "hide": 1.0
+    },
+    {
+      "players": 600,
+      "true_rate_all_cells": 0.4,
+      "keep": 0.0,
+      "change": 0.0,
+      "hide": 1.0
+    },
+    {
+      "players": 600,
+      "true_rate_all_cells": 0.45,
+      "keep": 0.0,
+      "change": 0.0,
+      "hide": 1.0
+    },
+    {
+      "players": 600,
+      "true_rate_all_cells": 0.55,
+      "keep": 0.0,
+      "change": 0.0,
+      "hide": 1.0
+    },
+    {
+      "players": 600,
+      "true_rate_all_cells": 0.65,
+      "keep": 0.0,
+      "change": 0.0,
+      "hide": 1.0
+    },
+    {
+      "players": 600,
+      "true_rate_all_cells": 0.75,
+      "keep": 0.0,
+      "change": 0.0,
+      "hide": 1.0
+    },
+    {
+      "players": 600,
+      "true_rate_all_cells": 0.85,
+      "keep": 0.0,
+      "change": 0.0,
+      "hide": 1.0
+    },
+    {
+      "players": 700,
+      "true_rate_all_cells": 0.05,
+      "keep": 1.0,
+      "change": 0.0,
+      "hide": 0.0
+    },
+    {
+      "players": 700,
+      "true_rate_all_cells": 0.1,
+      "keep": 0.8298,
+      "change": 0.0,
+      "hide": 0.0
+    },
+    {
+      "players": 700,
+      "true_rate_all_cells": 0.12,
+      "keep": 0.0849,
+      "change": 0.0,
+      "hide": 0.0
+    },
+    {
+      "players": 700,
+      "true_rate_all_cells": 0.13,
+      "keep": 0.0047,
+      "change": 0.0002,
+      "hide": 0.0
+    },
+    {
+      "players": 700,
+      "true_rate_all_cells": 0.14,
+      "keep": 0.0001,
+      "change": 0.0035,
+      "hide": 0.0
+    },
+    {
+      "players": 700,
+      "true_rate_all_cells": 0.2,
+      "keep": 0.0,
+      "change": 0.9698,
+      "hide": 0.0288
+    },
+    {
+      "players": 700,
+      "true_rate_all_cells": 0.25,
+      "keep": 0.0,
+      "change": 0.0094,
+      "hide": 0.9906
+    },
+    {
+      "players": 700,
+      "true_rate_all_cells": 0.3,
+      "keep": 0.0,
+      "change": 0.0,
+      "hide": 1.0
+    },
+    {
+      "players": 700,
+      "true_rate_all_cells": 0.35,
+      "keep": 0.0,
+      "change": 0.0,
+      "hide": 1.0
+    },
+    {
+      "players": 700,
+      "true_rate_all_cells": 0.4,
+      "keep": 0.0,
+      "change": 0.0,
+      "hide": 1.0
+    },
+    {
+      "players": 700,
+      "true_rate_all_cells": 0.45,
+      "keep": 0.0,
+      "change": 0.0,
+      "hide": 1.0
+    },
+    {
+      "players": 700,
+      "true_rate_all_cells": 0.55,
+      "keep": 0.0,
+      "change": 0.0,
+      "hide": 1.0
+    },
+    {
+      "players": 700,
+      "true_rate_all_cells": 0.65,
+      "keep": 0.0,
+      "change": 0.0,
+      "hide": 1.0
+    },
+    {
+      "players": 700,
+      "true_rate_all_cells": 0.75,
+      "keep": 0.0,
+      "change": 0.0,
+      "hide": 1.0
+    },
+    {
+      "players": 700,
+      "true_rate_all_cells": 0.85,
+      "keep": 0.0,
+      "change": 0.0,
+      "hide": 1.0
+    },
+    {
+      "players": 800,
+      "true_rate_all_cells": 0.05,
+      "keep": 1.0,
+      "change": 0.0,
+      "hide": 0.0
+    },
+    {
+      "players": 800,
+      "true_rate_all_cells": 0.1,
+      "keep": 0.8958,
+      "change": 0.0,
+      "hide": 0.0
+    },
+    {
+      "players": 800,
+      "true_rate_all_cells": 0.12,
+      "keep": 0.1101,
+      "change": 0.0,
+      "hide": 0.0
+    },
+    {
+      "players": 800,
+      "true_rate_all_cells": 0.13,
+      "keep": 0.0076,
+      "change": 0.0,
+      "hide": 0.0
+    },
+    {
+      "players": 800,
+      "true_rate_all_cells": 0.14,
+      "keep": 0.0001,
+      "change": 0.0014,
+      "hide": 0.0
+    },
+    {
+      "players": 800,
+      "true_rate_all_cells": 0.2,
+      "keep": 0.0,
+      "change": 0.9753,
+      "hide": 0.0238
+    },
+    {
+      "players": 800,
+      "true_rate_all_cells": 0.25,
+      "keep": 0.0,
+      "change": 0.0036,
+      "hide": 0.9964
+    },
+    {
+      "players": 800,
+      "true_rate_all_cells": 0.3,
+      "keep": 0.0,
+      "change": 0.0,
+      "hide": 1.0
+    },
+    {
+      "players": 800,
+      "true_rate_all_cells": 0.35,
+      "keep": 0.0,
+      "change": 0.0,
+      "hide": 1.0
+    },
+    {
+      "players": 800,
+      "true_rate_all_cells": 0.4,
+      "keep": 0.0,
+      "change": 0.0,
+      "hide": 1.0
+    },
+    {
+      "players": 800,
+      "true_rate_all_cells": 0.45,
+      "keep": 0.0,
+      "change": 0.0,
+      "hide": 1.0
+    },
+    {
+      "players": 800,
+      "true_rate_all_cells": 0.55,
+      "keep": 0.0,
+      "change": 0.0,
+      "hide": 1.0
+    },
+    {
+      "players": 800,
+      "true_rate_all_cells": 0.65,
+      "keep": 0.0,
+      "change": 0.0,
+      "hide": 1.0
+    },
+    {
+      "players": 800,
+      "true_rate_all_cells": 0.75,
+      "keep": 0.0,
+      "change": 0.0,
+      "hide": 1.0
+    },
+    {
+      "players": 800,
+      "true_rate_all_cells": 0.85,
+      "keep": 0.0,
+      "change": 0.0,
+      "hide": 1.0
+    }
+  ],
+  "one_cell": [
+    {
+      "players": 200,
+      "one_cell_rate": 0.2,
+      "change_or_hide": 0.3206,
+      "hide": 0.0095
+    },
+    {
+      "players": 200,
+      "one_cell_rate": 0.3,
+      "change_or_hide": 0.9977,
+      "hide": 0.845
+    },
+    {
+      "players": 200,
+      "one_cell_rate": 0.4,
+      "change_or_hide": 1.0,
+      "hide": 1.0
+    },
+    {
+      "players": 300,
+      "one_cell_rate": 0.2,
+      "change_or_hide": 0.5209,
+      "hide": 0.0112
+    },
+    {
+      "players": 300,
+      "one_cell_rate": 0.3,
+      "change_or_hide": 1.0,
+      "hide": 0.9583
+    },
+    {
+      "players": 300,
+      "one_cell_rate": 0.4,
+      "change_or_hide": 1.0,
+      "hide": 1.0
+    },
+    {
+      "players": 400,
+      "one_cell_rate": 0.2,
+      "change_or_hide": 0.6169,
+      "hide": 0.0091
+    },
+    {
+      "players": 400,
+      "one_cell_rate": 0.3,
+      "change_or_hide": 1.0,
+      "hide": 0.9875
+    },
+    {
+      "players": 400,
+      "one_cell_rate": 0.4,
+      "change_or_hide": 1.0,
+      "hide": 1.0
+    },
+    {
+      "players": 500,
+      "one_cell_rate": 0.2,
+      "change_or_hide": 0.7301,
+      "hide": 0.01
+    },
+    {
+      "players": 500,
+      "one_cell_rate": 0.3,
+      "change_or_hide": 1.0,
+      "hide": 0.9974
+    },
+    {
+      "players": 500,
+      "one_cell_rate": 0.4,
+      "change_or_hide": 1.0,
+      "hide": 1.0
+    },
+    {
+      "players": 600,
+      "one_cell_rate": 0.2,
+      "change_or_hide": 0.835,
+      "hide": 0.0097
+    },
+    {
+      "players": 600,
+      "one_cell_rate": 0.3,
+      "change_or_hide": 1.0,
+      "hide": 0.9997
+    },
+    {
+      "players": 600,
+      "one_cell_rate": 0.4,
+      "change_or_hide": 1.0,
+      "hide": 1.0
+    },
+    {
+      "players": 700,
+      "one_cell_rate": 0.2,
+      "change_or_hide": 0.8821,
+      "hide": 0.0086
+    },
+    {
+      "players": 700,
+      "one_cell_rate": 0.3,
+      "change_or_hide": 1.0,
+      "hide": 1.0
+    },
+    {
+      "players": 700,
+      "one_cell_rate": 0.4,
+      "change_or_hide": 1.0,
+      "hide": 1.0
+    },
+    {
+      "players": 800,
+      "one_cell_rate": 0.2,
+      "change_or_hide": 0.9172,
+      "hide": 0.0079
+    },
+    {
+      "players": 800,
+      "one_cell_rate": 0.3,
+      "change_or_hide": 1.0,
+      "hide": 1.0
+    },
+    {
+      "players": 800,
+      "one_cell_rate": 0.4,
+      "change_or_hide": 1.0,
+      "hide": 1.0
+    }
+  ],
+  "half_width_at_0_10": {
+    "200": 0.0513,
+    "300": 0.0418,
+    "400": 0.0361,
+    "500": 0.0323,
+    "600": 0.0294,
+    "700": 0.0272,
+    "800": 0.0255
+  }
+}

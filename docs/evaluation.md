@@ -91,11 +91,11 @@ Twelve experiments, EXP-0007 to EXP-0018, check the learning framework layer by 
 
 - The second batch, from what the first results left open: EXP-0026 (rank missed mates and early traps, the two flaws behind nearly every Tier 1 miss), and EXP-0004 is now run as well as designed, the first measurement on real players. Two enabling tasks carry no value case of their own: "lab-v2: the lab calls the trajectory, change-state, weekly target and trainer rules", which EXP-0011, EXP-0012, EXP-0014 and EXP-0015 waited on (done in #125: `cli lab trajectory` and `cli lab timeline` call the Rust rules, and a Node step runs the web's `goal.ts` and `model.ts`, [ADR 0115](decisions/0115-the-lab-calls-the-web-rules-through-node.md)), and "Confirm a champion swap on fresh seeds at release (ADR 0109)", which closes the gap ADR 0109 names: a challenger tuned to the registered seeds.
 
-The open catalogue, by value score. EXP-0009 takes precedence over its score: it is the only one that can change what we teach, and it runs at the 1 million nodes EXP-0008 chose. Within a score, what can run now comes first. EXP-0001, EXP-0002, EXP-0006, EXP-0007 and EXP-0008 are decided and live in the arena; EXP-0005 was closed unrun.
+The open catalogue, by value score. EXP-0009 takes precedence over its score: it is the only one that can change what we teach, and it runs at the 1 million nodes EXP-0008 chose. Within a score, what can run now comes first. EXP-0001, EXP-0002, EXP-0006, EXP-0007, EXP-0008 and EXP-0015 are decided and live in the arena; EXP-0005 was closed unrun. EXP-0015 found that the trajectory tells 44% to 78% of players whose strength never changed that their rating is falling, so its rating verdict is to be hidden until EXP-0030 clears a rule.
 
 | Rank | Experiment | Layer | Impact × uncertainty ÷ cost | Runs |
 |---|---|---|---|---|
-| 1 | EXP-0015 the trajectory's "worse" | profile | 3 × 3 ÷ 1 = 9 | now (`cli lab trajectory`) |
+| 1 | EXP-0030 a trajectory verdict that counts the rating's memory | profile | 3 × 2 ÷ 1 = 6 | now (`cli lab trajectory`) |
 | 2 | EXP-0013 false weaknesses | profile | 3 × 2 ÷ 1 = 6 | now |
 | 3 | EXP-0021 the pin rule | facts | 2 × 3 ÷ 1 = 6 | now |
 | 4 | EXP-0022 motifs past the first gain | facts | 3 × 2 ÷ 1 = 6 | now |

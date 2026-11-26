@@ -8,6 +8,12 @@ The site builds this file into /docs/progress/ and shows the newest entry on the
 
 See also the [experiments](/rematch/docs/experiments/) and the [roadmap](/rematch/docs/roadmap/).
 
+## 2026-11-26: EXP-0015, the trajectory's "falling" is mostly a false alarm
+
+- We simulated 700 players whose strength never changes, rated game by game by Glicko-2 with Lichess's own constants, and sent each history through the production trajectory ([EXP-0015](https://github.com/Terkea/rematch/blob/main/lab/experiments/EXP-0015/decision.md), #110). It told 44% of them their rating was falling at 60 rated games, 62% at 120 and 78% at 250, against the 15% we registered as acceptable, and told 44% and 30% at 60 and 120 games that it was rising.
+- The cause is in the statistics, not the chess: the rule's 80% range for the change is about 4 points each side where an honest one would be 26 to 47. A rating remembers its last games (a correlation of 0.97 from one game to the next), and the bootstrap treats 30 consecutive ratings as 30 independent ones; at 120 and 250 games the earlier window also sits on a selected peak.
+- So the rating's verdict is to be hidden until a fixed rule passes the same test: the headline keeps the peak, the current rating and the change as facts, without "falling", "rising", "Worse" or "Better", and the coach stops being told the rating is falling. The accuracy and blunders comparisons stayed within the bound and keep their verdicts. The fix is EXP-0030; the run took 98 seconds with no engine.
+
 ## 2026-11-26: EXP-0009, no data-driven teaching order yet
 
 - We followed 16,204 anonymised Lichess rapid players rated below 2000 from July to October 2026, by a salted hash of their name with nothing else kept ([ADR 0114](decisions/0114-following-anonymised-lichess-players-across-months.md)), and measured eight of Rematch's weaknesses, accuracy and the blunder rate from the evaluations Lichess already published, with no engine time ([EXP-0009](https://github.com/Terkea/rematch/tree/main/lab/experiments/EXP-0009)).
