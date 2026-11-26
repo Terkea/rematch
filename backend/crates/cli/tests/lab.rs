@@ -412,6 +412,25 @@ fn trajectory_is_the_production_rule() {
     )
     .unwrap_err();
     assert!(err.to_string().contains("oldest first"), "{err}");
+    // The same instant: the loader's order is by id.
+    let err = run_pure(
+        "trajectory",
+        r#"{"schema_version":"lab-v1","players":[{"id":"x","seed":"s","games":[
+            {"id":"b","played_at":"2026-01-01T00:00:00Z","rating":1500,"result":"win"},
+            {"id":"a","played_at":"2026-01-01T00:00:00Z","rating":1500,"result":"win"}]}]}"#,
+    )
+    .unwrap_err();
+    assert!(err.to_string().contains("oldest first"), "{err}");
+    let w = r#"{"series_key":"W1","prior":{"mu":0.1,"n0":2},"points":[]}"#;
+    let err = run_pure(
+        "trajectory",
+        &format!(
+            r#"{{"schema_version":"lab-v1","players":[{{"id":"x","seed":"s","games":[],
+            "weaknesses":[{w},{w},{w},{w}]}}]}}"#
+        ),
+    )
+    .unwrap_err();
+    assert!(err.to_string().contains("at most 3"), "{err}");
     let err = run_pure(
         "trajectory",
         r#"{"schema_version":"lab-v1","players":[{"id":"x","seed":"s","games":[],
@@ -460,7 +479,9 @@ fn timeline_is_the_production_rule() {
                 (k.clone(), pts)
             })
             .collect();
-        let direct = evaluate_all(&series, p.reference.as_ref());
+        let reference =
+            profile::estimates::with_model_baselines(p.reference.as_ref(), &p.model_reference);
+        let direct = evaluate_all(&series, reference.as_ref());
         let ours = timeline_player(p);
         assert_eq!(ours.series.len(), direct.len());
         for (key, o) in &direct {

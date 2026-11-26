@@ -308,7 +308,11 @@ def trajectory(players: list[TrajectoryPlayer] | TrajectoryRequest) -> Trajector
     """Rated games to the trajectory (EXP-0015): `cli lab trajectory`, the loader's
     `trajectory_input`, `compute` and `contract` (ADR 0089). Each player's `trajectory` is the
     CoachingInput's, as the coach receives it: `kind == "falling"` is "clearly worse than your
-    peak". The bootstrap's seed is the player's `seed`. Pure."""
+    peak". The bootstrap's seed is the player's `seed`. Pure.
+
+    The caller passes what the builder reads from the database: the games in `(played_at, id)`
+    order, and at most three weaknesses as `trajectory_weaknesses` picks them (the estimates with
+    `priority > 0`, by priority then key, each with `prior_of` its estimate)."""
     req = players if isinstance(players, TrajectoryRequest) else TrajectoryRequest(players=players)
     return TrajectoryResponse.model_validate(
         lab_call("trajectory", req, "TrajectoryRequest", "TrajectoryResponse")
@@ -318,7 +322,8 @@ def trajectory(players: list[TrajectoryPlayer] | TrajectoryRequest) -> Trajector
 def timeline(players: list[TimelinePlayer] | TimelineRequest) -> TimelineResponse:
     """Series points to change states (EXP-0014): `cli lab timeline`, the build's
     `evaluate_all` (`tl-v1`): each series' state, `P_imp` and the `weakness_state_history` rows.
-    Game ids are UUIDs, since games of the same instant replay in id order. Pure."""
+    Game ids are UUIDs, since games of the same instant replay in id order. Pass the
+    evaluation baselines (`model_reference`, from `analyse`) as the build adds them. Pure."""
     req = players if isinstance(players, TimelineRequest) else TimelineRequest(players=players)
     return TimelineResponse.model_validate(
         lab_call("timeline", req, "TimelineRequest", "TimelineResponse")
@@ -346,7 +351,10 @@ def web_call(step: str, request: BaseModel, request_message: str, response_messa
     )
     if proc.returncode != 0:
         raise LabError(f"lab-bridge {step} exited with {proc.returncode}", proc.stderr)
-    out = json.loads(proc.stdout)
+    try:
+        out = json.loads(proc.stdout)
+    except json.JSONDecodeError as e:
+        raise LabError(f"lab-bridge {step} wrote no JSON: {e}", proc.stderr) from e
     check(response_message, out)
     return out
 

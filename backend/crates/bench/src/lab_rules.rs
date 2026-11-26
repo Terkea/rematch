@@ -8,8 +8,9 @@
 //!    `trajectory` exactly as the coach receives it: the peak, the "then" and "now" windows and
 //!    each verdict (`thenVsNow.rating.verdict` is the headline "worse than your peak").
 //! 2. [`timeline`] (series points to change states, `tl-v1`): each player's series go through
-//!    `profile::timeline_job::evaluate_all`, the build's own call, with the series' reference
-//!    and constants chosen by `series_setup`; the response holds each series' current state,
+//!    `profile::timeline_job::evaluate_all`, the build's own call, on the benchmark with the
+//!    evaluation baselines added (`with_model_baselines`), the series' reference and constants
+//!    chosen by `series_setup`; the response holds each series' current state,
 //!    `P_imp` and every `weakness_state_history` row the build would write.
 //!
 //! Both are pure: no engine, no database, no clock. The seed of the trajectory's bootstrap is
@@ -21,12 +22,16 @@ use std::collections::BTreeMap;
 
 use coaching_input::Trajectory;
 use profile::coaching::trajectory::{
-    GameResult, Prior, TrajectoryGame, WeaknessInput, compute, contract, trajectory_input,
+    GameResult, Prior, TRAJECTORY_WEAKNESSES, TrajectoryGame, WeaknessInput, compute, contract,
+    trajectory_input,
 };
+use profile::estimates::with_model_baselines;
 use profile::timeline_job::evaluate_all;
 use profile_core::timeline::series::{Evidence, SeriesOutcome, SeriesPoint, TimelineRow};
 use profile_core::timeline::states::DETECTOR_VERSION;
-use profile_core::types::{BandReference, SeriesKey, WeaknessKey, WeaknessState};
+use profile_core::types::{
+    BandReference, BandReferenceStat, SeriesKey, WeaknessKey, WeaknessState,
+};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -116,14 +121,18 @@ pub struct TrajectoryPlayer {
     /// game's (ADR-FIX-C-1).
     #[serde(default)]
     pub chesscom: bool,
-    /// Oldest first, as the loader reads them (`ORDER BY played_at, id`).
+    /// In the loader's order, `(played_at, id)` ascending (`ORDER BY played_at, id`): on
+    /// chess.com a game's pre-game rating is the previous game's.
     pub games: Vec<RatedGame>,
-    /// The top claimable weaknesses, by priority (at most three are reported).
+    /// The top claimable weaknesses, at most `TRAJECTORY_WEAKNESSES` (3), as the builder picks
+    /// them (`trajectory_weaknesses`): the estimates with `priority > 0`, by priority then key,
+    /// each with `prior_of` its estimate.
     #[serde(default)]
     pub weaknesses: Vec<TrajectoryWeakness>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct TrajectoryRequest {
     pub schema_version: String,
     pub players: Vec<TrajectoryPlayer>,
@@ -146,14 +155,24 @@ pub struct TrajectoryResponse {
 
 /// The trajectory of one player (`trajectory_input`, `compute`, `contract`).
 pub fn trajectory_player(p: &TrajectoryPlayer) -> anyhow::Result<PlayerTrajectory> {
-    if let Some(w) = p.games.windows(2).find(|w| w[1].played_at < w[0].played_at) {
+    if let Some(w) = p
+        .games
+        .windows(2)
+        .find(|w| (w[1].played_at, &w[1].id) < (w[0].played_at, &w[0].id))
+    {
         anyhow::bail!(
-            "player {}: games must be oldest first ({} is before {})",
+            "player {}: games must be oldest first, by played_at then id ({} is before {})",
             p.id,
             w[1].id,
             w[0].id
         );
     }
+    anyhow::ensure!(
+        p.weaknesses.len() <= TRAJECTORY_WEAKNESSES,
+        "player {}: {} weaknesses, the trajectory takes at most {TRAJECTORY_WEAKNESSES}",
+        p.id,
+        p.weaknesses.len()
+    );
     let games: Vec<TrajectoryGame> = p
         .games
         .iter()
@@ -241,11 +260,16 @@ pub struct TimelinePlayer {
     /// The served peer benchmark (`null`: none, so every series is `not_an_issue`).
     #[serde(default)]
     pub reference: Option<BandReference>,
+    /// The evaluation baselines (ADR 0101, `model_baselines`; an `analyse` fact): the build
+    /// adds them to the benchmark for the keys it lacks (`with_model_baselines`), as here.
+    #[serde(default)]
+    pub model_reference: BTreeMap<WeaknessKey, BandReferenceStat>,
     /// Points per series key (`W3.shallow`, `motif.missed:fork`, ...), in any order.
     pub series: BTreeMap<SeriesKey, Vec<TimelinePoint>>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct TimelineRequest {
     pub schema_version: String,
     pub players: Vec<TimelinePlayer>,
@@ -360,10 +384,13 @@ pub fn timeline_player(p: &TimelinePlayer) -> PlayerTimeline {
         .collect();
     PlayerTimeline {
         id: p.id.clone(),
-        series: evaluate_all(&series, p.reference.as_ref())
-            .iter()
-            .map(|(k, o)| (k.clone(), lab_outcome(o)))
-            .collect(),
+        series: evaluate_all(
+            &series,
+            with_model_baselines(p.reference.as_ref(), &p.model_reference).as_ref(),
+        )
+        .iter()
+        .map(|(k, o)| (k.clone(), lab_outcome(o)))
+        .collect(),
     }
 }
 

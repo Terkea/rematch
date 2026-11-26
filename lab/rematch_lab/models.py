@@ -595,6 +595,7 @@ class TimelinePoint(Snake):
 class TimelinePlayer(Snake):
     id: str
     reference: dict[str, BandReferenceStat] | None = None
+    model_reference: dict[str, BandReferenceStat] = {}
     series: dict[str, list[TimelinePoint]]
 
 
@@ -691,7 +692,7 @@ class FocusProgressItem(Snake):
     n: int = Field(ge=0)
     games: int = Field(ge=0)
     games_n: int = Field(ge=1)
-    target: float
+    target: float = Field(ge=0, le=1)
 
 
 class FocusProgressRequest(Snake):

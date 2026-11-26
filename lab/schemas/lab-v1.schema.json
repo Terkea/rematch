@@ -955,6 +955,11 @@
             }
           ]
         },
+        "model_reference": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/BinomialKey" },
+          "additionalProperties": { "$ref": "#/$defs/BandReferenceStat" }
+        },
         "series": {
           "type": "object",
           "propertyNames": { "$ref": "#/$defs/SeriesKey" },

@@ -31,7 +31,8 @@ COPY --from=repo algorithm/manifest.json algorithm/manifest.json
 COPY --from=repo packages packages
 COPY --from=repo apps/web apps/web
 # --frozen-lockfile: the versions the app runs; --ignore-scripts: nothing is built but the bundle.
-RUN pnpm install --frozen-lockfile --ignore-scripts --filter "@ci/web..."     && pnpm --filter @ci/web lab-bridge:build /out/lab-bridge.mjs
+RUN pnpm install --frozen-lockfile --ignore-scripts --filter "@ci/web..." \
+    && pnpm --filter @ci/web lab-bridge:build /out/lab-bridge.mjs
 
 FROM ${PYTHON_IMAGE} AS base
 COPY --from=uv /uv /uvx /usr/local/bin/
@@ -59,7 +60,8 @@ COPY --from=webbridge /out/lab-bridge.mjs /usr/local/lib/rematch/lab-bridge.mjs
 COPY . .
 ENV PATH=/opt/venv/bin:$PATH \
     REMATCH_CLI=/usr/local/bin/cli \
-    STOCKFISH_PATH=/usr/local/bin/stockfish     REMATCH_WEB_BRIDGE="node /usr/local/lib/rematch/lab-bridge.mjs" \
+    STOCKFISH_PATH=/usr/local/bin/stockfish \
+    REMATCH_WEB_BRIDGE="node /usr/local/lib/rematch/lab-bridge.mjs" \
     PYTHONPATH=/lab \
     MPLBACKEND=Agg
 # Matplotlib needs a writable config dir; nothing else is written outside /lab.

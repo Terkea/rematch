@@ -25,13 +25,16 @@ on:
       - apps/web/scripts/lab-bridge.ts
       - apps/web/scripts/build-lab-bridge.mjs
       - apps/web/src/lib/algorithm.ts
+      - apps/web/src/lib/time-zone.ts
       - apps/web/src/server/focus/goal.ts
       - apps/web/src/server/lab/**
       - apps/web/src/server/profile/obvious-capture.ts
       - apps/web/src/server/stats/**
       - apps/web/src/server/train/model.ts
       - packages/chess-core/**
+      - package.json
       - pnpm-lock.yaml
+      - pnpm-workspace.yaml
       - backend/crates/ai/**
       - backend/crates/analysis/**
       - backend/crates/bench/**
