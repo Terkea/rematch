@@ -229,69 +229,81 @@ def observe_all(cohort: dict[str, Any], budget: Budget | None, lo: float, hi: fl
                 ) -> tuple[dict, dict[str, int]]:
     """Per (player, month), the player's first OBSERVE_GAMES rapid games with evaluations by game
     key through `cli lab observe`; of those, the first MAX_EVAL_GAMES by game key that are
-    standard chess from the start position and observe without an error."""
+    standard chess from the start position and observe without an error. Batches go to the
+    workers as they are read, at most 2 × WORKERS in flight, so memory stays bounded; the result
+    does not depend on the order they come back in (every list is sorted by game key)."""
     start = start_search(budget)
     chosen = {(h, gid) for (h, _), games in select_games(cohort).items()
               for _, gid in games[:OBSERVE_GAMES]}
-    wanted: dict[str, dict[str, str]] = {}  # game id -> {color: pseudonym}
     counts = {"games_read": 0, "games_observed": 0, "games_failed": 0, "games_not_standard": 0,
               "games_with_an_opponent_in_the_other_slice": 0}
     other = (0.0, PILOT_SLICE[0]) if lo >= PILOT_SLICE[0] else PILOT_SLICE
-    requests: list[ObserveRequest] = []
-    batch: list[ObserveGame] = []
-    meta: dict[str, dict[str, Any]] = {}
-    for k in FEATURE_MONTHS:
-        with path_of(MONTHS[k], "games.jsonl").open(encoding="utf-8") as f:
-            for line in f:
-                g = json.loads(line)
-                sides = [s for s in ("white", "black")
-                         if g[s] in cohort and (g[s], g["id"]) in chosen]
-                if not sides:
-                    continue
-                counts["games_read"] += 1
-                if any(g[s] and in_slice(g[s], *other) for s in ("white", "black")):
-                    counts["games_with_an_opponent_in_the_other_slice"] += 1
-                if not standard(g["pgn"]):
-                    counts["games_not_standard"] += 1
-                    continue
-                # Keyed by month and id, so a game id is never taken for another month's.
-                uid = f"{k}:{g['id']}"
-                wanted[uid] = {s: g[s] for s in sides}
-                own_opp = {
-                    "white": (g["white_elo"], g["black_elo"]),
-                    "black": (g["black_elo"], g["white_elo"]),
-                }
-                meta[uid] = {"month": k, "elos": own_opp, "id": g["id"]}
-                batch.append(ObserveGame(
-                    id=uid, pgn=g["pgn"], base_seconds=g["base_seconds"],
-                    increment_seconds=g["increment_seconds"], lichess_evals=lichess_evals(g["pgn"]),
-                    sides=sides, white_rating=g["white_elo"], black_rating=g["black_elo"],
-                    termination=g["termination"],
-                ))
-                if len(batch) == BATCH:
-                    requests.append(ObserveRequest(games=batch, searches=[start]))
-                    batch = []
-    if batch:
-        requests.append(ObserveRequest(games=batch, searches=[start]))
-    n_games = sum(len(r.games) for r in requests)
-    if budget:
-        budget.spend("observe_games", n_games)
-    log(f"observing {n_games} games in {len(requests)} batches on {WORKERS} workers")
-    algorithm_ids = set()
+    algorithm_ids: set[str] = set()
     observed: dict[tuple[str, str], list[tuple[str, str, Any]]] = defaultdict(list)
+
+    def collect(resp: Any, meta: dict[str, dict[str, Any]]) -> None:
+        algorithm_ids.add(resp.algorithm_id)
+        for og in resp.games:
+            if og.error:
+                counts["games_failed"] += 1
+                continue
+            counts["games_observed"] += 1
+            m = meta[og.id]
+            for s in og.sides:
+                observed[(m["sides"][s.color], m["month"])].append(
+                    (game_key(m["id"]), m["id"], (s, m["elos"][s.color])))
+
+    def batches() -> Any:
+        batch: list[ObserveGame] = []
+        meta: dict[str, dict[str, Any]] = {}
+        for k in FEATURE_MONTHS:
+            with path_of(MONTHS[k], "games.jsonl").open(encoding="utf-8") as f:
+                for line in f:
+                    g = json.loads(line)
+                    sides = [s for s in ("white", "black")
+                             if g[s] in cohort and (g[s], g["id"]) in chosen]
+                    if not sides:
+                        continue
+                    counts["games_read"] += 1
+                    if any(g[s] and in_slice(g[s], *other) for s in ("white", "black")):
+                        counts["games_with_an_opponent_in_the_other_slice"] += 1
+                    if not standard(g["pgn"]):
+                        counts["games_not_standard"] += 1
+                        continue
+                    # Keyed by month and id, so a game id is never taken for another month's.
+                    uid = f"{k}:{g['id']}"
+                    meta[uid] = {
+                        "month": k, "id": g["id"], "sides": {s: g[s] for s in sides},
+                        "elos": {"white": (g["white_elo"], g["black_elo"]),
+                                 "black": (g["black_elo"], g["white_elo"])},
+                    }
+                    batch.append(ObserveGame(
+                        id=uid, pgn=g["pgn"], base_seconds=g["base_seconds"],
+                        increment_seconds=g["increment_seconds"],
+                        lichess_evals=lichess_evals(g["pgn"]), sides=sides,
+                        white_rating=g["white_elo"], black_rating=g["black_elo"],
+                        termination=g["termination"],
+                    ))
+                    if len(batch) == BATCH:
+                        yield ObserveRequest(games=batch, searches=[start]), meta
+                        batch, meta = [], {}
+        if batch:
+            yield ObserveRequest(games=batch, searches=[start]), meta
+
+    n_games = 0
     with ThreadPoolExecutor(max_workers=WORKERS) as pool:
-        for resp in pool.map(rematch_lab.observe, requests):
-            algorithm_ids.add(resp.algorithm_id)
-            for og in resp.games:
-                if og.error:
-                    counts["games_failed"] += 1
-                    continue
-                counts["games_observed"] += 1
-                m = meta[og.id]
-                for s in og.sides:
-                    h = wanted[og.id][s.color]
-                    observed[(h, m["month"])].append(
-                        (game_key(m["id"]), m["id"], (s, m["elos"][s.color])))
+        pending: list[Any] = []
+        for req, meta in batches():
+            if budget:
+                budget.spend("observe_games", len(req.games))
+            n_games += len(req.games)
+            pending.append((pool.submit(rematch_lab.observe, req), meta))
+            while len(pending) >= 2 * WORKERS:
+                fut, m = pending.pop(0)
+                collect(fut.result(), m)
+        for fut, m in pending:
+            collect(fut.result(), m)
+    log(f"observed {n_games} games on {WORKERS} workers")
     if len(algorithm_ids) != 1:
         raise SystemExit(f"the run spans algorithm ids {sorted(algorithm_ids)}")
     for v in observed.values():
