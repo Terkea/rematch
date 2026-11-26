@@ -907,6 +907,58 @@ pub fn pre_game_ratings(
     out
 }
 
+/// One rated game as [`load_trajectory`] reads it: the player's own stored rating (on chess.com
+/// the rating after the game, on Lichess the one before it), the result from their side, and
+/// the analysis.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TrajectoryGame {
+    pub id: String,
+    pub played_at: OffsetDateTime,
+    pub own_rating: Option<i32>,
+    pub result: GameResult,
+    /// `analysis_status` is `done`.
+    pub analysed: bool,
+    pub accuracy: Option<f64>,
+    /// The player's own moves judged a blunder.
+    pub blunders: i32,
+}
+
+/// The [`Input`] of an account's rated games in `(played_at, id)` order (pure; the loader's
+/// rule and `cli lab trajectory`'s): pre-game ratings, the latest stored rating as the current
+/// one, and each game's stats, accuracy and blunders only when analysed.
+pub fn trajectory_input(
+    games: &[TrajectoryGame],
+    chesscom: bool,
+    weaknesses: Vec<WeaknessInput>,
+    seed: String,
+) -> Input {
+    let ratings: Vec<(String, OffsetDateTime, Option<i32>)> = games
+        .iter()
+        .map(|g| (g.id.clone(), g.played_at, g.own_rating))
+        .collect();
+    let current = games
+        .iter()
+        .rev()
+        .find_map(|g| g.own_rating.map(|x| (f64::from(x), g.played_at)));
+    let stats = games
+        .iter()
+        .map(|g| StatRow {
+            id: g.id.clone(),
+            result: g.result,
+            analysed: g.analysed,
+            accuracy: if g.analysed { g.accuracy } else { None },
+            blunders: g.analysed.then_some(f64::from(g.blunders)),
+        })
+        .collect();
+    Input {
+        games: pre_game_ratings(chesscom, &ratings),
+        current,
+        stats,
+        weaknesses,
+        seed,
+    }
+}
+
 type GameRow = (
     Uuid,
     OffsetDateTime,
@@ -944,33 +996,21 @@ pub async fn load_trajectory(
     .bind(tc.as_str())
     .fetch_all(pool)
     .await?;
-    let own = |r: &GameRow| if r.2 { r.3 } else { r.4 };
-    let ratings: Vec<(String, OffsetDateTime, Option<i32>)> = rows
+    let games: Vec<TrajectoryGame> = rows
         .iter()
-        .map(|r| (r.0.to_string(), r.1, own(r)))
-        .collect();
-    let current = rows
-        .iter()
-        .rev()
-        .find_map(|r| own(r).map(|x| (f64::from(x), r.1)));
-    let stats = rows
-        .iter()
-        .map(|r| {
-            let analysed = r.6 == "done";
-            let result = match (r.5.as_str(), r.2) {
+        .map(|r| TrajectoryGame {
+            id: r.0.to_string(),
+            played_at: r.1,
+            own_rating: if r.2 { r.3 } else { r.4 },
+            result: match (r.5.as_str(), r.2) {
                 ("1/2-1/2", _) => GameResult::Draw,
                 ("1-0", true) | ("0-1", false) => GameResult::Win,
                 ("1-0", false) | ("0-1", true) => GameResult::Loss,
                 _ => GameResult::Unfinished,
-            };
-            let accuracy = if r.2 { r.7 } else { r.8 };
-            StatRow {
-                id: r.0.to_string(),
-                result,
-                analysed,
-                accuracy: if analysed { accuracy } else { None },
-                blunders: analysed.then_some(f64::from(r.9)),
-            }
+            },
+            analysed: r.6 == "done",
+            accuracy: if r.2 { r.7 } else { r.8 },
+            blunders: r.9,
         })
         .collect();
     let keys: Vec<String> = top.iter().map(|(k, _)| k.clone()).collect();
@@ -1007,13 +1047,12 @@ pub async fn load_trajectory(
                 .collect(),
         })
         .collect();
-    let input = Input {
-        games: pre_game_ratings(chesscom, &ratings),
-        current,
-        stats,
+    let input = trajectory_input(
+        &games,
+        chesscom,
         weaknesses,
-        seed: format!("trajectory:{account_id}:{}", tc.as_str()),
-    };
+        format!("trajectory:{account_id}:{}", tc.as_str()),
+    );
     let (series, computed) = compute(&input);
     Ok(contract(&series, &computed))
 }

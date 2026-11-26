@@ -55,7 +55,7 @@ pub const SCHEMA_VERSION: &str = "lab-v1";
 /// Engines `analyse` starts when the request does not say.
 pub const DEFAULT_ENGINES: usize = 2;
 
-fn check_version(v: &str) -> anyhow::Result<()> {
+pub(crate) fn check_version(v: &str) -> anyhow::Result<()> {
     anyhow::ensure!(
         v == SCHEMA_VERSION,
         "schema_version {v:?} is not supported (this cli speaks {SCHEMA_VERSION})"

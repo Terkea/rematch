@@ -1,0 +1,213 @@
+{
+  "schema_version": "lab-v1",
+  "candidates": [
+    {
+      "game_id": "game-kept",
+      "ply": 5,
+      "fen": "rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 2",
+      "uci": "b1c3",
+      "best_uci": "e4d5",
+      "win_before": 55,
+      "win_after": 40,
+      "prev_san": "d5",
+      "sources": [
+        "blunder",
+        "W3.shallow",
+        "W7.traps"
+      ]
+    },
+    {
+      "game_id": "game-blunder-only",
+      "ply": 5,
+      "fen": "rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 2",
+      "uci": "b1c3",
+      "best_uci": "e4d5",
+      "win_before": 55,
+      "win_after": 40,
+      "prev_san": "d5",
+      "sources": [
+        "blunder"
+      ]
+    },
+    {
+      "game_id": "game-no-source",
+      "ply": 5,
+      "fen": "rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 2",
+      "uci": "b1c3",
+      "best_uci": "e4d5",
+      "win_before": 55,
+      "win_after": 40,
+      "prev_san": "d5",
+      "sources": []
+    },
+    {
+      "game_id": "game-played-the-best",
+      "ply": 5,
+      "fen": "rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 2",
+      "uci": "e4d5",
+      "best_uci": "e4d5",
+      "win_before": 55,
+      "win_after": 40,
+      "prev_san": "d5",
+      "sources": [
+        "W3.shallow"
+      ]
+    },
+    {
+      "game_id": "game-no-best-move",
+      "ply": 5,
+      "fen": "rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 2",
+      "uci": "b1c3",
+      "best_uci": null,
+      "win_before": 55,
+      "win_after": 40,
+      "prev_san": "d5",
+      "sources": [
+        "W3.shallow"
+      ]
+    },
+    {
+      "game_id": "game-already-decided",
+      "ply": 5,
+      "fen": "rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 2",
+      "uci": "b1c3",
+      "best_uci": "e4d5",
+      "win_before": 98,
+      "win_after": 93,
+      "prev_san": "d5",
+      "sources": [
+        "W3.shallow"
+      ]
+    },
+    {
+      "game_id": "game-free-capture",
+      "ply": 5,
+      "fen": "rnb1kbnr/pppp1ppp/8/4p3/4P2q/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3",
+      "uci": "b1c3",
+      "best_uci": "f3h4",
+      "win_before": 55,
+      "win_after": 40,
+      "prev_san": "Qh4",
+      "sources": [
+        "W3.shallow"
+      ]
+    },
+    {
+      "game_id": "game-free-capture-missed",
+      "ply": 5,
+      "fen": "rnb1kbnr/pppp1ppp/8/4p3/4P2q/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3",
+      "uci": "b1c3",
+      "best_uci": "f3h4",
+      "win_before": 55,
+      "win_after": 40,
+      "prev_san": "Qh4",
+      "sources": [
+        "W4.missed"
+      ]
+    },
+    {
+      "game_id": "game-holdout",
+      "ply": 10,
+      "fen": "rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 2",
+      "uci": "b1c3",
+      "best_uci": "e4d5",
+      "win_before": 55,
+      "win_after": 40,
+      "prev_san": "d5",
+      "sources": [
+        "W3.shallow"
+      ]
+    },
+    {
+      "game_id": "game-holdout",
+      "ply": 11,
+      "fen": "rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 2",
+      "uci": "b1c3",
+      "best_uci": "e4d5",
+      "win_before": 55,
+      "win_after": 40,
+      "prev_san": "d5",
+      "sources": [
+        "W3.shallow"
+      ]
+    },
+    {
+      "game_id": "game-holdout",
+      "ply": 12,
+      "fen": "rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 2",
+      "uci": "b1c3",
+      "best_uci": "e4d5",
+      "win_before": 55,
+      "win_after": 40,
+      "prev_san": "d5",
+      "sources": [
+        "W3.shallow"
+      ]
+    },
+    {
+      "game_id": "game-holdout",
+      "ply": 13,
+      "fen": "rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 2",
+      "uci": "b1c3",
+      "best_uci": "e4d5",
+      "win_before": 55,
+      "win_after": 40,
+      "prev_san": "d5",
+      "sources": [
+        "W3.shallow"
+      ]
+    },
+    {
+      "game_id": "game-holdout",
+      "ply": 14,
+      "fen": "rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 2",
+      "uci": "b1c3",
+      "best_uci": "e4d5",
+      "win_before": 55,
+      "win_after": 40,
+      "prev_san": "d5",
+      "sources": [
+        "W3.shallow"
+      ]
+    },
+    {
+      "game_id": "game-holdout",
+      "ply": 15,
+      "fen": "rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 2",
+      "uci": "b1c3",
+      "best_uci": "e4d5",
+      "win_before": 55,
+      "win_after": 40,
+      "prev_san": "d5",
+      "sources": [
+        "W3.shallow"
+      ]
+    },
+    {
+      "game_id": "game-holdout",
+      "ply": 16,
+      "fen": "rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 2",
+      "uci": "b1c3",
+      "best_uci": "e4d5",
+      "win_before": 55,
+      "win_after": 40,
+      "prev_san": "d5",
+      "sources": [
+        "W3.shallow"
+      ]
+    },
+    {
+      "game_id": "game-holdout",
+      "ply": 17,
+      "fen": "rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 2",
+      "uci": "b1c3",
+      "best_uci": "e4d5",
+      "win_before": 55,
+      "win_after": 40,
+      "prev_san": "d5",
+      "sources": [
+        "W3.shallow"
+      ]
+    }
+  ]
+}

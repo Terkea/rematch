@@ -1,0 +1,46 @@
+{
+  "schema_version": "lab-v1",
+  "algorithm_id": "ALGORITHM_ID",
+  "focus_version": "focus-v1",
+  "items": [
+    {
+      "id": "relative-beats-a-low-peer",
+      "target": {
+        "rate": 0.15,
+        "basis": "relative"
+      }
+    },
+    {
+      "id": "peer-is-easier",
+      "target": {
+        "rate": 0.17,
+        "basis": "peer"
+      }
+    },
+    {
+      "id": "peer-too-close",
+      "target": {
+        "rate": 0.15,
+        "basis": "relative"
+      }
+    },
+    {
+      "id": "no-peer",
+      "target": {
+        "rate": 0.03,
+        "basis": "relative"
+      }
+    },
+    {
+      "id": "rounds-to-a-tenth",
+      "target": {
+        "rate": 0.093,
+        "basis": "relative"
+      }
+    },
+    {
+      "id": "already-zero",
+      "target": null
+    }
+  ]
+}

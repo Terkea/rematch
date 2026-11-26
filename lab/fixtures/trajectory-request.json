@@ -1,0 +1,1805 @@
+{
+  "schema_version": "lab-v1",
+  "players": [
+    {
+      "id": "lab-peaked",
+      "seed": "trajectory:lab-peaked:rapid",
+      "chesscom": false,
+      "games": [
+        {
+          "id": "g001",
+          "played_at": "2026-03-01T18:00:00Z",
+          "rating": 1500,
+          "result": "win",
+          "analysed": true,
+          "accuracy": 76.8,
+          "blunders": 1
+        },
+        {
+          "id": "g002",
+          "played_at": "2026-03-02T14:00:00Z",
+          "rating": 1513,
+          "result": "loss",
+          "analysed": true,
+          "accuracy": 82.2,
+          "blunders": 0
+        },
+        {
+          "id": "g003",
+          "played_at": "2026-03-03T10:00:00Z",
+          "rating": 1509,
+          "result": "draw",
+          "analysed": true,
+          "accuracy": 83.2,
+          "blunders": 0
+        },
+        {
+          "id": "g004",
+          "played_at": "2026-03-04T06:00:00Z",
+          "rating": 1510,
+          "result": "win",
+          "analysed": false,
+          "accuracy": null,
+          "blunders": 0
+        },
+        {
+          "id": "g005",
+          "played_at": "2026-03-05T02:00:00Z",
+          "rating": 1524,
+          "result": "loss",
+          "analysed": true,
+          "accuracy": 77,
+          "blunders": 1
+        },
+        {
+          "id": "g006",
+          "played_at": "2026-03-05T22:00:00Z",
+          "rating": 1530,
+          "result": "win",
+          "analysed": true,
+          "accuracy": 81.5,
+          "blunders": 0
+        },
+        {
+          "id": "g007",
+          "played_at": "2026-03-06T18:00:00Z",
+          "rating": 1523,
+          "result": "loss",
+          "analysed": true,
+          "accuracy": 79,
+          "blunders": 0
+        },
+        {
+          "id": "g008",
+          "played_at": "2026-03-07T14:00:00Z",
+          "rating": 1526,
+          "result": "draw",
+          "analysed": true,
+          "accuracy": 73.3,
+          "blunders": 0
+        },
+        {
+          "id": "g009",
+          "played_at": "2026-03-08T10:00:00Z",
+          "rating": 1539,
+          "result": "win",
+          "analysed": true,
+          "accuracy": 75.5,
+          "blunders": 1
+        },
+        {
+          "id": "g010",
+          "played_at": "2026-03-09T06:00:00Z",
+          "rating": 1538,
+          "result": "loss",
+          "analysed": true,
+          "accuracy": 79.3,
+          "blunders": 0
+        },
+        {
+          "id": "g011",
+          "played_at": "2026-03-10T02:00:00Z",
+          "rating": 1531,
+          "result": "win",
+          "analysed": false,
+          "accuracy": null,
+          "blunders": 0
+        },
+        {
+          "id": "g012",
+          "played_at": "2026-03-10T22:00:00Z",
+          "rating": 1539,
+          "result": "loss",
+          "analysed": true,
+          "accuracy": 72.4,
+          "blunders": 0
+        },
+        {
+          "id": "g013",
+          "played_at": "2026-03-11T18:00:00Z",
+          "rating": 1551,
+          "result": "draw",
+          "analysed": true,
+          "accuracy": 77.7,
+          "blunders": 1
+        },
+        {
+          "id": "g014",
+          "played_at": "2026-03-12T14:00:00Z",
+          "rating": 1546,
+          "result": "win",
+          "analysed": true,
+          "accuracy": 80.3,
+          "blunders": 0
+        },
+        {
+          "id": "g015",
+          "played_at": "2026-03-13T10:00:00Z",
+          "rating": 1545,
+          "result": "loss",
+          "analysed": true,
+          "accuracy": 75.9,
+          "blunders": 0
+        },
+        {
+          "id": "g016",
+          "played_at": "2026-03-14T06:00:00Z",
+          "rating": 1559,
+          "result": "win",
+          "analysed": true,
+          "accuracy": 76.3,
+          "blunders": 0
+        },
+        {
+          "id": "g017",
+          "played_at": "2026-03-15T02:00:00Z",
+          "rating": 1569,
+          "result": "loss",
+          "analysed": true,
+          "accuracy": 82.4,
+          "blunders": 1
+        },
+        {
+          "id": "g018",
+          "played_at": "2026-03-15T22:00:00Z",
+          "rating": 1564,
+          "result": "draw",
+          "analysed": false,
+          "accuracy": null,
+          "blunders": 0
+        },
+        {
+          "id": "g019",
+          "played_at": "2026-03-16T18:00:00Z",
+          "rating": 1569,
+          "result": "win",
+          "analysed": true,
+          "accuracy": 77.1,
+          "blunders": 0
+        },
+        {
+          "id": "g020",
+          "played_at": "2026-03-17T14:00:00Z",
+          "rating": 1585,
+          "result": "loss",
+          "analysed": true,
+          "accuracy": 79.2,
+          "blunders": 0
+        },
+        {
+          "id": "g021",
+          "played_at": "2026-03-18T10:00:00Z",
+          "rating": 1588,
+          "result": "win",
+          "analysed": true,
+          "accuracy": 83.4,
+          "blunders": 1
+        },
+        {
+          "id": "g022",
+          "played_at": "2026-03-19T06:00:00Z",
+          "rating": 1582,
+          "result": "loss",
+          "analysed": true,
+          "accuracy": 79.4,
+          "blunders": 0
+        },
+        {
+          "id": "g023",
+          "played_at": "2026-03-20T02:00:00Z",
+          "rating": 1590,
+          "result": "draw",
+          "analysed": true,
+          "accuracy": 74.8,
+          "blunders": 0
+        },
+        {
+          "id": "g024",
+          "played_at": "2026-03-20T22:00:00Z",
+          "rating": 1603,
+          "result": "win",
+          "analysed": true,
+          "accuracy": 78.3,
+          "blunders": 0
+        },
+        {
+          "id": "g025",
+          "played_at": "2026-03-21T18:00:00Z",
+          "rating": 1599,
+          "result": "loss",
+          "analysed": false,
+          "accuracy": null,
+          "blunders": 1
+        },
+        {
+          "id": "g026",
+          "played_at": "2026-03-22T14:00:00Z",
+          "rating": 1594,
+          "result": "win",
+          "analysed": true,
+          "accuracy": 74.4,
+          "blunders": 0
+        },
+        {
+          "id": "g027",
+          "played_at": "2026-03-23T10:00:00Z",
+          "rating": 1605,
+          "result": "loss",
+          "analysed": true,
+          "accuracy": 72.7,
+          "blunders": 0
+        },
+        {
+          "id": "g028",
+          "played_at": "2026-03-24T06:00:00Z",
+          "rating": 1612,
+          "result": "draw",
+          "analysed": true,
+          "accuracy": 78,
+          "blunders": 0
+        },
+        {
+          "id": "g029",
+          "played_at": "2026-03-25T02:00:00Z",
+          "rating": 1605,
+          "result": "win",
+          "analysed": true,
+          "accuracy": 78.2,
+          "blunders": 1
+        },
+        {
+          "id": "g030",
+          "played_at": "2026-03-25T22:00:00Z",
+          "rating": 1605,
+          "result": "loss",
+          "analysed": true,
+          "accuracy": 73.4,
+          "blunders": 0
+        },
+        {
+          "id": "g031",
+          "played_at": "2026-03-26T18:00:00Z",
+          "rating": 1620,
+          "result": "win",
+          "analysed": true,
+          "accuracy": 75.6,
+          "blunders": 0
+        },
+        {
+          "id": "g032",
+          "played_at": "2026-03-27T14:00:00Z",
+          "rating": 1617,
+          "result": "loss",
+          "analysed": false,
+          "accuracy": null,
+          "blunders": 0
+        },
+        {
+          "id": "g033",
+          "played_at": "2026-03-28T10:00:00Z",
+          "rating": 1605,
+          "result": "draw",
+          "analysed": true,
+          "accuracy": 79.6,
+          "blunders": 1
+        },
+        {
+          "id": "g034",
+          "played_at": "2026-03-29T06:00:00Z",
+          "rating": 1606,
+          "result": "win",
+          "analysed": true,
+          "accuracy": 76,
+          "blunders": 0
+        },
+        {
+          "id": "g035",
+          "played_at": "2026-03-30T02:00:00Z",
+          "rating": 1615,
+          "result": "loss",
+          "analysed": true,
+          "accuracy": 80.4,
+          "blunders": 0
+        },
+        {
+          "id": "g036",
+          "played_at": "2026-03-30T22:00:00Z",
+          "rating": 1608,
+          "result": "win",
+          "analysed": true,
+          "accuracy": 83.9,
+          "blunders": 0
+        },
+        {
+          "id": "g037",
+          "played_at": "2026-03-31T18:00:00Z",
+          "rating": 1598,
+          "result": "loss",
+          "analysed": true,
+          "accuracy": 79.1,
+          "blunders": 1
+        },
+        {
+          "id": "g038",
+          "played_at": "2026-04-01T14:00:00Z",
+          "rating": 1604,
+          "result": "draw",
+          "analysed": true,
+          "accuracy": 76.7,
+          "blunders": 0
+        },
+        {
+          "id": "g039",
+          "played_at": "2026-04-02T10:00:00Z",
+          "rating": 1608,
+          "result": "win",
+          "analysed": false,
+          "accuracy": null,
+          "blunders": 0
+        },
+        {
+          "id": "g040",
+          "played_at": "2026-04-03T06:00:00Z",
+          "rating": 1595,
+          "result": "loss",
+          "analysed": true,
+          "accuracy": 81.1,
+          "blunders": 0
+        },
+        {
+          "id": "g041",
+          "played_at": "2026-04-04T02:00:00Z",
+          "rating": 1587,
+          "result": "win",
+          "analysed": true,
+          "accuracy": 74.8,
+          "blunders": 1
+        },
+        {
+          "id": "g042",
+          "played_at": "2026-04-04T22:00:00Z",
+          "rating": 1593,
+          "result": "loss",
+          "analysed": true,
+          "accuracy": 74.7,
+          "blunders": 0
+        },
+        {
+          "id": "g043",
+          "played_at": "2026-04-05T18:00:00Z",
+          "rating": 1590,
+          "result": "draw",
+          "analysed": true,
+          "accuracy": 79.3,
+          "blunders": 0
+        },
+        {
+          "id": "g044",
+          "played_at": "2026-04-06T14:00:00Z",
+          "rating": 1575,
+          "result": "win",
+          "analysed": true,
+          "accuracy": 76.9,
+          "blunders": 0
+        },
+        {
+          "id": "g045",
+          "played_at": "2026-04-07T10:00:00Z",
+          "rating": 1571,
+          "result": "loss",
+          "analysed": true,
+          "accuracy": 72.1,
+          "blunders": 1
+        },
+        {
+          "id": "g046",
+          "played_at": "2026-04-08T06:00:00Z",
+          "rating": 1578,
+          "result": "win",
+          "analysed": false,
+          "accuracy": null,
+          "blunders": 0
+        },
+        {
+          "id": "g047",
+          "played_at": "2026-04-09T02:00:00Z",
+          "rating": 1570,
+          "result": "loss",
+          "analysed": true,
+          "accuracy": 80,
+          "blunders": 0
+        },
+        {
+          "id": "g048",
+          "played_at": "2026-04-09T22:00:00Z",
+          "rating": 1557,
+          "result": "draw",
+          "analysed": true,
+          "accuracy": 76.5,
+          "blunders": 0
+        },
+        {
+          "id": "g049",
+          "played_at": "2026-04-10T18:00:00Z",
+          "rating": 1561,
+          "result": "win",
+          "analysed": true,
+          "accuracy": 74.6,
+          "blunders": 1
+        },
+        {
+          "id": "g050",
+          "played_at": "2026-04-11T14:00:00Z",
+          "rating": 1567,
+          "result": "loss",
+          "analysed": true,
+          "accuracy": 80.4,
+          "blunders": 0
+        },
+        {
+          "id": "g051",
+          "played_at": "2026-04-12T10:00:00Z",
+          "rating": 1557,
+          "result": "win",
+          "analysed": true,
+          "accuracy": 82.7,
+          "blunders": 0
+        },
+        {
+          "id": "g052",
+          "played_at": "2026-04-13T06:00:00Z",
+          "rating": 1550,
+          "result": "loss",
+          "analysed": true,
+          "accuracy": 77.9,
+          "blunders": 0
+        },
+        {
+          "id": "g053",
+          "played_at": "2026-04-14T02:00:00Z",
+          "rating": 1559,
+          "result": "draw",
+          "analysed": false,
+          "accuracy": null,
+          "blunders": 1
+        },
+        {
+          "id": "g054",
+          "played_at": "2026-04-14T22:00:00Z",
+          "rating": 1560,
+          "result": "win",
+          "analysed": true,
+          "accuracy": 83.2,
+          "blunders": 0
+        },
+        {
+          "id": "g055",
+          "played_at": "2026-04-15T18:00:00Z",
+          "rating": 1548,
+          "result": "loss",
+          "analysed": true,
+          "accuracy": 81.6,
+          "blunders": 0
+        },
+        {
+          "id": "g056",
+          "played_at": "2026-04-16T14:00:00Z",
+          "rating": 1545,
+          "result": "win",
+          "analysed": true,
+          "accuracy": 75.8,
+          "blunders": 0
+        },
+        {
+          "id": "g057",
+          "played_at": "2026-04-17T10:00:00Z",
+          "rating": 1552,
+          "result": "loss",
+          "analysed": true,
+          "accuracy": 77.6,
+          "blunders": 1
+        },
+        {
+          "id": "g058",
+          "played_at": "2026-04-18T06:00:00Z",
+          "rating": 1546,
+          "result": "draw",
+          "analysed": true,
+          "accuracy": 81.1,
+          "blunders": 0
+        },
+        {
+          "id": "g059",
+          "played_at": "2026-04-19T02:00:00Z",
+          "rating": 1532,
+          "result": "win",
+          "analysed": true,
+          "accuracy": 76.6,
+          "blunders": 0
+        },
+        {
+          "id": "g060",
+          "played_at": "2026-04-19T22:00:00Z",
+          "rating": 1532,
+          "result": "loss",
+          "analysed": false,
+          "accuracy": null,
+          "blunders": 0
+        },
+        {
+          "id": "g061",
+          "played_at": "2026-04-20T18:00:00Z",
+          "rating": 1536,
+          "result": "win",
+          "analysed": true,
+          "accuracy": 76.7,
+          "blunders": 1
+        },
+        {
+          "id": "g062",
+          "played_at": "2026-04-21T14:00:00Z",
+          "rating": 1524,
+          "result": "loss",
+          "analysed": true,
+          "accuracy": 78.9,
+          "blunders": 0
+        },
+        {
+          "id": "g063",
+          "played_at": "2026-04-22T10:00:00Z",
+          "rating": 1513,
+          "result": "draw",
+          "analysed": true,
+          "accuracy": 74,
+          "blunders": 0
+        },
+        {
+          "id": "g064",
+          "played_at": "2026-04-23T06:00:00Z",
+          "rating": 1518,
+          "result": "win",
+          "analysed": true,
+          "accuracy": 73.6,
+          "blunders": 0
+        },
+        {
+          "id": "g065",
+          "played_at": "2026-04-24T02:00:00Z",
+          "rating": 1520,
+          "result": "loss",
+          "analysed": true,
+          "accuracy": 79.8,
+          "blunders": 1
+        },
+        {
+          "id": "g066",
+          "played_at": "2026-04-24T22:00:00Z",
+          "rating": 1507,
+          "result": "win",
+          "analysed": true,
+          "accuracy": 80.2,
+          "blunders": 0
+        },
+        {
+          "id": "g067",
+          "played_at": "2026-04-25T18:00:00Z",
+          "rating": 1503,
+          "result": "loss",
+          "analysed": false,
+          "accuracy": null,
+          "blunders": 0
+        },
+        {
+          "id": "g068",
+          "played_at": "2026-04-26T14:00:00Z",
+          "rating": 1513,
+          "result": "draw",
+          "analysed": true,
+          "accuracy": 78.3,
+          "blunders": 0
+        },
+        {
+          "id": "g069",
+          "played_at": "2026-04-27T10:00:00Z",
+          "rating": 1510,
+          "result": "win",
+          "analysed": true,
+          "accuracy": 83.7,
+          "blunders": 1
+        },
+        {
+          "id": "g070",
+          "played_at": "2026-04-28T06:00:00Z",
+          "rating": 1499,
+          "result": "loss",
+          "analysed": true,
+          "accuracy": 80.8,
+          "blunders": 0
+        },
+        {
+          "id": "g071",
+          "played_at": "2026-04-29T02:00:00Z",
+          "rating": 1501,
+          "result": "win",
+          "analysed": true,
+          "accuracy": 76.7,
+          "blunders": 0
+        },
+        {
+          "id": "g072",
+          "played_at": "2026-04-29T22:00:00Z",
+          "rating": 1508,
+          "result": "loss",
+          "analysed": true,
+          "accuracy": 80.4,
+          "blunders": 0
+        },
+        {
+          "id": "g073",
+          "played_at": "2026-04-30T18:00:00Z",
+          "rating": 1500,
+          "result": "draw",
+          "analysed": true,
+          "accuracy": 82.7,
+          "blunders": 1
+        },
+        {
+          "id": "g074",
+          "played_at": "2026-05-01T14:00:00Z",
+          "rating": 1488,
+          "result": "win",
+          "analysed": false,
+          "accuracy": null,
+          "blunders": 0
+        },
+        {
+          "id": "g075",
+          "played_at": "2026-05-02T10:00:00Z",
+          "rating": 1493,
+          "result": "loss",
+          "analysed": true,
+          "accuracy": 74.4,
+          "blunders": 0
+        },
+        {
+          "id": "g076",
+          "played_at": "2026-05-03T06:00:00Z",
+          "rating": 1494,
+          "result": "win",
+          "analysed": true,
+          "accuracy": 78.9,
+          "blunders": 0
+        },
+        {
+          "id": "g077",
+          "played_at": "2026-05-04T02:00:00Z",
+          "rating": 1480,
+          "result": "loss",
+          "analysed": true,
+          "accuracy": 78.6,
+          "blunders": 1
+        },
+        {
+          "id": "g078",
+          "played_at": "2026-05-04T22:00:00Z",
+          "rating": 1472,
+          "result": "draw",
+          "analysed": true,
+          "accuracy": 72.8,
+          "blunders": 0
+        },
+        {
+          "id": "g079",
+          "played_at": "2026-05-05T18:00:00Z",
+          "rating": 1478,
+          "result": "win",
+          "analysed": true,
+          "accuracy": 73.8,
+          "blunders": 0
+        },
+        {
+          "id": "g080",
+          "played_at": "2026-05-06T14:00:00Z",
+          "rating": 1474,
+          "result": "loss",
+          "analysed": true,
+          "accuracy": 79.2,
+          "blunders": 0
+        }
+      ],
+      "weaknesses": [
+        {
+          "series_key": "W1",
+          "prior": {
+            "mu": 0.004,
+            "n0": 400
+          },
+          "points": [
+            {
+              "game_id": "g001",
+              "events": 1,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g002",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g003",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g004",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g005",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g006",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g007",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g008",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g009",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g010",
+              "events": 1,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g011",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g012",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g013",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g014",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g015",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g016",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g017",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g018",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g019",
+              "events": 1,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g020",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g021",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g022",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g023",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g024",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g025",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g026",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g027",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g028",
+              "events": 1,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g029",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g030",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g031",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g032",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g033",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g034",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g035",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g036",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g037",
+              "events": 1,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g038",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g039",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g040",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g041",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g042",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g043",
+              "events": 1,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g044",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g045",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g046",
+              "events": 1,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g047",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g048",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g049",
+              "events": 1,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g050",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g051",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g052",
+              "events": 1,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g053",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g054",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g055",
+              "events": 1,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g056",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g057",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g058",
+              "events": 1,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g059",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g060",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g061",
+              "events": 1,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g062",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g063",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g064",
+              "events": 1,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g065",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g066",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g067",
+              "events": 1,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g068",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g069",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g070",
+              "events": 1,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g071",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g072",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g073",
+              "events": 1,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g074",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g075",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g076",
+              "events": 1,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g077",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g078",
+              "events": 0,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g079",
+              "events": 1,
+              "opportunities": 40
+            },
+            {
+              "game_id": "g080",
+              "events": 0,
+              "opportunities": 40
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "lab-steady",
+      "seed": "trajectory:lab-steady:rapid",
+      "chesscom": true,
+      "games": [
+        {
+          "id": "g001",
+          "played_at": "2026-03-01T18:00:00Z",
+          "rating": 1400,
+          "result": "win",
+          "analysed": true,
+          "accuracy": 76.8,
+          "blunders": 1
+        },
+        {
+          "id": "g002",
+          "played_at": "2026-03-02T14:00:00Z",
+          "rating": 1411,
+          "result": "loss",
+          "analysed": true,
+          "accuracy": 82.2,
+          "blunders": 0
+        },
+        {
+          "id": "g003",
+          "played_at": "2026-03-03T10:00:00Z",
+          "rating": 1402,
+          "result": "draw",
+          "analysed": true,
+          "accuracy": 83.2,
+          "blunders": 0
+        },
+        {
+          "id": "g004",
+          "played_at": "2026-03-04T06:00:00Z",
+          "rating": 1397,
+          "result": "win",
+          "analysed": false,
+          "accuracy": null,
+          "blunders": 0
+        },
+        {
+          "id": "g005",
+          "played_at": "2026-03-05T02:00:00Z",
+          "rating": 1410,
+          "result": "loss",
+          "analysed": true,
+          "accuracy": 77,
+          "blunders": 1
+        },
+        {
+          "id": "g006",
+          "played_at": "2026-03-05T22:00:00Z",
+          "rating": 1413,
+          "result": "win",
+          "analysed": true,
+          "accuracy": 81.5,
+          "blunders": 0
+        },
+        {
+          "id": "g007",
+          "played_at": "2026-03-06T18:00:00Z",
+          "rating": 1398,
+          "result": "loss",
+          "analysed": true,
+          "accuracy": 79,
+          "blunders": 0
+        },
+        {
+          "id": "g008",
+          "played_at": "2026-03-07T14:00:00Z",
+          "rating": 1398,
+          "result": "draw",
+          "analysed": true,
+          "accuracy": 73.3,
+          "blunders": 0
+        },
+        {
+          "id": "g009",
+          "played_at": "2026-03-08T10:00:00Z",
+          "rating": 1409,
+          "result": "win",
+          "analysed": true,
+          "accuracy": 75.5,
+          "blunders": 1
+        },
+        {
+          "id": "g010",
+          "played_at": "2026-03-09T06:00:00Z",
+          "rating": 1402,
+          "result": "loss",
+          "analysed": true,
+          "accuracy": 79.3,
+          "blunders": 0
+        },
+        {
+          "id": "g011",
+          "played_at": "2026-03-10T02:00:00Z",
+          "rating": 1388,
+          "result": "win",
+          "analysed": false,
+          "accuracy": null,
+          "blunders": 0
+        },
+        {
+          "id": "g012",
+          "played_at": "2026-03-10T22:00:00Z",
+          "rating": 1394,
+          "result": "loss",
+          "analysed": true,
+          "accuracy": 72.4,
+          "blunders": 0
+        },
+        {
+          "id": "g013",
+          "played_at": "2026-03-11T18:00:00Z",
+          "rating": 1403,
+          "result": "draw",
+          "analysed": true,
+          "accuracy": 77.7,
+          "blunders": 1
+        },
+        {
+          "id": "g014",
+          "played_at": "2026-03-12T14:00:00Z",
+          "rating": 1393,
+          "result": "win",
+          "analysed": true,
+          "accuracy": 80.3,
+          "blunders": 0
+        },
+        {
+          "id": "g015",
+          "played_at": "2026-03-13T10:00:00Z",
+          "rating": 1386,
+          "result": "loss",
+          "analysed": true,
+          "accuracy": 75.9,
+          "blunders": 0
+        },
+        {
+          "id": "g016",
+          "played_at": "2026-03-14T06:00:00Z",
+          "rating": 1399,
+          "result": "win",
+          "analysed": true,
+          "accuracy": 76.3,
+          "blunders": 0
+        },
+        {
+          "id": "g017",
+          "played_at": "2026-03-15T02:00:00Z",
+          "rating": 1406,
+          "result": "loss",
+          "analysed": true,
+          "accuracy": 82.4,
+          "blunders": 1
+        },
+        {
+          "id": "g018",
+          "played_at": "2026-03-15T22:00:00Z",
+          "rating": 1395,
+          "result": "draw",
+          "analysed": false,
+          "accuracy": null,
+          "blunders": 0
+        },
+        {
+          "id": "g019",
+          "played_at": "2026-03-16T18:00:00Z",
+          "rating": 1396,
+          "result": "win",
+          "analysed": true,
+          "accuracy": 77.1,
+          "blunders": 0
+        },
+        {
+          "id": "g020",
+          "played_at": "2026-03-17T14:00:00Z",
+          "rating": 1411,
+          "result": "loss",
+          "analysed": true,
+          "accuracy": 79.2,
+          "blunders": 0
+        },
+        {
+          "id": "g021",
+          "played_at": "2026-03-18T10:00:00Z",
+          "rating": 1410,
+          "result": "win",
+          "analysed": true,
+          "accuracy": 83.4,
+          "blunders": 1
+        },
+        {
+          "id": "g022",
+          "played_at": "2026-03-19T06:00:00Z",
+          "rating": 1398,
+          "result": "loss",
+          "analysed": true,
+          "accuracy": 79.4,
+          "blunders": 0
+        },
+        {
+          "id": "g023",
+          "played_at": "2026-03-20T02:00:00Z",
+          "rating": 1403,
+          "result": "draw",
+          "analysed": true,
+          "accuracy": 74.8,
+          "blunders": 0
+        },
+        {
+          "id": "g024",
+          "played_at": "2026-03-20T22:00:00Z",
+          "rating": 1414,
+          "result": "win",
+          "analysed": true,
+          "accuracy": 78.3,
+          "blunders": 0
+        },
+        {
+          "id": "g025",
+          "played_at": "2026-03-21T18:00:00Z",
+          "rating": 1403,
+          "result": "loss",
+          "analysed": false,
+          "accuracy": null,
+          "blunders": 1
+        },
+        {
+          "id": "g026",
+          "played_at": "2026-03-22T14:00:00Z",
+          "rating": 1392,
+          "result": "win",
+          "analysed": true,
+          "accuracy": 74.4,
+          "blunders": 0
+        },
+        {
+          "id": "g027",
+          "played_at": "2026-03-23T10:00:00Z",
+          "rating": 1401,
+          "result": "loss",
+          "analysed": true,
+          "accuracy": 72.7,
+          "blunders": 0
+        },
+        {
+          "id": "g028",
+          "played_at": "2026-03-24T06:00:00Z",
+          "rating": 1405,
+          "result": "draw",
+          "analysed": true,
+          "accuracy": 78,
+          "blunders": 0
+        },
+        {
+          "id": "g029",
+          "played_at": "2026-03-25T02:00:00Z",
+          "rating": 1391,
+          "result": "win",
+          "analysed": true,
+          "accuracy": 78.2,
+          "blunders": 1
+        },
+        {
+          "id": "g030",
+          "played_at": "2026-03-25T22:00:00Z",
+          "rating": 1387,
+          "result": "loss",
+          "analysed": true,
+          "accuracy": 73.4,
+          "blunders": 0
+        },
+        {
+          "id": "g031",
+          "played_at": "2026-03-26T18:00:00Z",
+          "rating": 1400,
+          "result": "win",
+          "analysed": true,
+          "accuracy": 75.6,
+          "blunders": 0
+        },
+        {
+          "id": "g032",
+          "played_at": "2026-03-27T14:00:00Z",
+          "rating": 1401,
+          "result": "loss",
+          "analysed": false,
+          "accuracy": null,
+          "blunders": 0
+        },
+        {
+          "id": "g033",
+          "played_at": "2026-03-28T10:00:00Z",
+          "rating": 1388,
+          "result": "draw",
+          "analysed": true,
+          "accuracy": 79.6,
+          "blunders": 1
+        },
+        {
+          "id": "g034",
+          "played_at": "2026-03-29T06:00:00Z",
+          "rating": 1394,
+          "result": "win",
+          "analysed": true,
+          "accuracy": 76,
+          "blunders": 0
+        },
+        {
+          "id": "g035",
+          "played_at": "2026-03-30T02:00:00Z",
+          "rating": 1409,
+          "result": "loss",
+          "analysed": true,
+          "accuracy": 80.4,
+          "blunders": 0
+        },
+        {
+          "id": "g036",
+          "played_at": "2026-03-30T22:00:00Z",
+          "rating": 1404,
+          "result": "win",
+          "analysed": true,
+          "accuracy": 83.9,
+          "blunders": 0
+        },
+        {
+          "id": "g037",
+          "played_at": "2026-03-31T18:00:00Z",
+          "rating": 1395,
+          "result": "loss",
+          "analysed": true,
+          "accuracy": 79.1,
+          "blunders": 1
+        },
+        {
+          "id": "g038",
+          "played_at": "2026-04-01T14:00:00Z",
+          "rating": 1406,
+          "result": "draw",
+          "analysed": true,
+          "accuracy": 76.7,
+          "blunders": 0
+        },
+        {
+          "id": "g039",
+          "played_at": "2026-04-02T10:00:00Z",
+          "rating": 1415,
+          "result": "win",
+          "analysed": false,
+          "accuracy": null,
+          "blunders": 0
+        },
+        {
+          "id": "g040",
+          "played_at": "2026-04-03T06:00:00Z",
+          "rating": 1403,
+          "result": "loss",
+          "analysed": true,
+          "accuracy": 81.1,
+          "blunders": 0
+        },
+        {
+          "id": "g041",
+          "played_at": "2026-04-04T02:00:00Z",
+          "rating": 1397,
+          "result": "win",
+          "analysed": true,
+          "accuracy": 74.8,
+          "blunders": 1
+        },
+        {
+          "id": "g042",
+          "played_at": "2026-04-04T22:00:00Z",
+          "rating": 1408,
+          "result": "loss",
+          "analysed": true,
+          "accuracy": 74.7,
+          "blunders": 0
+        },
+        {
+          "id": "g043",
+          "played_at": "2026-04-05T18:00:00Z",
+          "rating": 1408,
+          "result": "draw",
+          "analysed": true,
+          "accuracy": 79.3,
+          "blunders": 0
+        },
+        {
+          "id": "g044",
+          "played_at": "2026-04-06T14:00:00Z",
+          "rating": 1392,
+          "result": "win",
+          "analysed": true,
+          "accuracy": 76.9,
+          "blunders": 0
+        },
+        {
+          "id": "g045",
+          "played_at": "2026-04-07T10:00:00Z",
+          "rating": 1392,
+          "result": "loss",
+          "analysed": true,
+          "accuracy": 72.1,
+          "blunders": 1
+        },
+        {
+          "id": "g046",
+          "played_at": "2026-04-08T06:00:00Z",
+          "rating": 1403,
+          "result": "win",
+          "analysed": false,
+          "accuracy": null,
+          "blunders": 0
+        },
+        {
+          "id": "g047",
+          "played_at": "2026-04-09T02:00:00Z",
+          "rating": 1397,
+          "result": "loss",
+          "analysed": true,
+          "accuracy": 80,
+          "blunders": 0
+        },
+        {
+          "id": "g048",
+          "played_at": "2026-04-09T22:00:00Z",
+          "rating": 1385,
+          "result": "draw",
+          "analysed": true,
+          "accuracy": 76.5,
+          "blunders": 0
+        },
+        {
+          "id": "g049",
+          "played_at": "2026-04-10T18:00:00Z",
+          "rating": 1394,
+          "result": "win",
+          "analysed": true,
+          "accuracy": 74.6,
+          "blunders": 1
+        },
+        {
+          "id": "g050",
+          "played_at": "2026-04-11T14:00:00Z",
+          "rating": 1405,
+          "result": "loss",
+          "analysed": true,
+          "accuracy": 80.4,
+          "blunders": 0
+        },
+        {
+          "id": "g051",
+          "played_at": "2026-04-12T10:00:00Z",
+          "rating": 1396,
+          "result": "win",
+          "analysed": true,
+          "accuracy": 82.7,
+          "blunders": 0
+        },
+        {
+          "id": "g052",
+          "played_at": "2026-04-13T06:00:00Z",
+          "rating": 1392,
+          "result": "loss",
+          "analysed": true,
+          "accuracy": 77.9,
+          "blunders": 0
+        },
+        {
+          "id": "g053",
+          "played_at": "2026-04-14T02:00:00Z",
+          "rating": 1406,
+          "result": "draw",
+          "analysed": false,
+          "accuracy": null,
+          "blunders": 1
+        },
+        {
+          "id": "g054",
+          "played_at": "2026-04-14T22:00:00Z",
+          "rating": 1412,
+          "result": "win",
+          "analysed": true,
+          "accuracy": 83.2,
+          "blunders": 0
+        },
+        {
+          "id": "g055",
+          "played_at": "2026-04-15T18:00:00Z",
+          "rating": 1400,
+          "result": "loss",
+          "analysed": true,
+          "accuracy": 81.6,
+          "blunders": 0
+        },
+        {
+          "id": "g056",
+          "played_at": "2026-04-16T14:00:00Z",
+          "rating": 1400,
+          "result": "win",
+          "analysed": true,
+          "accuracy": 75.8,
+          "blunders": 0
+        },
+        {
+          "id": "g057",
+          "played_at": "2026-04-17T10:00:00Z",
+          "rating": 1413,
+          "result": "loss",
+          "analysed": true,
+          "accuracy": 77.6,
+          "blunders": 1
+        },
+        {
+          "id": "g058",
+          "played_at": "2026-04-18T06:00:00Z",
+          "rating": 1409,
+          "result": "draw",
+          "analysed": true,
+          "accuracy": 81.1,
+          "blunders": 0
+        },
+        {
+          "id": "g059",
+          "played_at": "2026-04-19T02:00:00Z",
+          "rating": 1395,
+          "result": "win",
+          "analysed": true,
+          "accuracy": 76.6,
+          "blunders": 0
+        },
+        {
+          "id": "g060",
+          "played_at": "2026-04-19T22:00:00Z",
+          "rating": 1399,
+          "result": "loss",
+          "analysed": false,
+          "accuracy": null,
+          "blunders": 0
+        }
+      ],
+      "weaknesses": []
+    },
+    {
+      "id": "lab-new",
+      "seed": "trajectory:lab-new:rapid",
+      "games": [
+        {
+          "id": "g001",
+          "played_at": "2026-03-01T18:00:00Z",
+          "rating": 1200,
+          "result": "win",
+          "analysed": false,
+          "accuracy": null,
+          "blunders": 1
+        },
+        {
+          "id": "g002",
+          "played_at": "2026-03-02T14:00:00Z",
+          "rating": 1201,
+          "result": "loss",
+          "analysed": false,
+          "accuracy": null,
+          "blunders": 0
+        },
+        {
+          "id": "g003",
+          "played_at": "2026-03-03T10:00:00Z",
+          "rating": 1202,
+          "result": "draw",
+          "analysed": false,
+          "accuracy": null,
+          "blunders": 0
+        },
+        {
+          "id": "g004",
+          "played_at": "2026-03-04T06:00:00Z",
+          "rating": 1203,
+          "result": "win",
+          "analysed": false,
+          "accuracy": null,
+          "blunders": 0
+        },
+        {
+          "id": "g005",
+          "played_at": "2026-03-05T02:00:00Z",
+          "rating": 1204,
+          "result": "loss",
+          "analysed": false,
+          "accuracy": null,
+          "blunders": 1
+        },
+        {
+          "id": "g006",
+          "played_at": "2026-03-05T22:00:00Z",
+          "rating": 1205,
+          "result": "win",
+          "analysed": false,
+          "accuracy": null,
+          "blunders": 0
+        },
+        {
+          "id": "g007",
+          "played_at": "2026-03-06T18:00:00Z",
+          "rating": 1206,
+          "result": "loss",
+          "analysed": false,
+          "accuracy": null,
+          "blunders": 0
+        },
+        {
+          "id": "g008",
+          "played_at": "2026-03-07T14:00:00Z",
+          "rating": 1207,
+          "result": "draw",
+          "analysed": false,
+          "accuracy": null,
+          "blunders": 0
+        },
+        {
+          "id": "g009",
+          "played_at": "2026-03-08T10:00:00Z",
+          "rating": 1208,
+          "result": "win",
+          "analysed": false,
+          "accuracy": null,
+          "blunders": 1
+        },
+        {
+          "id": "g010",
+          "played_at": "2026-03-09T06:00:00Z",
+          "rating": 1209,
+          "result": "loss",
+          "analysed": false,
+          "accuracy": null,
+          "blunders": 0
+        },
+        {
+          "id": "g011",
+          "played_at": "2026-03-10T02:00:00Z",
+          "rating": 1210,
+          "result": "win",
+          "analysed": false,
+          "accuracy": null,
+          "blunders": 0
+        },
+        {
+          "id": "g012",
+          "played_at": "2026-03-10T22:00:00Z",
+          "rating": 1211,
+          "result": "loss",
+          "analysed": false,
+          "accuracy": null,
+          "blunders": 0
+        }
+      ]
+    }
+  ]
+}

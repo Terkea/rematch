@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/Terkea/rematch/lab/schemas/lab-v1.schema.json",
   "title": "Rematch lab bridge, lab-v1",
-  "description": "The JSON of `cli lab analyse|profile|rank|tag-motifs|positions|evaluate|judge|observe` (ADR 0106). Validate one message with {\"$ref\": \"#/$defs/<Message>\"} next to these $defs. The envelope and the lab's own objects are snake_case; the algorithm's own types (WeaknessEstimate, BandReferenceStat, RankedWeakness) keep their camelCase serialisation.",
+  "description": "The JSON of `cli lab analyse|profile|rank|tag-motifs|trajectory|timeline|positions|evaluate|judge|observe` (ADR 0106) and of the web's Node step `lab-bridge focus-target|focus-progress|trainer-sources` (ADR 0115). Validate one message with {\"$ref\": \"#/$defs/<Message>\"} next to these $defs. The envelope and the lab's own objects are snake_case; the algorithm's own types (WeaknessEstimate, BandReferenceStat, RankedWeakness, the CoachingInput's Trajectory, the web's Target and Progress) keep their camelCase serialisation.",
   "$defs": {
     "SchemaVersion": { "const": "lab-v1" },
     "AlgorithmId": {
@@ -706,6 +706,544 @@
         "schema_version": { "$ref": "#/$defs/SchemaVersion" },
         "algorithm_id": { "$ref": "#/$defs/AlgorithmId" },
         "games": { "type": "array", "items": { "$ref": "#/$defs/ObservedGame" } }
+      }
+    },
+    "GameResult": { "enum": ["win", "draw", "loss", "unfinished"] },
+    "RatedGame": {
+      "description": "One rated game as the loader reads it: the player's own stored rating (on chess.com after the game, on Lichess before it).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "played_at", "result"],
+      "properties": {
+        "id": { "type": "string" },
+        "played_at": { "$ref": "#/$defs/Time" },
+        "rating": { "type": ["integer", "null"] },
+        "result": { "$ref": "#/$defs/GameResult" },
+        "analysed": { "type": "boolean" },
+        "accuracy": { "type": ["number", "null"] },
+        "blunders": { "$ref": "#/$defs/Count" }
+      }
+    },
+    "GamePoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["game_id", "events", "opportunities"],
+      "properties": {
+        "game_id": { "type": "string" },
+        "events": { "$ref": "#/$defs/Count" },
+        "opportunities": { "$ref": "#/$defs/Count" }
+      }
+    },
+    "LabPrior": {
+      "description": "A weakness estimate's Beta prior (`Prior`).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mu", "n0"],
+      "properties": { "mu": { "type": "number" }, "n0": { "type": "number" } }
+    },
+    "TrajectoryWeakness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["series_key", "prior"],
+      "properties": {
+        "series_key": { "$ref": "#/$defs/BinomialKey" },
+        "prior": { "$ref": "#/$defs/LabPrior" },
+        "points": { "type": "array", "items": { "$ref": "#/$defs/GamePoint" } }
+      }
+    },
+    "TrajectoryPlayer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "seed", "games"],
+      "properties": {
+        "id": { "type": "string" },
+        "seed": {
+          "type": "string",
+          "description": "The bootstrap's seed; production's is trajectory:<account id>:<time class>."
+        },
+        "chesscom": { "type": "boolean" },
+        "games": { "type": "array", "items": { "$ref": "#/$defs/RatedGame" } },
+        "weaknesses": { "type": "array", "items": { "$ref": "#/$defs/TrajectoryWeakness" } }
+      }
+    },
+    "TrajectoryRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "players"],
+      "properties": {
+        "schema_version": { "$ref": "#/$defs/SchemaVersion" },
+        "players": { "type": "array", "items": { "$ref": "#/$defs/TrajectoryPlayer" } }
+      }
+    },
+    "ChangeVerdict": { "enum": ["better", "worse", "no_clear_change", "not_enough_games"] },
+    "ColorMetric": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value", "unit", "n", "low", "high", "sufficient", "needMore"],
+      "properties": {
+        "value": { "type": ["number", "null"] },
+        "unit": { "enum": ["rate", "per_game", "pct", "seconds", "elo"] },
+        "n": { "$ref": "#/$defs/Count" },
+        "low": { "type": ["number", "null"] },
+        "high": { "type": ["number", "null"] },
+        "sufficient": { "type": "boolean" },
+        "needMore": { "type": ["integer", "null"] }
+      }
+    },
+    "ThenNowMetric": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["then", "now", "verdict", "diff", "diffLow", "diffHigh"],
+      "properties": {
+        "then": { "$ref": "#/$defs/ColorMetric" },
+        "now": { "$ref": "#/$defs/ColorMetric" },
+        "verdict": { "$ref": "#/$defs/ChangeVerdict" },
+        "diff": { "type": ["number", "null"] },
+        "diffLow": { "type": ["number", "null"] },
+        "diffHigh": { "type": ["number", "null"] }
+      }
+    },
+    "ThenNowWeakness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "seriesKey",
+        "id",
+        "variant",
+        "label",
+        "area",
+        "then",
+        "now",
+        "verdict",
+        "thenEvents",
+        "thenOpportunities",
+        "nowEvents",
+        "nowOpportunities"
+      ],
+      "properties": {
+        "seriesKey": { "type": "string" },
+        "id": { "type": "string" },
+        "variant": { "type": ["string", "null"] },
+        "label": { "type": "string" },
+        "area": { "type": "string" },
+        "then": { "$ref": "#/$defs/ColorMetric" },
+        "now": { "$ref": "#/$defs/ColorMetric" },
+        "verdict": { "$ref": "#/$defs/ChangeVerdict" },
+        "thenEvents": { "$ref": "#/$defs/Count" },
+        "thenOpportunities": { "$ref": "#/$defs/Count" },
+        "nowEvents": { "$ref": "#/$defs/Count" },
+        "nowOpportunities": { "$ref": "#/$defs/Count" }
+      }
+    },
+    "TrajectoryWindow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["basis", "games", "from", "to"],
+      "properties": {
+        "basis": { "enum": ["peak", "start", "last"] },
+        "games": { "$ref": "#/$defs/Count" },
+        "from": { "type": "string", "format": "date" },
+        "to": { "type": "string", "format": "date" }
+      }
+    },
+    "RatingAt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rating", "date"],
+      "properties": {
+        "rating": { "$ref": "#/$defs/Count" },
+        "date": { "type": "string", "format": "date" }
+      }
+    },
+    "MonthRating": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["month", "games", "last", "high"],
+      "properties": {
+        "month": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}$" },
+        "games": { "$ref": "#/$defs/Count" },
+        "last": { "$ref": "#/$defs/Count" },
+        "high": { "$ref": "#/$defs/Count" }
+      }
+    },
+    "ThenVsNow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["then", "now", "rating", "accuracy", "blundersPerGame", "score", "weaknesses"],
+      "properties": {
+        "then": { "$ref": "#/$defs/TrajectoryWindow" },
+        "now": { "$ref": "#/$defs/TrajectoryWindow" },
+        "rating": { "$ref": "#/$defs/ThenNowMetric" },
+        "accuracy": { "$ref": "#/$defs/ThenNowMetric" },
+        "blundersPerGame": { "$ref": "#/$defs/ThenNowMetric" },
+        "score": { "$ref": "#/$defs/ThenNowMetric" },
+        "weaknesses": { "type": "array", "items": { "$ref": "#/$defs/ThenNowWeakness" } }
+      }
+    },
+    "Trajectory": {
+      "description": "The CoachingInput's v3 `trajectory` (backend/crates/coaching-input, ADR 0089), exactly as the coach receives it. `kind` falling and `thenVsNow.rating.verdict` worse are the headline 'worse than your peak'.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ratedGames",
+        "sufficient",
+        "needMore",
+        "kind",
+        "peak",
+        "current",
+        "change",
+        "months",
+        "thenVsNow"
+      ],
+      "properties": {
+        "ratedGames": { "$ref": "#/$defs/Count" },
+        "sufficient": { "type": "boolean" },
+        "needMore": { "type": ["integer", "null"] },
+        "kind": { "enum": ["falling", "rising", "flat", null] },
+        "peak": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/RatingAt" }] },
+        "current": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/RatingAt" }] },
+        "change": { "type": ["integer", "null"] },
+        "months": { "type": "array", "items": { "$ref": "#/$defs/MonthRating" } },
+        "thenVsNow": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/ThenVsNow" }] }
+      }
+    },
+    "PlayerTrajectory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "trajectory"],
+      "properties": { "id": { "type": "string" }, "trajectory": { "$ref": "#/$defs/Trajectory" } }
+    },
+    "TrajectoryResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "algorithm_id", "players"],
+      "properties": {
+        "schema_version": { "$ref": "#/$defs/SchemaVersion" },
+        "algorithm_id": { "$ref": "#/$defs/AlgorithmId" },
+        "players": { "type": "array", "items": { "$ref": "#/$defs/PlayerTrajectory" } }
+      }
+    },
+    "SeriesKey": {
+      "type": "string",
+      "minLength": 1,
+      "description": "W3.shallow, motif.missed:fork, opening:white:<slug>, endgame:<type>."
+    },
+    "TimelinePoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["game_id", "played_at", "events", "opportunities"],
+      "properties": {
+        "game_id": { "type": "string", "format": "uuid" },
+        "played_at": { "$ref": "#/$defs/Time" },
+        "events": { "$ref": "#/$defs/Count" },
+        "opportunities": { "$ref": "#/$defs/Count" }
+      }
+    },
+    "TimelinePlayer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "series"],
+      "properties": {
+        "id": { "type": "string" },
+        "reference": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "propertyNames": { "type": "string", "pattern": "^[a-z_]+(:[A-Za-z0-9._]+)?$" },
+              "additionalProperties": { "$ref": "#/$defs/BandReferenceStat" }
+            }
+          ]
+        },
+        "series": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/SeriesKey" },
+          "additionalProperties": { "type": "array", "items": { "$ref": "#/$defs/TimelinePoint" } }
+        }
+      }
+    },
+    "TimelineRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "players"],
+      "properties": {
+        "schema_version": { "$ref": "#/$defs/SchemaVersion" },
+        "players": { "type": "array", "items": { "$ref": "#/$defs/TimelinePlayer" } }
+      }
+    },
+    "Evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["k", "n", "confidence"],
+      "properties": {
+        "k": { "$ref": "#/$defs/Count" },
+        "n": { "$ref": "#/$defs/Count" },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "LabOnset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["game_id", "played_at", "low", "high"],
+      "properties": {
+        "game_id": { "type": "string", "format": "uuid" },
+        "played_at": { "$ref": "#/$defs/Time" },
+        "low": { "$ref": "#/$defs/Time" },
+        "high": { "$ref": "#/$defs/Time" }
+      }
+    },
+    "LabTimelineRow": {
+      "description": "One weakness_state_history row the build would write.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "from",
+        "to",
+        "at_game_id",
+        "at_played_at",
+        "onset",
+        "p_change",
+        "rate_before",
+        "rate_after",
+        "evidence"
+      ],
+      "properties": {
+        "kind": { "enum": ["transition", "onset"] },
+        "from": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/WeaknessState" }] },
+        "to": { "$ref": "#/$defs/WeaknessState" },
+        "at_game_id": { "type": "string", "format": "uuid" },
+        "at_played_at": { "$ref": "#/$defs/Time" },
+        "onset": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/LabOnset" }] },
+        "p_change": { "type": ["number", "null"] },
+        "rate_before": { "type": ["number", "null"] },
+        "rate_after": { "type": ["number", "null"] },
+        "evidence": { "$ref": "#/$defs/Evidence" }
+      }
+    },
+    "LabSeriesOutcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "p_imp", "invalid_points", "rows"],
+      "properties": {
+        "state": { "$ref": "#/$defs/WeaknessState" },
+        "p_imp": { "type": ["number", "null"] },
+        "invalid_points": { "$ref": "#/$defs/Count" },
+        "rows": { "type": "array", "items": { "$ref": "#/$defs/LabTimelineRow" } }
+      }
+    },
+    "PlayerTimeline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "series"],
+      "properties": {
+        "id": { "type": "string" },
+        "series": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/SeriesKey" },
+          "additionalProperties": { "$ref": "#/$defs/LabSeriesOutcome" }
+        }
+      }
+    },
+    "TimelineResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "algorithm_id", "detector_version", "players"],
+      "properties": {
+        "schema_version": { "$ref": "#/$defs/SchemaVersion" },
+        "algorithm_id": { "$ref": "#/$defs/AlgorithmId" },
+        "detector_version": { "type": "string" },
+        "players": { "type": "array", "items": { "$ref": "#/$defs/PlayerTimeline" } }
+      }
+    },
+    "FocusTargetItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "baseline", "peer"],
+      "properties": {
+        "id": { "type": "string" },
+        "baseline": { "type": "number" },
+        "peer": { "type": ["number", "null"] }
+      }
+    },
+    "FocusTargetRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "items"],
+      "properties": {
+        "schema_version": { "$ref": "#/$defs/SchemaVersion" },
+        "items": { "type": "array", "items": { "$ref": "#/$defs/FocusTargetItem" } }
+      }
+    },
+    "Target": {
+      "description": "goal.ts `Target`.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rate", "basis"],
+      "properties": {
+        "rate": { "type": "number", "minimum": 0, "maximum": 1 },
+        "basis": { "enum": ["peer", "relative"] }
+      }
+    },
+    "FocusTargetResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "target"],
+      "properties": {
+        "id": { "type": "string" },
+        "target": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/Target" }] }
+      }
+    },
+    "FocusTargetResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "algorithm_id", "focus_version", "items"],
+      "properties": {
+        "schema_version": { "$ref": "#/$defs/SchemaVersion" },
+        "algorithm_id": { "$ref": "#/$defs/AlgorithmId" },
+        "focus_version": { "type": "string" },
+        "items": { "type": "array", "items": { "$ref": "#/$defs/FocusTargetResult" } }
+      }
+    },
+    "FocusProgressItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "k", "n", "games", "games_n", "target"],
+      "properties": {
+        "id": { "type": "string" },
+        "k": { "$ref": "#/$defs/Count" },
+        "n": { "$ref": "#/$defs/Count" },
+        "games": { "$ref": "#/$defs/Count" },
+        "games_n": { "type": "integer", "minimum": 1 },
+        "target": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "FocusProgressRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "items"],
+      "properties": {
+        "schema_version": { "$ref": "#/$defs/SchemaVersion" },
+        "items": { "type": "array", "items": { "$ref": "#/$defs/FocusProgressItem" } }
+      }
+    },
+    "Interval80": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["low", "high", "level"],
+      "properties": {
+        "low": { "type": "number" },
+        "high": { "type": "number" },
+        "level": { "const": 0.8 }
+      }
+    },
+    "ProgressGames": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["played", "of"],
+      "properties": { "played": { "$ref": "#/$defs/Count" }, "of": { "$ref": "#/$defs/Count" } }
+    },
+    "FocusVerdict": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": { "enum": ["on_track", "not_yet", "too_early"] },
+        "moreChances": { "$ref": "#/$defs/Count" }
+      }
+    },
+    "Progress": {
+      "description": "goal.ts `Progress`.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["events", "chances", "rate", "interval", "games", "verdict", "done", "outcome"],
+      "properties": {
+        "events": { "$ref": "#/$defs/Count" },
+        "chances": { "$ref": "#/$defs/Count" },
+        "rate": { "type": ["number", "null"] },
+        "interval": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/Interval80" }] },
+        "games": { "$ref": "#/$defs/ProgressGames" },
+        "verdict": { "$ref": "#/$defs/FocusVerdict" },
+        "done": { "type": "boolean" },
+        "outcome": { "enum": ["met", "not_met", "inconclusive", null] }
+      }
+    },
+    "FocusProgressResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "progress"],
+      "properties": { "id": { "type": "string" }, "progress": { "$ref": "#/$defs/Progress" } }
+    },
+    "FocusProgressResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "algorithm_id", "focus_version", "items"],
+      "properties": {
+        "schema_version": { "$ref": "#/$defs/SchemaVersion" },
+        "algorithm_id": { "$ref": "#/$defs/AlgorithmId" },
+        "focus_version": { "type": "string" },
+        "items": { "type": "array", "items": { "$ref": "#/$defs/FocusProgressResult" } }
+      }
+    },
+    "SourceKey": { "enum": ["W4.missed", "W3.shallow", "W3.deep", "W7.traps", "blunder"] },
+    "TrainerCandidate": {
+      "description": "model.ts `Candidate`: a player's move at a weakness exemplar ply or judged a blunder.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "game_id",
+        "ply",
+        "fen",
+        "uci",
+        "best_uci",
+        "win_before",
+        "win_after",
+        "prev_san",
+        "sources"
+      ],
+      "properties": {
+        "game_id": { "type": "string" },
+        "ply": { "$ref": "#/$defs/Count" },
+        "fen": { "type": "string" },
+        "uci": { "type": "string" },
+        "best_uci": { "type": ["string", "null"] },
+        "win_before": { "type": "number" },
+        "win_after": { "type": "number" },
+        "prev_san": { "type": ["string", "null"] },
+        "sources": { "type": "array", "items": { "$ref": "#/$defs/SourceKey" } }
+      }
+    },
+    "TrainerSourcesRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "candidates"],
+      "properties": {
+        "schema_version": { "$ref": "#/$defs/SchemaVersion" },
+        "candidates": { "type": "array", "items": { "$ref": "#/$defs/TrainerCandidate" } }
+      }
+    },
+    "TrainerSourced": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["game_id", "ply", "kept", "primary_source", "held_out"],
+      "properties": {
+        "game_id": { "type": "string" },
+        "ply": { "$ref": "#/$defs/Count" },
+        "kept": { "type": "boolean" },
+        "primary_source": { "$ref": "#/$defs/SourceKey" },
+        "held_out": { "type": "boolean" }
+      }
+    },
+    "TrainerSourcesResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "algorithm_id", "trainer_version", "sources", "candidates"],
+      "properties": {
+        "schema_version": { "$ref": "#/$defs/SchemaVersion" },
+        "algorithm_id": { "$ref": "#/$defs/AlgorithmId" },
+        "trainer_version": { "type": "string" },
+        "sources": { "type": "array", "items": { "$ref": "#/$defs/SourceKey" } },
+        "candidates": { "type": "array", "items": { "$ref": "#/$defs/TrainerSourced" } }
       }
     }
   }

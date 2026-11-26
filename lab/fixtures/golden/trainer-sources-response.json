@@ -1,0 +1,126 @@
+{
+  "schema_version": "lab-v1",
+  "algorithm_id": "ALGORITHM_ID",
+  "trainer_version": "trainer-v1",
+  "sources": [
+    "W4.missed",
+    "W3.shallow",
+    "W3.deep",
+    "W7.traps",
+    "blunder"
+  ],
+  "candidates": [
+    {
+      "game_id": "game-kept",
+      "ply": 5,
+      "kept": true,
+      "primary_source": "W3.shallow",
+      "held_out": false
+    },
+    {
+      "game_id": "game-blunder-only",
+      "ply": 5,
+      "kept": true,
+      "primary_source": "blunder",
+      "held_out": true
+    },
+    {
+      "game_id": "game-no-source",
+      "ply": 5,
+      "kept": false,
+      "primary_source": "blunder",
+      "held_out": false
+    },
+    {
+      "game_id": "game-played-the-best",
+      "ply": 5,
+      "kept": false,
+      "primary_source": "W3.shallow",
+      "held_out": false
+    },
+    {
+      "game_id": "game-no-best-move",
+      "ply": 5,
+      "kept": false,
+      "primary_source": "W3.shallow",
+      "held_out": false
+    },
+    {
+      "game_id": "game-already-decided",
+      "ply": 5,
+      "kept": false,
+      "primary_source": "W3.shallow",
+      "held_out": false
+    },
+    {
+      "game_id": "game-free-capture",
+      "ply": 5,
+      "kept": false,
+      "primary_source": "W3.shallow",
+      "held_out": false
+    },
+    {
+      "game_id": "game-free-capture-missed",
+      "ply": 5,
+      "kept": true,
+      "primary_source": "W4.missed",
+      "held_out": true
+    },
+    {
+      "game_id": "game-holdout",
+      "ply": 10,
+      "kept": true,
+      "primary_source": "W3.shallow",
+      "held_out": true
+    },
+    {
+      "game_id": "game-holdout",
+      "ply": 11,
+      "kept": true,
+      "primary_source": "W3.shallow",
+      "held_out": false
+    },
+    {
+      "game_id": "game-holdout",
+      "ply": 12,
+      "kept": true,
+      "primary_source": "W3.shallow",
+      "held_out": false
+    },
+    {
+      "game_id": "game-holdout",
+      "ply": 13,
+      "kept": true,
+      "primary_source": "W3.shallow",
+      "held_out": false
+    },
+    {
+      "game_id": "game-holdout",
+      "ply": 14,
+      "kept": true,
+      "primary_source": "W3.shallow",
+      "held_out": false
+    },
+    {
+      "game_id": "game-holdout",
+      "ply": 15,
+      "kept": true,
+      "primary_source": "W3.shallow",
+      "held_out": false
+    },
+    {
+      "game_id": "game-holdout",
+      "ply": 16,
+      "kept": true,
+      "primary_source": "W3.shallow",
+      "held_out": false
+    },
+    {
+      "game_id": "game-holdout",
+      "ply": 17,
+      "kept": true,
+      "primary_source": "W3.shallow",
+      "held_out": false
+    }
+  ]
+}

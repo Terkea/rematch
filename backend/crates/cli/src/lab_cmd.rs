@@ -1,18 +1,19 @@
-//! `cli lab analyse|profile|rank|tag-motifs` (ADR 0106): the lab bridge. Each reads one JSON
-//! request on stdin and writes one JSON response on stdout (`lab/schemas/`); logs go to stderr.
-//! `profile`, `rank` and `tag-motifs` are pure functions of their input. `analyse` needs
-//! `DATABASE_URL` (a throwaway database is created next to it and dropped) and `STOCKFISH_PATH`.
-//! Exit codes: 0 done, 1 usage, input or run error.
+//! `cli lab analyse|profile|rank|tag-motifs|trajectory|timeline|...` (ADR 0106): the lab bridge.
+//! Each reads one JSON request on stdin and writes one JSON response on stdout (`lab/schemas/`);
+//! logs go to stderr. `profile`, `rank`, `tag-motifs`, `trajectory` and `timeline` are pure
+//! functions of their input. `analyse` needs `DATABASE_URL` (a throwaway database is created next
+//! to it and dropped) and `STOCKFISH_PATH`. Exit codes: 0 done, 1 usage, input or run error.
 
 use std::io::Read;
 use std::path::PathBuf;
 
 use bench::depth::{EvaluateOptions, EvaluateRequest, JudgeRequest, PositionsRequest};
 use bench::lab::{AnalyseOptions, AnalyseRequest, ProfileRequest, RankRequest, TagMotifsRequest};
+use bench::lab_rules::{TimelineRequest, TrajectoryRequest};
 use bench::observe::ObserveRequest;
 
-pub const LAB_USAGE: &str = "usage: cli lab analyse|profile|rank|tag-motifs|positions|evaluate|judge|observe \
-     < request.json > response.json";
+pub const LAB_USAGE: &str = "usage: cli lab analyse|profile|rank|tag-motifs|trajectory|timeline|\
+     positions|evaluate|judge|observe < request.json > response.json";
 
 /// The id of the algorithm that answers: this build's manifest id (ADR 0105), the same one every
 /// writer stamps on its rows. `cli algo show --json` prints the whole manifest.
@@ -32,7 +33,8 @@ fn parse<T: serde::de::DeserializeOwned>(input: &str) -> anyhow::Result<T> {
     Ok(serde_json::from_str(input)?)
 }
 
-/// `profile`, `rank` or `tag-motifs` on a request string (no I/O): what the tests and the golden file use.
+/// `profile`, `rank`, `tag-motifs`, `trajectory` or `timeline` on a request string (no I/O): what
+/// the tests and the golden files use.
 pub fn run_pure(cmd: &str, input: &str) -> anyhow::Result<String> {
     match cmd {
         "profile" => to_output(&bench::lab::profile(
@@ -45,6 +47,14 @@ pub fn run_pure(cmd: &str, input: &str) -> anyhow::Result<String> {
         )?),
         "tag-motifs" => to_output(&bench::lab::tag_motifs(
             &parse::<TagMotifsRequest>(input)?,
+            algorithm_id(),
+        )?),
+        "trajectory" => to_output(&bench::lab_rules::trajectory(
+            &parse::<TrajectoryRequest>(input)?,
+            algorithm_id(),
+        )?),
+        "timeline" => to_output(&bench::lab_rules::timeline(
+            &parse::<TimelineRequest>(input)?,
             algorithm_id(),
         )?),
         _ => anyhow::bail!("{LAB_USAGE}"),
@@ -87,6 +97,8 @@ pub async fn run_lab(
             | "profile"
             | "rank"
             | "tag-motifs"
+            | "trajectory"
+            | "timeline"
             | "positions"
             | "evaluate"
             | "judge"

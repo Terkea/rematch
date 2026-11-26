@@ -1,0 +1,35 @@
+{
+  "schema_version": "lab-v1",
+  "items": [
+    {
+      "id": "relative-beats-a-low-peer",
+      "baseline": 0.2,
+      "peer": 0.1
+    },
+    {
+      "id": "peer-is-easier",
+      "baseline": 0.2,
+      "peer": 0.17
+    },
+    {
+      "id": "peer-too-close",
+      "baseline": 0.2,
+      "peer": 0.19
+    },
+    {
+      "id": "no-peer",
+      "baseline": 0.04,
+      "peer": null
+    },
+    {
+      "id": "rounds-to-a-tenth",
+      "baseline": 0.1234,
+      "peer": null
+    },
+    {
+      "id": "already-zero",
+      "baseline": 0,
+      "peer": 0.01
+    }
+  ]
+}

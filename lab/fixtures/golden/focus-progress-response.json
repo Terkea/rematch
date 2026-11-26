@@ -1,0 +1,138 @@
+{
+  "schema_version": "lab-v1",
+  "algorithm_id": "ALGORITHM_ID",
+  "focus_version": "focus-v1",
+  "items": [
+    {
+      "id": "too-early",
+      "progress": {
+        "events": 1,
+        "chances": 6,
+        "rate": 0.16666666666666666,
+        "interval": {
+          "low": 0.05127383894482418,
+          "high": 0.425328616952832,
+          "level": 0.8
+        },
+        "games": {
+          "played": 7,
+          "of": 20
+        },
+        "verdict": {
+          "kind": "too_early",
+          "moreChances": 4
+        },
+        "done": false,
+        "outcome": null
+      }
+    },
+    {
+      "id": "on-track",
+      "progress": {
+        "events": 1,
+        "chances": 13,
+        "rate": 0.07692307692307693,
+        "interval": {
+          "low": 0.02330167286174921,
+          "high": 0.22545404884559983,
+          "level": 0.8
+        },
+        "games": {
+          "played": 14,
+          "of": 20
+        },
+        "verdict": {
+          "kind": "on_track"
+        },
+        "done": false,
+        "outcome": null
+      }
+    },
+    {
+      "id": "met",
+      "progress": {
+        "events": 2,
+        "chances": 19,
+        "rate": 0.10526315789473684,
+        "interval": {
+          "low": 0.044583533068017,
+          "high": 0.22875587555199006,
+          "level": 0.8
+        },
+        "games": {
+          "played": 20,
+          "of": 20
+        },
+        "verdict": {
+          "kind": "on_track"
+        },
+        "done": true,
+        "outcome": "met"
+      }
+    },
+    {
+      "id": "not-met",
+      "progress": {
+        "events": 5,
+        "chances": 12,
+        "rate": 0.4166666666666667,
+        "interval": {
+          "low": 0.2553468467601555,
+          "high": 0.5980511073541221,
+          "level": 0.8
+        },
+        "games": {
+          "played": 20,
+          "of": 20
+        },
+        "verdict": {
+          "kind": "not_yet"
+        },
+        "done": true,
+        "outcome": "not_met"
+      }
+    },
+    {
+      "id": "inconclusive",
+      "progress": {
+        "events": 0,
+        "chances": 4,
+        "rate": 0,
+        "interval": {
+          "low": 0,
+          "high": 0.2910785946320806,
+          "level": 0.8
+        },
+        "games": {
+          "played": 20,
+          "of": 20
+        },
+        "verdict": {
+          "kind": "too_early",
+          "moreChances": 6
+        },
+        "done": true,
+        "outcome": "inconclusive"
+      }
+    },
+    {
+      "id": "no-chance-yet",
+      "progress": {
+        "events": 0,
+        "chances": 0,
+        "rate": null,
+        "interval": null,
+        "games": {
+          "played": 0,
+          "of": 20
+        },
+        "verdict": {
+          "kind": "too_early",
+          "moreChances": 10
+        },
+        "done": false,
+        "outcome": null
+      }
+    }
+  ]
+}

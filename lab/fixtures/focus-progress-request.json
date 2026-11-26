@@ -1,0 +1,53 @@
+{
+  "schema_version": "lab-v1",
+  "items": [
+    {
+      "id": "too-early",
+      "k": 1,
+      "n": 6,
+      "games": 7,
+      "games_n": 20,
+      "target": 0.15
+    },
+    {
+      "id": "on-track",
+      "k": 1,
+      "n": 13,
+      "games": 14,
+      "games_n": 20,
+      "target": 0.15
+    },
+    {
+      "id": "met",
+      "k": 2,
+      "n": 19,
+      "games": 20,
+      "games_n": 20,
+      "target": 0.15
+    },
+    {
+      "id": "not-met",
+      "k": 5,
+      "n": 12,
+      "games": 20,
+      "games_n": 20,
+      "target": 0.15
+    },
+    {
+      "id": "inconclusive",
+      "k": 0,
+      "n": 4,
+      "games": 20,
+      "games_n": 20,
+      "target": 0.15
+    },
+    {
+      "id": "no-chance-yet",
+      "k": 0,
+      "n": 0,
+      "games": 0,
+      "games_n": 20,
+      "target": 0.15
+    }
+  ]
+}
