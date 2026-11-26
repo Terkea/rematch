@@ -1,0 +1,444 @@
+{
+  "rule": "Wilson at 1 - 0.05/3 per cell; keep: every upper <= 0.15; change: a lower > 0.15; hide: a lower > 0.30",
+  "sims": 20000,
+  "grid": [
+    {
+      "players": 200,
+      "true_rate_all_cells": 0.05,
+      "keep": 0.967,
+      "change": 0.0,
+      "hide": 0.0
+    },
+    {
+      "players": 200,
+      "true_rate_all_cells": 0.1,
+      "keep": 0.0219,
+      "change": 0.0,
+      "hide": 0.0
+    },
+    {
+      "players": 200,
+      "true_rate_all_cells": 0.12,
+      "keep": 0.0004,
+      "change": 0.0002,
+      "hide": 0.0
+    },
+    {
+      "players": 200,
+      "true_rate_all_cells": 0.2,
+      "keep": 0.0,
+      "change": 0.6905,
+      "hide": 0.0
+    },
+    {
+      "players": 200,
+      "true_rate_all_cells": 0.25,
+      "keep": 0.0,
+      "change": 0.9987,
+      "hide": 0.0001
+    },
+    {
+      "players": 200,
+      "true_rate_all_cells": 0.35,
+      "keep": 0.0,
+      "change": 0.494,
+      "hide": 0.506
+    },
+    {
+      "players": 200,
+      "true_rate_all_cells": 0.4,
+      "keep": 0.0,
+      "change": 0.0171,
+      "hide": 0.9829
+    },
+    {
+      "players": 300,
+      "true_rate_all_cells": 0.05,
+      "keep": 0.9996,
+      "change": 0.0,
+      "hide": 0.0
+    },
+    {
+      "players": 300,
+      "true_rate_all_cells": 0.1,
+      "keep": 0.1658,
+      "change": 0.0,
+      "hide": 0.0
+    },
+    {
+      "players": 300,
+      "true_rate_all_cells": 0.12,
+      "keep": 0.0037,
+      "change": 0.0001,
+      "hide": 0.0
+    },
+    {
+      "players": 300,
+      "true_rate_all_cells": 0.2,
+      "keep": 0.0,
+      "change": 0.8911,
+      "hide": 0.0
+    },
+    {
+      "players": 300,
+      "true_rate_all_cells": 0.25,
+      "keep": 0.0,
+      "change": 1.0,
+      "hide": 0.0
+    },
+    {
+      "players": 300,
+      "true_rate_all_cells": 0.35,
+      "keep": 0.0,
+      "change": 0.3555,
+      "hide": 0.6444
+    },
+    {
+      "players": 300,
+      "true_rate_all_cells": 0.4,
+      "keep": 0.0,
+      "change": 0.0013,
+      "hide": 0.9987
+    },
+    {
+      "players": 400,
+      "true_rate_all_cells": 0.05,
+      "keep": 1.0,
+      "change": 0.0,
+      "hide": 0.0
+    },
+    {
+      "players": 400,
+      "true_rate_all_cells": 0.1,
+      "keep": 0.2989,
+      "change": 0.0,
+      "hide": 0.0
+    },
+    {
+      "players": 400,
+      "true_rate_all_cells": 0.12,
+      "keep": 0.0081,
+      "change": 0.0001,
+      "hide": 0.0
+    },
+    {
+      "players": 400,
+      "true_rate_all_cells": 0.2,
+      "keep": 0.0,
+      "change": 0.9453,
+      "hide": 0.0
+    },
+    {
+      "players": 400,
+      "true_rate_all_cells": 0.25,
+      "keep": 0.0,
+      "change": 1.0,
+      "hide": 0.0
+    },
+    {
+      "players": 400,
+      "true_rate_all_cells": 0.35,
+      "keep": 0.0,
+      "change": 0.1797,
+      "hide": 0.8203
+    },
+    {
+      "players": 400,
+      "true_rate_all_cells": 0.4,
+      "keep": 0.0,
+      "change": 0.0,
+      "hide": 1.0
+    },
+    {
+      "players": 500,
+      "true_rate_all_cells": 0.05,
+      "keep": 1.0,
+      "change": 0.0,
+      "hide": 0.0
+    },
+    {
+      "players": 500,
+      "true_rate_all_cells": 0.1,
+      "keep": 0.4995,
+      "change": 0.0,
+      "hide": 0.0
+    },
+    {
+      "players": 500,
+      "true_rate_all_cells": 0.12,
+      "keep": 0.019,
+      "change": 0.0001,
+      "hide": 0.0
+    },
+    {
+      "players": 500,
+      "true_rate_all_cells": 0.2,
+      "keep": 0.0,
+      "change": 0.9795,
+      "hide": 0.0
+    },
+    {
+      "players": 500,
+      "true_rate_all_cells": 0.25,
+      "keep": 0.0,
+      "change": 1.0,
+      "hide": 0.0
+    },
+    {
+      "players": 500,
+      "true_rate_all_cells": 0.35,
+      "keep": 0.0,
+      "change": 0.1111,
+      "hide": 0.8889
+    },
+    {
+      "players": 500,
+      "true_rate_all_cells": 0.4,
+      "keep": 0.0,
+      "change": 0.0,
+      "hide": 1.0
+    },
+    {
+      "players": 600,
+      "true_rate_all_cells": 0.05,
+      "keep": 1.0,
+      "change": 0.0,
+      "hide": 0.0
+    },
+    {
+      "players": 600,
+      "true_rate_all_cells": 0.1,
+      "keep": 0.7251,
+      "change": 0.0,
+      "hide": 0.0
+    },
+    {
+      "players": 600,
+      "true_rate_all_cells": 0.12,
+      "keep": 0.0539,
+      "change": 0.0,
+      "hide": 0.0
+    },
+    {
+      "players": 600,
+      "true_rate_all_cells": 0.2,
+      "keep": 0.0,
+      "change": 0.9949,
+      "hide": 0.0
+    },
+    {
+      "players": 600,
+      "true_rate_all_cells": 0.25,
+      "keep": 0.0,
+      "change": 1.0,
+      "hide": 0.0
+    },
+    {
+      "players": 600,
+      "true_rate_all_cells": 0.35,
+      "keep": 0.0,
+      "change": 0.0576,
+      "hide": 0.9424
+    },
+    {
+      "players": 600,
+      "true_rate_all_cells": 0.4,
+      "keep": 0.0,
+      "change": 0.0,
+      "hide": 1.0
+    },
+    {
+      "players": 700,
+      "true_rate_all_cells": 0.05,
+      "keep": 1.0,
+      "change": 0.0,
+      "hide": 0.0
+    },
+    {
+      "players": 700,
+      "true_rate_all_cells": 0.1,
+      "keep": 0.8269,
+      "change": 0.0,
+      "hide": 0.0
+    },
+    {
+      "players": 700,
+      "true_rate_all_cells": 0.12,
+      "keep": 0.0826,
+      "change": 0.0,
+      "hide": 0.0
+    },
+    {
+      "players": 700,
+      "true_rate_all_cells": 0.2,
+      "keep": 0.0,
+      "change": 0.9983,
+      "hide": 0.0
+    },
+    {
+      "players": 700,
+      "true_rate_all_cells": 0.25,
+      "keep": 0.0,
+      "change": 1.0,
+      "hide": 0.0
+    },
+    {
+      "players": 700,
+      "true_rate_all_cells": 0.35,
+      "keep": 0.0,
+      "change": 0.0369,
+      "hide": 0.963
+    },
+    {
+      "players": 700,
+      "true_rate_all_cells": 0.4,
+      "keep": 0.0,
+      "change": 0.0,
+      "hide": 1.0
+    },
+    {
+      "players": 800,
+      "true_rate_all_cells": 0.05,
+      "keep": 1.0,
+      "change": 0.0,
+      "hide": 0.0
+    },
+    {
+      "players": 800,
+      "true_rate_all_cells": 0.1,
+      "keep": 0.8973,
+      "change": 0.0,
+      "hide": 0.0
+    },
+    {
+      "players": 800,
+      "true_rate_all_cells": 0.12,
+      "keep": 0.1121,
+      "change": 0.0,
+      "hide": 0.0
+    },
+    {
+      "players": 800,
+      "true_rate_all_cells": 0.2,
+      "keep": 0.0,
+      "change": 0.9994,
+      "hide": 0.0
+    },
+    {
+      "players": 800,
+      "true_rate_all_cells": 0.25,
+      "keep": 0.0,
+      "change": 1.0,
+      "hide": 0.0
+    },
+    {
+      "players": 800,
+      "true_rate_all_cells": 0.35,
+      "keep": 0.0,
+      "change": 0.0198,
+      "hide": 0.9802
+    },
+    {
+      "players": 800,
+      "true_rate_all_cells": 0.4,
+      "keep": 0.0,
+      "change": 0.0,
+      "hide": 1.0
+    }
+  ],
+  "one_cell": [
+    {
+      "players": 200,
+      "one_cell_rate": 0.2,
+      "change_or_hide": 0.3271,
+      "hide": 0.0
+    },
+    {
+      "players": 200,
+      "one_cell_rate": 0.4,
+      "change_or_hide": 1.0,
+      "hide": 0.7419
+    },
+    {
+      "players": 300,
+      "one_cell_rate": 0.2,
+      "change_or_hide": 0.5263,
+      "hide": 0.0
+    },
+    {
+      "players": 300,
+      "one_cell_rate": 0.4,
+      "change_or_hide": 1.0,
+      "hide": 0.8925
+    },
+    {
+      "players": 400,
+      "one_cell_rate": 0.2,
+      "change_or_hide": 0.6248,
+      "hide": 0.0
+    },
+    {
+      "players": 400,
+      "one_cell_rate": 0.4,
+      "change_or_hide": 1.0,
+      "hide": 0.9708
+    },
+    {
+      "players": 500,
+      "one_cell_rate": 0.2,
+      "change_or_hide": 0.731,
+      "hide": 0.0
+    },
+    {
+      "players": 500,
+      "one_cell_rate": 0.4,
+      "change_or_hide": 1.0,
+      "hide": 0.9902
+    },
+    {
+      "players": 600,
+      "one_cell_rate": 0.2,
+      "change_or_hide": 0.8363,
+      "hide": 0.0
+    },
+    {
+      "players": 600,
+      "one_cell_rate": 0.4,
+      "change_or_hide": 1.0,
+      "hide": 0.9974
+    },
+    {
+      "players": 700,
+      "one_cell_rate": 0.2,
+      "change_or_hide": 0.8815,
+      "hide": 0.0
+    },
+    {
+      "players": 700,
+      "one_cell_rate": 0.4,
+      "change_or_hide": 1.0,
+      "hide": 0.9996
+    },
+    {
+      "players": 800,
+      "one_cell_rate": 0.2,
+      "change_or_hide": 0.914,
+      "hide": 0.0
+    },
+    {
+      "players": 800,
+      "one_cell_rate": 0.4,
+      "change_or_hide": 1.0,
+      "hide": 0.9998
+    }
+  ],
+  "half_width_at_0_10": {
+    "200": 0.0513,
+    "300": 0.0418,
+    "400": 0.0361,
+    "500": 0.0323,
+    "600": 0.0294,
+    "700": 0.0272,
+    "800": 0.0255
+  }
+}
