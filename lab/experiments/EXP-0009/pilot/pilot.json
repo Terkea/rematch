@@ -1,0 +1,128 @@
+{
+  "experiment": "EXP-0009",
+  "flow": {
+    "audience": 5820,
+    "by_band": {
+      "B0": 197,
+      "B1": 1396,
+      "B2": 2576,
+      "B3": 1649
+    },
+    "feature_months": 6365,
+    "observed_games": 5818,
+    "p0_history": 28721,
+    "p3_active": 5474,
+    "with_outcome": 5472
+  },
+  "games": {
+    "algorithm_id": "algo-4.0.0+51733d23895f",
+    "games_failed": 54,
+    "games_not_standard": 0,
+    "games_observed": 304989,
+    "games_read": 305043,
+    "games_with_an_opponent_in_the_other_slice": 279010
+  },
+  "months": {
+    "P0": {
+      "compressed_bytes": 29051046504,
+      "eval_games": 0,
+      "games_kept": 88092979,
+      "games_seen": 89288421,
+      "month": "2026-07",
+      "players": 943323,
+      "sha256": "68738b1c448f051dc8d42db645d5b01749988a3bc1c24981adfe44ea92060dc7",
+      "url": "https://database.lichess.org/standard/lichess_db_standard_rated_2026-07.pgn.zst"
+    },
+    "P1": {
+      "compressed_bytes": 30145862359,
+      "eval_games": 3004296,
+      "games_kept": 91136599,
+      "games_seen": 91912325,
+      "month": "2026-08",
+      "players": 958716,
+      "sha256": "6bf6fa8a5dee7bb81d1874ac312160060daf12f18a29dc2740a3bf6f5e5e6248",
+      "url": "https://database.lichess.org/standard/lichess_db_standard_rated_2026-08.pgn.zst"
+    },
+    "P2": {
+      "compressed_bytes": 29224520887,
+      "eval_games": 2806788,
+      "games_kept": 88643163,
+      "games_seen": 89616462,
+      "month": "2026-09",
+      "players": 963038,
+      "sha256": "1de8eb64fed443f4be310c779e8d60a13bcfc6e3b104bcb39a018eb056edec89",
+      "url": "https://database.lichess.org/standard/lichess_db_standard_rated_2026-09.pgn.zst"
+    },
+    "P3": {
+      "compressed_bytes": 30982323881,
+      "eval_games": 0,
+      "games_kept": 94072197,
+      "games_seen": 95395628,
+      "month": "2026-10",
+      "players": 1090165,
+      "sha256": "043906ebfade1bfeb7c00087590fac505370936c028525e4722e2dbd4986ae86",
+      "url": "https://database.lichess.org/standard/lichess_db_standard_rated_2026-10.pgn.zst"
+    }
+  },
+  "players": 5818,
+  "primary": {
+    "W4.allowed": {
+      "delta_observed": 2.930711,
+      "n": 5472,
+      "reliability": 0.043822,
+      "se": 0.921568
+    },
+    "W4.missed": {
+      "delta_observed": 1.4,
+      "n": 3272,
+      "reliability": 0.01,
+      "se": 1.380035
+    },
+    "W5": {
+      "delta_observed": 5.220863,
+      "n": 3466,
+      "reliability": 0.139068,
+      "se": 1.175242
+    },
+    "W6": {
+      "delta_observed": 5.35696,
+      "n": 4055,
+      "reliability": 0.146413,
+      "se": 1.044102
+    },
+    "W7.prep": {
+      "delta_observed": 2.252922,
+      "n": 5472,
+      "reliability": 0.025896,
+      "se": 0.797343
+    },
+    "W7.traps": {
+      "delta_observed": 3.033849,
+      "n": 5472,
+      "reliability": 0.04696,
+      "se": 0.821561
+    },
+    "W9a": {
+      "delta_observed": 4.497133,
+      "n": 5472,
+      "reliability": 0.103185,
+      "se": 0.690051
+    },
+    "W9b": {
+      "delta_observed": 4.945954,
+      "n": 656,
+      "reliability": 0.124808,
+      "se": 2.486992
+    },
+    "accuracy": {
+      "delta_observed": 3.724498,
+      "n": 5472,
+      "reliability": 0.070775,
+      "se": 0.881047
+    }
+  },
+  "slice": [
+    0.9,
+    1.0
+  ]
+}
