@@ -21,3 +21,25 @@ A fresh critic (an agent with the `scientific-critical-thinking` and `peer-revie
 15. **No baseline rate in the power inputs.** Section 6 now gives the expected regime and its source.
 
 The critic found the Glicko-2 iteration, the measured event (`kind == "falling"` is `rating.verdict == Worse`), the request construction and the absence of pseudoreplication sound. It did not recommend killing the experiment.
+
+## Part two: the result, after the run
+
+A second fresh critic (the same skills) read the frozen registration, `analysis.py`, `arena.py`, `results.json` and the figure on 2026-11-26, after both runs, and recomputed every primary interval from the counts (they match to six decimals). It found no deviation in what `analysis.py` computed, and the decision is outcome 1 by section 9 with no room to hedge. Its points, and what `decision.md` does with them:
+
+1. **State the rule mechanically, with the lower ends.** Done: 0.40, 0.58 and 0.75 against 0.20.
+2. **Say exactly what the hide covers.** `falling` and `rising`, the rating row's "Worse" and "Better", and the coach's `kind`; false "rising" at 250 games is undecided, not fine; the accuracy and blunders rows keep their verdicts, the 60-game blunders cell by 0.0001.
+3. **The accuracy and blunders result is a property of the assumed world.** Stated: their simulated values have no memory beyond the result; the rows work as an internal control of the mechanism, not as evidence about real players.
+4. **The mechanism split is approximate.** Worded as such: memory alone gives about 0.45 at every length; the peak makes it one-sided and adds about 0.2 to 0.3; both must be fixed.
+5. **Width and bias are separate failures.** Stated, with the difference's off-centre means at 120 and 250 games.
+6. **The world diagnostics.** Cited in one paragraph; the deviation pinned at the floor means the world never exercises breaks.
+7. **Detection must not be published without the false-alarm rate beside it.** Done: one table with both, the likelihood ratios and the share of false headlines; no claim that detection improves with games.
+8. **The hide line against the measured detection.** A robustness sentence: the decision holds for a declining share up to about 0.28 at every length.
+9. **The rate rises with history, and "peaked at … (−N)" is negative for a stable player.** Stated, and named for EXP-0030.
+10. **The split by basis is not a mechanism.** Stated as descriptive.
+11. **New accounts.** One line; no rate is claimed.
+12. **The Elo and Glicko-1 arms.** Robust within this world, not evidence about chess.com; Glicko-1's 60-game asymmetry is noted to be checked in the loader.
+13. **Record the sha, the image and the determinism.** In `decision.md`.
+14. **The limits.** A section of their own.
+15. **The arena rule's gaps** (no "rising" flags, pooled detection, a lax floor, no deviation per game). Listed in `decision.md` and given to EXP-0030's registration; `arena.py` follows section 9 as registered and is not changed.
+16. **The challenger.** EXP-0030's Next item takes every design point and pitfall.
+17. **The figure.** Its unlabelled lines and missing intervals are noted; the frozen `analysis.py` is not changed for it.
