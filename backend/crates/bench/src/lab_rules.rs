@@ -203,7 +203,10 @@ pub fn trajectory_player(p: &TrajectoryPlayer) -> anyhow::Result<PlayerTrajector
 }
 
 /// `cli lab trajectory`.
-pub fn trajectory(req: &TrajectoryRequest, algorithm_id: &str) -> anyhow::Result<TrajectoryResponse> {
+pub fn trajectory(
+    req: &TrajectoryRequest,
+    algorithm_id: &str,
+) -> anyhow::Result<TrajectoryResponse> {
     check_version(&req.schema_version)?;
     Ok(TrajectoryResponse {
         schema_version: SCHEMA_VERSION.to_owned(),

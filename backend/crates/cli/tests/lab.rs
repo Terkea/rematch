@@ -395,7 +395,10 @@ fn trajectory_is_the_production_rule() {
     assert_eq!(peaked["kind"], json!("falling"));
     assert_eq!(peaked["thenVsNow"]["then"]["basis"], json!("peak"));
     assert_eq!(peaked["thenVsNow"]["rating"]["verdict"], json!("worse"));
-    assert_eq!(peaked["thenVsNow"]["weaknesses"][0]["seriesKey"], json!("W1"));
+    assert_eq!(
+        peaked["thenVsNow"]["weaknesses"][0]["seriesKey"],
+        json!("W1")
+    );
     assert_ne!(by("lab-steady")["kind"], json!("falling"));
     assert_eq!(by("lab-new")["sufficient"], json!(false));
     assert_eq!(by("lab-new")["needMore"], json!(8));
@@ -411,7 +414,7 @@ fn trajectory_is_the_production_rule() {
     let err = run_pure(
         "trajectory",
         r#"{"schema_version":"lab-v1","players":[{"id":"x","seed":"s","games":[],
-            "weaknesses":[{"series_key":"W5","prior":{"mu":0.1,"n0":2},"points":[]}]}]}"#,
+            "weaknesses":[{"series_key":"W9d","prior":{"mu":0.1,"n0":2},"points":[]}]}]}"#,
     )
     .unwrap_err();
     assert!(err.to_string().contains("not a binomial"), "{err}");
@@ -469,7 +472,10 @@ fn timeline_is_the_production_rule() {
                 assert_eq!(a.kind, b.kind.as_str());
                 assert_eq!((a.from, a.to), (b.from, b.to));
                 assert_eq!(a.at_game_id, b.at_game_id);
-                assert_eq!(a.onset.as_ref().map(|x| x.game_id), b.onset.as_ref().map(|x| x.game_id));
+                assert_eq!(
+                    a.onset.as_ref().map(|x| x.game_id),
+                    b.onset.as_ref().map(|x| x.game_id)
+                );
                 assert_eq!(a.p_change, b.p_change);
                 assert_eq!((a.rate_before, a.rate_after), (b.rate_before, b.rate_after));
                 assert_eq!(a.evidence, b.evidence);

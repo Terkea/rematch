@@ -1,4 +1,6 @@
 """The bridge to the Rust algorithm (ADR 0106): one `cli` process per call, JSON on stdin and stdout.
+The web's rules (the weekly focus, the trainer's sources) go through the same kind of step in
+Node, `$REMATCH_WEB_BRIDGE` (ADR 0115).
 
 The binary is `$REMATCH_CLI` (in the lab image, `/usr/local/bin/cli` from a Rematch build). Every
 request and every response is checked against `lab/schemas/lab-v1.schema.json` before it is
@@ -9,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import subprocess
 from functools import cache
 from pathlib import Path
@@ -23,6 +26,12 @@ from .models import (
     AnalyseRequest,
     AnalyseResponse,
     DepthGame,
+    FocusProgressItem,
+    FocusProgressRequest,
+    FocusProgressResponse,
+    FocusTargetItem,
+    FocusTargetRequest,
+    FocusTargetResponse,
     EvaluateRequest,
     EvaluateResponse,
     JudgeRequest,
@@ -40,9 +49,20 @@ from .models import (
     RankResponse,
     TagMotifsRequest,
     TagMotifsResponse,
+    TimelinePlayer,
+    TimelineRequest,
+    TimelineResponse,
+    TrainerCandidate,
+    TrainerSourcesRequest,
+    TrainerSourcesResponse,
+    TrajectoryPlayer,
+    TrajectoryRequest,
+    TrajectoryResponse,
 )
 
 SCHEMA_PATH = Path(__file__).resolve().parent.parent / "schemas" / "lab-v1.schema.json"
+#: The bundle of the web's Node step in the lab image (lab/Dockerfile, ADR 0115).
+DEFAULT_WEB_BRIDGE = "/usr/local/lib/rematch/lab-bridge.mjs"
 
 
 class LabError(RuntimeError):
@@ -281,6 +301,92 @@ def bench(
     return out
 
 
+# ---- lab-v2 (#125): the trajectory, the timeline, the weekly focus and the trainer's sources ----
+
+
+def trajectory(players: list[TrajectoryPlayer] | TrajectoryRequest) -> TrajectoryResponse:
+    """Rated games to the trajectory (EXP-0015): `cli lab trajectory`, the loader's
+    `trajectory_input`, `compute` and `contract` (ADR 0089). Each player's `trajectory` is the
+    CoachingInput's, as the coach receives it: `kind == "falling"` is "clearly worse than your
+    peak". The bootstrap's seed is the player's `seed`. Pure."""
+    req = players if isinstance(players, TrajectoryRequest) else TrajectoryRequest(players=players)
+    return TrajectoryResponse.model_validate(
+        lab_call("trajectory", req, "TrajectoryRequest", "TrajectoryResponse")
+    )
+
+
+def timeline(players: list[TimelinePlayer] | TimelineRequest) -> TimelineResponse:
+    """Series points to change states (EXP-0014): `cli lab timeline`, the build's
+    `evaluate_all` (`tl-v1`): each series' state, `P_imp` and the `weakness_state_history` rows.
+    Game ids are UUIDs, since games of the same instant replay in id order. Pure."""
+    req = players if isinstance(players, TimelineRequest) else TimelineRequest(players=players)
+    return TimelineResponse.model_validate(
+        lab_call("timeline", req, "TimelineRequest", "TimelineResponse")
+    )
+
+
+def web_bridge() -> list[str]:
+    """The web's Node step (ADR 0115): `$REMATCH_WEB_BRIDGE`, a command line (in the lab image
+    `node /usr/local/lib/rematch/lab-bridge.mjs`, the bundle of `apps/web/scripts/lab-bridge.ts`)."""
+    return shlex.split(os.environ.get("REMATCH_WEB_BRIDGE", f"node {DEFAULT_WEB_BRIDGE}"))
+
+
+def web_call(step: str, request: BaseModel, request_message: str, response_message: str) -> Any:
+    """Runs one step of the web's Node bridge, checking both messages against the schema."""
+    payload = json.loads(to_json(request))
+    check(request_message, payload)
+    command = [*web_bridge(), step]
+    proc = subprocess.run(
+        command,
+        input=json.dumps(payload),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+    )
+    if proc.returncode != 0:
+        raise LabError(f"lab-bridge {step} exited with {proc.returncode}", proc.stderr)
+    out = json.loads(proc.stdout)
+    check(response_message, out)
+    return out
+
+
+def focus_target(items: list[FocusTargetItem] | FocusTargetRequest) -> FocusTargetResponse:
+    """The weekly focus's target (EXP-0011): `chooseTarget` of `apps/web/src/server/focus/goal.ts`
+    on each `baseline` and `peer`. The app offers the band median as `peer` only when the
+    weakness is compared with peers and is not W5 (`focus/index.ts` `candidate`); otherwise null."""
+    req = items if isinstance(items, FocusTargetRequest) else FocusTargetRequest(items=items)
+    return FocusTargetResponse.model_validate(
+        web_call("focus-target", req, "FocusTargetRequest", "FocusTargetResponse")
+    )
+
+
+def focus_progress(items: list[FocusProgressItem] | FocusProgressRequest) -> FocusProgressResponse:
+    """The weekly focus's progress and outcome (EXP-0011): `focusProgress` of `goal.ts` on `k`
+    events in `n` chances over `games` of `games_n` games, against `target`."""
+    req = items if isinstance(items, FocusProgressRequest) else FocusProgressRequest(items=items)
+    return FocusProgressResponse.model_validate(
+        web_call("focus-progress", req, "FocusProgressRequest", "FocusProgressResponse")
+    )
+
+
+def trainer_sources(
+    candidates: list[TrainerCandidate] | TrainerSourcesRequest,
+) -> TrainerSourcesResponse:
+    """The trainer's drillable positions (EXP-0012): `keepCandidate`, `primarySource` and
+    `isHeldOut` of `apps/web/src/server/train/model.ts` on each candidate, and `SOURCES` in its
+    order. A candidate's `sources` are the weakness series whose exemplar plies hold it, plus
+    `blunder` when the move was judged one (`train/store.ts` `candidates`)."""
+    req = (
+        candidates
+        if isinstance(candidates, TrainerSourcesRequest)
+        else TrainerSourcesRequest(candidates=candidates)
+    )
+    return TrainerSourcesResponse.model_validate(
+        web_call("trainer-sources", req, "TrainerSourcesRequest", "TrainerSourcesResponse")
+    )
+
+
 __all__ = [
     "SCHEMA_VERSION",
     "LabError",
@@ -290,7 +396,13 @@ __all__ = [
     "bench",
     "call_raw",
     "check",
+    "focus_progress",
+    "focus_target",
     "profile",
     "rank",
     "tag_motifs",
+    "timeline",
+    "trainer_sources",
+    "trajectory",
+    "web_call",
 ]

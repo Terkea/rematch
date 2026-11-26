@@ -378,6 +378,7 @@ services:
       context: lab
       additional_contexts:
         rematch: service:rust-worker
+        repo: .
     working_dir: /repo/lab
     environment:
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/chess_test

@@ -9,6 +9,7 @@ RankedWeakness) keep the camelCase the Rust code writes, through aliases.
 from __future__ import annotations
 
 from datetime import datetime
+from uuid import UUID
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_serializer, model_validator
@@ -446,6 +447,341 @@ class ObserveResponse(Snake):
     games: list[ObservedGame]
 
 
+# ---- lab-v2: the trajectory and the timeline (cli lab, #125) -----------------------------------
+
+GameResult = Literal["win", "draw", "loss", "unfinished"]
+ChangeVerdict = Literal["better", "worse", "no_clear_change", "not_enough_games"]
+
+
+class RatedGame(Snake):
+    """One rated game as `load_trajectory` reads it: the player's own stored rating (on chess.com
+    the rating after the game, on Lichess the one before it)."""
+
+    id: str
+    played_at: datetime
+    rating: int | None = None
+    result: GameResult
+    analysed: bool = False
+    accuracy: float | None = None
+    blunders: int = Field(default=0, ge=0)
+
+
+class GamePoint(Snake):
+    game_id: str
+    events: int = Field(ge=0)
+    opportunities: int = Field(ge=0)
+
+
+class LabPrior(Snake):
+    mu: float
+    n0: float
+
+
+class TrajectoryWeakness(Snake):
+    series_key: str
+    prior: LabPrior
+    points: list[GamePoint] = []
+
+
+class TrajectoryPlayer(Snake):
+    id: str
+    seed: str
+    chesscom: bool = False
+    games: list[RatedGame]
+    weaknesses: list[TrajectoryWeakness] = []
+
+
+class TrajectoryRequest(Snake):
+    schema_version: Literal["lab-v1"] = SCHEMA_VERSION
+    players: list[TrajectoryPlayer]
+
+
+class ColorMetric(Camel):
+    value: float | None
+    unit: Literal["rate", "per_game", "pct", "seconds", "elo"]
+    n: int
+    low: float | None
+    high: float | None
+    sufficient: bool
+    need_more: int | None
+
+
+class ThenNowMetric(Camel):
+    then: ColorMetric
+    now: ColorMetric
+    verdict: ChangeVerdict
+    diff: float | None
+    diff_low: float | None
+    diff_high: float | None
+
+
+class ThenNowWeakness(Camel):
+    series_key: str
+    id: str
+    variant: str | None
+    label: str
+    area: str
+    then: ColorMetric
+    now: ColorMetric
+    verdict: ChangeVerdict
+    then_events: int
+    then_opportunities: int
+    now_events: int
+    now_opportunities: int
+
+
+class TrajectoryWindow(Camel):
+    basis: Literal["peak", "start", "last"]
+    games: int
+    from_: str = Field(alias="from")
+    to: str
+
+
+class RatingAt(Camel):
+    rating: int
+    date: str
+
+
+class MonthRating(Camel):
+    month: str
+    games: int
+    last: int
+    high: int
+
+
+class ThenVsNow(Camel):
+    then: TrajectoryWindow
+    now: TrajectoryWindow
+    rating: ThenNowMetric
+    accuracy: ThenNowMetric
+    blunders_per_game: ThenNowMetric
+    score: ThenNowMetric
+    weaknesses: list[ThenNowWeakness]
+
+
+class Trajectory(Camel):
+    """The CoachingInput's `trajectory` (ADR 0089), as the coach receives it. `kind == "falling"`
+    (`then_vs_now.rating.verdict == "worse"`) is "clearly worse than your peak"."""
+
+    rated_games: int
+    sufficient: bool
+    need_more: int | None
+    kind: Literal["falling", "rising", "flat"] | None
+    peak: RatingAt | None
+    current: RatingAt | None
+    change: int | None
+    months: list[MonthRating]
+    then_vs_now: ThenVsNow | None
+
+
+class PlayerTrajectory(Snake):
+    id: str
+    trajectory: Trajectory
+
+
+class TrajectoryResponse(Snake):
+    schema_version: Literal["lab-v1"]
+    algorithm_id: str
+    players: list[PlayerTrajectory]
+
+
+class TimelinePoint(Snake):
+    game_id: UUID
+    played_at: datetime
+    events: int = Field(ge=0)
+    opportunities: int = Field(ge=0)
+
+
+class TimelinePlayer(Snake):
+    id: str
+    reference: dict[str, BandReferenceStat] | None = None
+    series: dict[str, list[TimelinePoint]]
+
+
+class TimelineRequest(Snake):
+    schema_version: Literal["lab-v1"] = SCHEMA_VERSION
+    players: list[TimelinePlayer]
+
+
+class Evidence(Snake):
+    k: int
+    n: int
+    confidence: float
+
+
+class LabOnset(Snake):
+    game_id: UUID
+    played_at: datetime
+    low: datetime
+    high: datetime
+
+
+class LabTimelineRow(Snake):
+    """One `weakness_state_history` row the build would write."""
+
+    kind: Literal["transition", "onset"]
+    from_: WeaknessState | None = Field(alias="from")
+    to: WeaknessState
+    at_game_id: UUID
+    at_played_at: datetime
+    onset: LabOnset | None
+    p_change: float | None
+    rate_before: float | None
+    rate_after: float | None
+    evidence: Evidence
+
+
+class LabSeriesOutcome(Snake):
+    state: WeaknessState
+    p_imp: float | None
+    invalid_points: int
+    rows: list[LabTimelineRow]
+
+
+class PlayerTimeline(Snake):
+    id: str
+    series: dict[str, LabSeriesOutcome]
+
+
+class TimelineResponse(Snake):
+    schema_version: Literal["lab-v1"]
+    algorithm_id: str
+    detector_version: str
+    players: list[PlayerTimeline]
+
+
+# ---- lab-v2: the web's rules, through Node (`lab-bridge`, ADR 0115) ----------------------------
+
+SourceKey = Literal["W4.missed", "W3.shallow", "W3.deep", "W7.traps", "blunder"]
+
+
+class FocusTargetItem(Snake):
+    id: str
+    baseline: float
+    peer: float | None
+
+
+class FocusTargetRequest(Snake):
+    schema_version: Literal["lab-v1"] = SCHEMA_VERSION
+    items: list[FocusTargetItem]
+
+
+class Target(Snake):
+    """goal.ts `Target`."""
+
+    rate: float
+    basis: Literal["peer", "relative"]
+
+
+class FocusTargetResult(Snake):
+    id: str
+    target: Target | None
+
+
+class FocusTargetResponse(Snake):
+    schema_version: Literal["lab-v1"]
+    algorithm_id: str
+    focus_version: str
+    items: list[FocusTargetResult]
+
+
+class FocusProgressItem(Snake):
+    id: str
+    k: int = Field(ge=0)
+    n: int = Field(ge=0)
+    games: int = Field(ge=0)
+    games_n: int = Field(ge=1)
+    target: float
+
+
+class FocusProgressRequest(Snake):
+    schema_version: Literal["lab-v1"] = SCHEMA_VERSION
+    items: list[FocusProgressItem]
+
+
+class Interval80(Snake):
+    low: float
+    high: float
+    level: float
+
+
+class ProgressGames(Snake):
+    played: int
+    of: int
+
+
+class FocusVerdict(Camel):
+    kind: Literal["on_track", "not_yet", "too_early"]
+    more_chances: int | None = None
+
+    @model_serializer
+    def _wire(self) -> dict[str, str | int]:
+        # goal.ts writes `moreChances` only on `too_early`.
+        if self.more_chances is None:
+            return {"kind": self.kind}
+        return {"kind": self.kind, "moreChances": self.more_chances}
+
+
+class Progress(Snake):
+    """goal.ts `Progress`."""
+
+    events: int
+    chances: int
+    rate: float | None
+    interval: Interval80 | None
+    games: ProgressGames
+    verdict: FocusVerdict
+    done: bool
+    outcome: Literal["met", "not_met", "inconclusive"] | None
+
+
+class FocusProgressResult(Snake):
+    id: str
+    progress: Progress
+
+
+class FocusProgressResponse(Snake):
+    schema_version: Literal["lab-v1"]
+    algorithm_id: str
+    focus_version: str
+    items: list[FocusProgressResult]
+
+
+class TrainerCandidate(Snake):
+    """model.ts `Candidate`: a player's move at a weakness exemplar ply, or judged a blunder."""
+
+    game_id: str
+    ply: int = Field(ge=0)
+    fen: str
+    uci: str
+    best_uci: str | None
+    win_before: float
+    win_after: float
+    prev_san: str | None
+    sources: list[SourceKey]
+
+
+class TrainerSourcesRequest(Snake):
+    schema_version: Literal["lab-v1"] = SCHEMA_VERSION
+    candidates: list[TrainerCandidate]
+
+
+class TrainerSourced(Snake):
+    game_id: str
+    ply: int
+    kept: bool
+    primary_source: SourceKey
+    held_out: bool
+
+
+class TrainerSourcesResponse(Snake):
+    schema_version: Literal["lab-v1"]
+    algorithm_id: str
+    trainer_version: str
+    sources: list[SourceKey]
+    candidates: list[TrainerSourced]
+
+
 #: Every message of the schema, by its `$defs` name.
 MESSAGES: dict[str, type[BaseModel]] = {
     "AnalyseRequest": AnalyseRequest,
@@ -464,6 +800,16 @@ MESSAGES: dict[str, type[BaseModel]] = {
     "JudgeResponse": JudgeResponse,
     "ObserveRequest": ObserveRequest,
     "ObserveResponse": ObserveResponse,
+    "TrajectoryRequest": TrajectoryRequest,
+    "TrajectoryResponse": TrajectoryResponse,
+    "TimelineRequest": TimelineRequest,
+    "TimelineResponse": TimelineResponse,
+    "FocusTargetRequest": FocusTargetRequest,
+    "FocusTargetResponse": FocusTargetResponse,
+    "FocusProgressRequest": FocusProgressRequest,
+    "FocusProgressResponse": FocusProgressResponse,
+    "TrainerSourcesRequest": TrainerSourcesRequest,
+    "TrainerSourcesResponse": TrainerSourcesResponse,
 }
 
 #: Every object of the schema that a model mirrors field for field.
@@ -492,4 +838,36 @@ OBJECTS: dict[str, type[BaseModel]] = {
     "KeyCount": KeyCount,
     "ObservedSide": ObservedSide,
     "ObservedGame": ObservedGame,
+    "RatedGame": RatedGame,
+    "GamePoint": GamePoint,
+    "LabPrior": LabPrior,
+    "TrajectoryWeakness": TrajectoryWeakness,
+    "TrajectoryPlayer": TrajectoryPlayer,
+    "ColorMetric": ColorMetric,
+    "ThenNowMetric": ThenNowMetric,
+    "ThenNowWeakness": ThenNowWeakness,
+    "TrajectoryWindow": TrajectoryWindow,
+    "RatingAt": RatingAt,
+    "MonthRating": MonthRating,
+    "ThenVsNow": ThenVsNow,
+    "Trajectory": Trajectory,
+    "PlayerTrajectory": PlayerTrajectory,
+    "TimelinePoint": TimelinePoint,
+    "TimelinePlayer": TimelinePlayer,
+    "Evidence": Evidence,
+    "LabOnset": LabOnset,
+    "LabTimelineRow": LabTimelineRow,
+    "LabSeriesOutcome": LabSeriesOutcome,
+    "PlayerTimeline": PlayerTimeline,
+    "FocusTargetItem": FocusTargetItem,
+    "Target": Target,
+    "FocusTargetResult": FocusTargetResult,
+    "FocusProgressItem": FocusProgressItem,
+    "Interval80": Interval80,
+    "ProgressGames": ProgressGames,
+    "FocusVerdict": FocusVerdict,
+    "Progress": Progress,
+    "FocusProgressResult": FocusProgressResult,
+    "TrainerCandidate": TrainerCandidate,
+    "TrainerSourced": TrainerSourced,
 }

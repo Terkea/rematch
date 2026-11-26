@@ -29,9 +29,9 @@ import { type KpiDef, kpiDef, seriesLabel, weaknessDef } from "./catalogue";
 import { difficultyStatus } from "./difficulty";
 import { KPI_GLOSSARY } from "./glossary";
 import { CURRENT_WINDOW, latestSnapshots } from "./kpis";
+import { obviousCapture } from "./obvious-capture";
 import { ownsScope } from "./scope";
 import type { Area, CoachScope, Side as Colour, DifficultyStatus, WeaknessState } from "./types";
-import { obviousCapture } from "./obvious-capture";
 import { openingNames } from "./weaknesses";
 
 export { obviousCapture };

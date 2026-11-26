@@ -1,13 +1,7 @@
 import { z } from "zod";
 import { ALGORITHM_ID } from "../../lib/algorithm";
 import { chooseTarget, FOCUS_VERSION, focusProgress } from "../focus/goal";
-import {
-  isHeldOut,
-  keepCandidate,
-  primarySource,
-  SOURCES,
-  TRAINER_VERSION,
-} from "../train/model";
+import { isHeldOut, keepCandidate, primarySource, SOURCES, TRAINER_VERSION } from "../train/model";
 
 // The lab's bridge to the web's rules (#125, ADR 0115): `node lab-bridge.mjs <step>` reads one
 // JSON request on stdin and writes one JSON response on stdout, as `cli lab` does for the Rust
@@ -22,7 +16,8 @@ export const LAB_STEPS = ["focus-target", "focus-progress", "trainer-sources"] a
 export type LabStep = (typeof LAB_STEPS)[number];
 
 const version = z.literal(LAB_SCHEMA_VERSION, {
-  error: (i) => `schema_version ${JSON.stringify(i.input)} is not supported (this bridge speaks ${LAB_SCHEMA_VERSION})`,
+  error: (i) =>
+    `schema_version ${JSON.stringify(i.input)} is not supported (this bridge speaks ${LAB_SCHEMA_VERSION})`,
 });
 const rate = z.number().min(0).max(1);
 const count = z.number().int().min(0);
@@ -109,7 +104,13 @@ function focusProgressStep(input: string) {
     focus_version: FOCUS_VERSION,
     items: req.items.map((i) => ({
       id: i.id,
-      progress: focusProgress({ k: i.k, n: i.n, games: i.games, gamesN: i.games_n, target: i.target }),
+      progress: focusProgress({
+        k: i.k,
+        n: i.n,
+        games: i.games,
+        gamesN: i.games_n,
+        target: i.target,
+      }),
     })),
   };
 }

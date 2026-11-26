@@ -1,0 +1,350 @@
+{
+  "schema_version": "lab-v1",
+  "algorithm_id": "ALGORITHM_ID",
+  "players": [
+    {
+      "id": "lab-peaked",
+      "trajectory": {
+        "ratedGames": 80,
+        "sufficient": true,
+        "needMore": null,
+        "kind": "falling",
+        "peak": {
+          "rating": 1620,
+          "date": "2026-03-26"
+        },
+        "current": {
+          "rating": 1474,
+          "date": "2026-05-06"
+        },
+        "change": -146,
+        "months": [
+          {
+            "month": "2026-03",
+            "games": 37,
+            "last": 1598,
+            "high": 1620
+          },
+          {
+            "month": "2026-04",
+            "games": 36,
+            "last": 1500,
+            "high": 1608
+          },
+          {
+            "month": "2026-05",
+            "games": 7,
+            "last": 1474,
+            "high": 1494
+          }
+        ],
+        "thenVsNow": {
+          "then": {
+            "basis": "peak",
+            "games": 30,
+            "from": "2026-03-14",
+            "to": "2026-04-07"
+          },
+          "now": {
+            "basis": "last",
+            "games": 30,
+            "from": "2026-04-12",
+            "to": "2026-05-06"
+          },
+          "rating": {
+            "then": {
+              "value": 1594.0333333333333,
+              "unit": "elo",
+              "n": 30,
+              "low": 1590.0333333333333,
+              "high": 1597.7333333333333,
+              "sufficient": true,
+              "needMore": null
+            },
+            "now": {
+              "value": 1517.0666666666666,
+              "unit": "elo",
+              "n": 30,
+              "low": 1510.6,
+              "high": 1522.9333333333334,
+              "sufficient": true,
+              "needMore": null
+            },
+            "verdict": "worse",
+            "diff": -76.9666666666667,
+            "diffLow": -84.29999999999995,
+            "diffHigh": -69.66666666666652
+          },
+          "accuracy": {
+            "then": {
+              "value": 77.60769230769232,
+              "unit": "pct",
+              "n": 26,
+              "low": 76.83846153846156,
+              "high": 78.41923076923077,
+              "sufficient": true,
+              "needMore": null
+            },
+            "now": {
+              "value": 78.46153846153847,
+              "unit": "pct",
+              "n": 26,
+              "low": 77.69615384615385,
+              "high": 79.2423076923077,
+              "sufficient": true,
+              "needMore": null
+            },
+            "verdict": "no_clear_change",
+            "diff": 0.853846153846149,
+            "diffLow": -0.29615384615387086,
+            "diffHigh": 1.9384615384615245
+          },
+          "blundersPerGame": {
+            "then": {
+              "value": 0.2692307692307692,
+              "unit": "per_game",
+              "n": 26,
+              "low": 0.15384615384615385,
+              "high": 0.38461538461538464,
+              "sufficient": true,
+              "needMore": null
+            },
+            "now": {
+              "value": 0.23076923076923078,
+              "unit": "per_game",
+              "n": 26,
+              "low": 0.11538461538461539,
+              "high": 0.34615384615384615,
+              "sufficient": true,
+              "needMore": null
+            },
+            "verdict": "no_clear_change",
+            "diff": -0.038461538461538436,
+            "diffLow": -0.1923076923076923,
+            "diffHigh": 0.11538461538461539
+          },
+          "score": {
+            "then": {
+              "value": 0.5,
+              "unit": "rate",
+              "n": 30,
+              "low": 0.3860874543627098,
+              "high": 0.6139125456372901,
+              "sufficient": true,
+              "needMore": null
+            },
+            "now": {
+              "value": 0.5,
+              "unit": "rate",
+              "n": 30,
+              "low": 0.3860874543627098,
+              "high": 0.6139125456372901,
+              "sufficient": true,
+              "needMore": null
+            },
+            "verdict": "no_clear_change",
+            "diff": 0.0,
+            "diffLow": -0.14999999999999997,
+            "diffHigh": 0.15000000000000002
+          },
+          "weaknesses": [
+            {
+              "seriesKey": "W1",
+              "id": "W1",
+              "variant": null,
+              "label": "Leaving pieces hanging",
+              "area": "calculation",
+              "then": {
+                "value": 0.0034999999999999996,
+                "unit": "rate",
+                "n": 30,
+                "low": 0.0017902096721247997,
+                "high": 0.005474692336504855,
+                "sufficient": true,
+                "needMore": null
+              },
+              "now": {
+                "value": 0.0072499999999999995,
+                "unit": "rate",
+                "n": 30,
+                "low": 0.004698040938773577,
+                "high": 0.010065478684729508,
+                "sufficient": true,
+                "needMore": null
+              },
+              "verdict": "worse",
+              "thenEvents": 4,
+              "thenOpportunities": 1200,
+              "nowEvents": 10,
+              "nowOpportunities": 1200
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "lab-steady",
+      "trajectory": {
+        "ratedGames": 60,
+        "sufficient": true,
+        "needMore": null,
+        "kind": "flat",
+        "peak": {
+          "rating": 1415,
+          "date": "2026-04-03"
+        },
+        "current": {
+          "rating": 1399,
+          "date": "2026-04-19"
+        },
+        "change": -2,
+        "months": [
+          {
+            "month": "2026-03",
+            "games": 37,
+            "last": 1404,
+            "high": 1414
+          },
+          {
+            "month": "2026-04",
+            "games": 23,
+            "last": 1395,
+            "high": 1415
+          }
+        ],
+        "thenVsNow": {
+          "then": {
+            "basis": "start",
+            "games": 30,
+            "from": "2026-03-01",
+            "to": "2026-03-25"
+          },
+          "now": {
+            "basis": "last",
+            "games": 30,
+            "from": "2026-03-26",
+            "to": "2026-04-19"
+          },
+          "rating": {
+            "then": {
+              "value": 1400.9333333333334,
+              "unit": "elo",
+              "n": 30,
+              "low": 1399.2666666666667,
+              "high": 1402.6333333333334,
+              "sufficient": true,
+              "needMore": null
+            },
+            "now": {
+              "value": 1400.2,
+              "unit": "elo",
+              "n": 30,
+              "low": 1398.3,
+              "high": 1401.9666666666667,
+              "sufficient": true,
+              "needMore": null
+            },
+            "verdict": "no_clear_change",
+            "diff": -0.7333333333333485,
+            "diffLow": -3.0,
+            "diffHigh": 1.7333333333333485
+          },
+          "accuracy": {
+            "then": {
+              "value": 77.75769230769232,
+              "unit": "pct",
+              "n": 26,
+              "low": 76.97307692307695,
+              "high": 78.53846153846156,
+              "sufficient": true,
+              "needMore": null
+            },
+            "now": {
+              "value": 78.32799999999999,
+              "unit": "pct",
+              "n": 25,
+              "low": 77.584,
+              "high": 79.084,
+              "sufficient": true,
+              "needMore": null
+            },
+            "verdict": "no_clear_change",
+            "diff": 0.5703076923076651,
+            "diffLow": -0.5478461538461659,
+            "diffHigh": 1.6418461538461315
+          },
+          "blundersPerGame": {
+            "then": {
+              "value": 0.2692307692307692,
+              "unit": "per_game",
+              "n": 26,
+              "low": 0.15384615384615385,
+              "high": 0.38461538461538464,
+              "sufficient": true,
+              "needMore": null
+            },
+            "now": {
+              "value": 0.24,
+              "unit": "per_game",
+              "n": 25,
+              "low": 0.12,
+              "high": 0.36,
+              "sufficient": true,
+              "needMore": null
+            },
+            "verdict": "no_clear_change",
+            "diff": -0.029230769230769227,
+            "diffLow": -0.1876923076923077,
+            "diffHigh": 0.1276923076923077
+          },
+          "score": {
+            "then": {
+              "value": 0.5,
+              "unit": "rate",
+              "n": 30,
+              "low": 0.3860874543627098,
+              "high": 0.6139125456372901,
+              "sufficient": true,
+              "needMore": null
+            },
+            "now": {
+              "value": 0.5,
+              "unit": "rate",
+              "n": 30,
+              "low": 0.3860874543627098,
+              "high": 0.6139125456372901,
+              "sufficient": true,
+              "needMore": null
+            },
+            "verdict": "no_clear_change",
+            "diff": 0.0,
+            "diffLow": -0.1499999999999999,
+            "diffHigh": 0.13333333333333336
+          },
+          "weaknesses": []
+        }
+      }
+    },
+    {
+      "id": "lab-new",
+      "trajectory": {
+        "ratedGames": 12,
+        "sufficient": false,
+        "needMore": 8,
+        "kind": null,
+        "peak": null,
+        "current": null,
+        "change": null,
+        "months": [
+          {
+            "month": "2026-03",
+            "games": 12,
+            "last": 1211,
+            "high": 1211
+          }
+        ],
+        "thenVsNow": null
+      }
+    }
+  ]
+}

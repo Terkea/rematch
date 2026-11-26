@@ -79,7 +79,7 @@
       },
       "source_digest": {
         "backend/crates/profile-core/src": "51836f302a3ca8f62575eb7d3333f894be499ef15a35ff05c8ff973bdb33733a",
-        "backend/crates/profile/src": "efde23bf0e96ea40876b077235226bc2e99b5cf35c805bda26918547af5baf6b"
+        "backend/crates/profile/src": "936e647ea9243343e37fd52ce0c370155a9efbbb8f03aba6315dccceed1d00d8"
       },
       "t_win": 85
     },
@@ -92,7 +92,8 @@
       "ranking_version": "rank-v1",
       "source_digest": {
         "apps/web/src/server/focus/goal.ts": "4d4c186f2fa2a83b4ce5785e838a67e5320969cf0103dd9d5a021ae7efaac4b1",
-        "apps/web/src/server/train/model.ts": "bf9ed48573336203232620d5c0fbfc41bd1f24becf6300925cb02523545e6768",
+        "apps/web/src/server/profile/obvious-capture.ts": "54cf1a95d3ac7116732b50ec32c525a495c7a9aa872bee8fe4b7e4bd7aa95393",
+        "apps/web/src/server/train/model.ts": "1197d865dc59322a585c87fbaacb1a61c2d9652cea402efec559b4b364dea7cd",
         "backend/crates/ai/src/output/drills.rs": "3875d4337a16de8dd2a3912f2bfc53d97528003ae88e12a17a5a6b8d13c3960c",
         "backend/crates/coaching-input/src": "e3210a8579d958bdf8940ba4f2945c2e092f412a0e16c49d4c78a21e8a2bf039"
       },
@@ -100,6 +101,6 @@
       "weekly_input_version": "weekly-input-v1"
     }
   },
-  "id": "algo-4.0.0+51733d23895f",
-  "version": "4.0.0"
+  "id": "algo-4.0.1+fcda2762eeeb",
+  "version": "4.0.1"
 }

@@ -1,8 +1,8 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { chooseTarget, focusProgress } from "../src/server/focus/goal";
 import { ALGORITHM_ID } from "../src/lib/algorithm";
+import { chooseTarget, focusProgress } from "../src/server/focus/goal";
 import { LAB_STEPS, runLabStep } from "../src/server/lab/bridge";
 import { isHeldOut, keepCandidate, primarySource, type SourceKey } from "../src/server/train/model";
 
@@ -44,9 +44,9 @@ describe("the lab bridge's steps", () => {
     req.items.forEach((i: { baseline: number; peer: number | null }, n: number) => {
       expect(doc.items[n].target).toEqual(chooseTarget(i));
     });
-    expect(new Set(doc.items.map((i: { target: { basis: string } | null }) => i.target?.basis))).toEqual(
-      new Set(["relative", "peer", undefined]),
-    );
+    expect(
+      new Set(doc.items.map((i: { target: { basis: string } | null }) => i.target?.basis)),
+    ).toEqual(new Set(["relative", "peer", undefined]));
   });
 
   it("focus-progress is focusProgress", () => {
@@ -54,11 +54,19 @@ describe("the lab bridge's steps", () => {
     const doc = JSON.parse(runLabStep("focus-progress", request("focus-progress")));
     req.items.forEach(
       (i: { k: number; n: number; games: number; games_n: number; target: number }, n: number) => {
-        const direct = focusProgress({ k: i.k, n: i.n, games: i.games, gamesN: i.games_n, target: i.target });
+        const direct = focusProgress({
+          k: i.k,
+          n: i.n,
+          games: i.games,
+          gamesN: i.games_n,
+          target: i.target,
+        });
         expect(doc.items[n].progress).toEqual(JSON.parse(JSON.stringify(direct)));
       },
     );
-    const outcomes = doc.items.map((i: { progress: { outcome: string | null } }) => i.progress.outcome);
+    const outcomes = doc.items.map(
+      (i: { progress: { outcome: string | null } }) => i.progress.outcome,
+    );
     expect(outcomes).toEqual(expect.arrayContaining(["met", "not_met", "inconclusive", null]));
   });
 
@@ -123,7 +131,9 @@ describe("the lab bridge's steps", () => {
 
   it("imports the rules and nothing that needs a database or Next.js", () => {
     const imports = (rel: string) =>
-      [...readFileSync(join(__dirname, "..", rel), "utf8").matchAll(/from "([^"]+)"/g)].map((m) => m[1]);
+      [...readFileSync(join(__dirname, "..", rel), "utf8").matchAll(/from "([^"]+)"/g)].map(
+        (m) => m[1],
+      );
     expect(imports("src/server/lab/bridge.ts").sort()).toEqual(
       ["../../lib/algorithm", "../focus/goal", "../train/model", "zod"].sort(),
     );
