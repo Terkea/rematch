@@ -116,6 +116,7 @@ One file per decision: context, decision, alternatives, consequences. New decisi
 - [0112. Hide the motif tags EXP-0007 did not clear](0112-hide-the-motifs-exp-0007-did-not-clear.md)
 - [0113. Analyse at 1 million nodes: the protocol EXP-0008 chose](0113-analyse-at-1-million-nodes.md)
 - [0114. Following anonymised Lichess players across months](0114-following-anonymised-lichess-players-across-months.md)
+- [0115. The lab calls the trajectory, the timeline and the web's rules](0115-the-lab-calls-the-web-rules-through-node.md)
 
 ## Records with placeholder numbers
 

@@ -89,27 +89,27 @@ Twelve experiments, EXP-0007 to EXP-0018, check the learning framework layer by 
 - The follow-ups of EXP-0007: EXP-0019 (a blind human audit of the tags the themes cannot judge), EXP-0020 (deflection), EXP-0021 (pin), EXP-0022 (motifs after the first gain and past ply 8), EXP-0023 (the engine's best line against the solution). Until one of them clears a tag, the six tags EXP-0007 hid are computed and measured but never named to a player or the coach: `coaching_input::motifs::PLAYER_VISIBLE_MOTIFS`, a manifest component since `algo-3.0.0` ([ADR 0112](decisions/0112-hide-the-motifs-exp-0007-did-not-clear.md)).
 - The follow-ups of EXP-0008, which chose 1 million nodes over 300,000: EXP-0027 (do a player's top weaknesses change between the two counts) and EXP-0028 (search deeper only where the cheap searches disagree).
 
-- The second batch, from what the first results left open: EXP-0026 (rank missed mates and early traps, the two flaws behind nearly every Tier 1 miss), and EXP-0004 is now run as well as designed, the first measurement on real players. Two enabling tasks carry no value case of their own: "lab-v2: the lab calls the trajectory, change-state, weekly target and trainer rules", which EXP-0011, EXP-0012, EXP-0014 and EXP-0015 wait on, and "Confirm a champion swap on fresh seeds at release (ADR 0109)", which closes the gap ADR 0109 names: a challenger tuned to the registered seeds.
+- The second batch, from what the first results left open: EXP-0026 (rank missed mates and early traps, the two flaws behind nearly every Tier 1 miss), and EXP-0004 is now run as well as designed, the first measurement on real players. Two enabling tasks carry no value case of their own: "lab-v2: the lab calls the trajectory, change-state, weekly target and trainer rules", which EXP-0011, EXP-0012, EXP-0014 and EXP-0015 waited on (done in #125: `cli lab trajectory` and `cli lab timeline` call the Rust rules, and a Node step runs the web's `goal.ts` and `model.ts`, [ADR 0115](decisions/0115-the-lab-calls-the-web-rules-through-node.md)), and "Confirm a champion swap on fresh seeds at release (ADR 0109)", which closes the gap ADR 0109 names: a challenger tuned to the registered seeds.
 
 The open catalogue, by value score. EXP-0009 takes precedence over its score: it is the only one that can change what we teach, and it runs at the 1 million nodes EXP-0008 chose. Within a score, what can run now comes first. EXP-0001, EXP-0002, EXP-0006, EXP-0007 and EXP-0008 are decided and live in the arena; EXP-0005 was closed unrun.
 
 | Rank | Experiment | Layer | Impact × uncertainty ÷ cost | Runs |
 |---|---|---|---|---|
-| 1 | EXP-0015 the trajectory's "worse" | profile | 3 × 3 ÷ 1 = 9 | after lab-v2 |
+| 1 | EXP-0015 the trajectory's "worse" | profile | 3 × 3 ÷ 1 = 9 | now (`cli lab trajectory`) |
 | 2 | EXP-0013 false weaknesses | profile | 3 × 2 ÷ 1 = 6 | now |
 | 3 | EXP-0021 the pin rule | facts | 2 × 3 ÷ 1 = 6 | now |
 | 4 | EXP-0022 motifs past the first gain | facts | 3 × 2 ÷ 1 = 6 | now |
 | 5 | EXP-0017 learning power | learning | 2 × 3 ÷ 1 = 6 | now |
-| 6 | EXP-0014 the change detectors | profile | 2 × 3 ÷ 1 = 6 | after lab-v2 |
+| 6 | EXP-0014 the change detectors | profile | 2 × 3 ÷ 1 = 6 | now (`cli lab timeline`) |
 | 7 | EXP-0010 points lost or frequency | recommendation | 3 × 2 ÷ 1 = 6 | after EXP-0004 |
-| 8 | EXP-0011 weekly targets | recommendation | 2 × 3 ÷ 1 = 6 | after EXP-0004 and lab-v2 |
+| 8 | EXP-0011 weekly targets | recommendation | 2 × 3 ÷ 1 = 6 | after EXP-0004 (`lab-bridge focus-target` and `focus-progress`) |
 | 9 | EXP-0004 the ranking on real players | recommendation | 3 × 3 ÷ 2 = 4.5 | design now, run after the 1 million protocol ships |
 | 10 | EXP-0009 what helps people climb | recommendation | 3 × 3 ÷ 2 = 4.5 | after the 1 million protocol ships, ahead of its score |
 | 11 | EXP-0019 a blind audit of four tags | facts | 3 × 3 ÷ 2 = 4.5 | now |
 | 12 | EXP-0016 the validator | language | 2 × 2 ÷ 1 = 4 | now |
 | 13 | EXP-0020 the deflection rule | facts | 2 × 2 ÷ 1 = 4 | now |
 | 14 | EXP-0025 W1's range at 30 games | profile | 2 × 2 ÷ 1 = 4 | now |
-| 15 | EXP-0012 drill relevance | recommendation | 2 × 2 ÷ 1 = 4 | after EXP-0004 and lab-v2 |
+| 15 | EXP-0012 drill relevance | recommendation | 2 × 2 ÷ 1 = 4 | after EXP-0004 (`lab-bridge trainer-sources`) |
 | 16 | EXP-0026 missed mates and early traps | recommendation | 3 × 2 ÷ 2 = 3 | now |
 | 17 | EXP-0024 the churn of a ranking change | recommendation | 2 × 3 ÷ 2 = 3 | with EXP-0026's runs |
 | 18 | EXP-0023 the best line against the solution | facts | 3 × 2 ÷ 2 = 3 | now |

@@ -8,6 +8,15 @@ One entry per algorithm version, newest first. The id is `algo-<version>+<hash>`
 
 Each entry says what changed, why, the ADR, and the benchmark delta (the scorecard before and after; `cli bench compare` once it exists).
 
+## algo-4.0.1+fcda2762eeeb
+
+2026-11-26. A refactor of two digested files for the lab, with no output change (#125).
+
+- What changed: the trainer's free-capture check `obviousCapture` moved, unchanged, from `apps/web/src/server/profile/strengths.ts` (which imports the database) to `apps/web/src/server/profile/obvious-capture.ts`, which `train/model.ts` now imports, so the trainer's rules load without a database; the manifest digests the new file under `recommendation.source_digest`. `load_trajectory`'s pure part is now `profile::coaching::trajectory::trajectory_input`, which the loader and `cli lab trajectory` both call. Only source digests moved: `profile/src`, `train/model.ts` and the new file.
+- Why: `cli lab trajectory`, `cli lab timeline` and the web's Node step (`focus-target`, `focus-progress`, `trainer-sources`) let EXP-0011, EXP-0012, EXP-0014 and EXP-0015 call the production rules instead of a copy.
+- ADRs: 0115 (the steps and the lab image's Node), 0105 (the version policy), 0104 (one implementation).
+- Benchmark: no change. The replay goldens in `backend/fixtures/replay/` and the lab's golden responses are byte-identical, the web's strengths and trainer tests pass unchanged, and no layer 1 to 3 component other than a source digest moved, so the Tier 1 scorecard of 4.0.0 stands.
+
 ## algo-4.0.0+51733d23895f
 
 2026-11-24. Every position is searched at 1 million nodes instead of 300,000, the count EXP-0008 chose (#128).

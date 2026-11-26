@@ -1,7 +1,8 @@
 //! The lab bridge (ADR 0106): `cli lab profile` and `cli lab rank` on the committed fixture give
 //! the committed golden files byte for byte, every message validates against
 //! `lab/schemas/lab-v1.schema.json`, and `cli lab analyse` gives the same facts twice and facts
-//! whose profile is the one the production build stored.
+//! whose profile is the one the production build stored. `cli lab trajectory` and `cli lab
+//! timeline` (ADR 0115) give their golden files and exactly what the production functions give.
 //!
 //! `REPLAY_UPDATE=1` rewrites the golden files (after a deliberate algorithm change, ADR 0104).
 
