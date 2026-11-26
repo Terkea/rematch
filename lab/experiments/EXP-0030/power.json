@@ -1,0 +1,265 @@
+{
+  "rule": "Wilson at 1 - 0.05/12 per cell; a candidate's primary clears when all six upper ends are at most 0.15",
+  "sims": 20000,
+  "primary": [
+    {
+      "players": 700,
+      "true_rate_each_cell": 0.08,
+      "all_six_within": 0.9874
+    },
+    {
+      "players": 700,
+      "true_rate_each_cell": 0.1,
+      "all_six_within": 0.317
+    },
+    {
+      "players": 700,
+      "true_rate_each_cell": 0.11,
+      "all_six_within": 0.0188
+    },
+    {
+      "players": 700,
+      "true_rate_each_cell": 0.12,
+      "all_six_within": 0.0001
+    },
+    {
+      "players": 700,
+      "true_rate_each_cell": 0.13,
+      "all_six_within": 0.0
+    },
+    {
+      "players": 700,
+      "true_rate_each_cell": 0.14,
+      "all_six_within": 0.0
+    },
+    {
+      "players": 700,
+      "true_rate_each_cell": 0.15,
+      "all_six_within": 0.0
+    },
+    {
+      "players": 700,
+      "true_rate_each_cell": 0.16,
+      "all_six_within": 0.0
+    },
+    {
+      "players": 1000,
+      "true_rate_each_cell": 0.08,
+      "all_six_within": 0.9998
+    },
+    {
+      "players": 1000,
+      "true_rate_each_cell": 0.1,
+      "all_six_within": 0.806
+    },
+    {
+      "players": 1000,
+      "true_rate_each_cell": 0.11,
+      "all_six_within": 0.2084
+    },
+    {
+      "players": 1000,
+      "true_rate_each_cell": 0.12,
+      "all_six_within": 0.0029
+    },
+    {
+      "players": 1000,
+      "true_rate_each_cell": 0.13,
+      "all_six_within": 0.0
+    },
+    {
+      "players": 1000,
+      "true_rate_each_cell": 0.14,
+      "all_six_within": 0.0
+    },
+    {
+      "players": 1000,
+      "true_rate_each_cell": 0.15,
+      "all_six_within": 0.0
+    },
+    {
+      "players": 1000,
+      "true_rate_each_cell": 0.16,
+      "all_six_within": 0.0
+    },
+    {
+      "players": 1500,
+      "true_rate_each_cell": 0.08,
+      "all_six_within": 1.0
+    },
+    {
+      "players": 1500,
+      "true_rate_each_cell": 0.1,
+      "all_six_within": 0.9923
+    },
+    {
+      "players": 1500,
+      "true_rate_each_cell": 0.11,
+      "all_six_within": 0.7468
+    },
+    {
+      "players": 1500,
+      "true_rate_each_cell": 0.12,
+      "all_six_within": 0.0837
+    },
+    {
+      "players": 1500,
+      "true_rate_each_cell": 0.13,
+      "all_six_within": 0.0003
+    },
+    {
+      "players": 1500,
+      "true_rate_each_cell": 0.14,
+      "all_six_within": 0.0
+    },
+    {
+      "players": 1500,
+      "true_rate_each_cell": 0.15,
+      "all_six_within": 0.0
+    },
+    {
+      "players": 1500,
+      "true_rate_each_cell": 0.16,
+      "all_six_within": 0.0
+    },
+    {
+      "players": 2000,
+      "true_rate_each_cell": 0.08,
+      "all_six_within": 1.0
+    },
+    {
+      "players": 2000,
+      "true_rate_each_cell": 0.1,
+      "all_six_within": 0.9997
+    },
+    {
+      "players": 2000,
+      "true_rate_each_cell": 0.11,
+      "all_six_within": 0.9543
+    },
+    {
+      "players": 2000,
+      "true_rate_each_cell": 0.12,
+      "all_six_within": 0.3427
+    },
+    {
+      "players": 2000,
+      "true_rate_each_cell": 0.13,
+      "all_six_within": 0.0017
+    },
+    {
+      "players": 2000,
+      "true_rate_each_cell": 0.14,
+      "all_six_within": 0.0
+    },
+    {
+      "players": 2000,
+      "true_rate_each_cell": 0.15,
+      "all_six_within": 0.0
+    },
+    {
+      "players": 2000,
+      "true_rate_each_cell": 0.16,
+      "all_six_within": 0.0
+    },
+    {
+      "players": 2500,
+      "true_rate_each_cell": 0.08,
+      "all_six_within": 1.0
+    },
+    {
+      "players": 2500,
+      "true_rate_each_cell": 0.1,
+      "all_six_within": 1.0
+    },
+    {
+      "players": 2500,
+      "true_rate_each_cell": 0.11,
+      "all_six_within": 0.9922
+    },
+    {
+      "players": 2500,
+      "true_rate_each_cell": 0.12,
+      "all_six_within": 0.6234
+    },
+    {
+      "players": 2500,
+      "true_rate_each_cell": 0.13,
+      "all_six_within": 0.0069
+    },
+    {
+      "players": 2500,
+      "true_rate_each_cell": 0.14,
+      "all_six_within": 0.0
+    },
+    {
+      "players": 2500,
+      "true_rate_each_cell": 0.15,
+      "all_six_within": 0.0
+    },
+    {
+      "players": 2500,
+      "true_rate_each_cell": 0.16,
+      "all_six_within": 0.0
+    }
+  ],
+  "detection_guard": [
+    {
+      "players_a_length": 300,
+      "true_detection_each_length": 0.45,
+      "guard_passes": 0.0
+    },
+    {
+      "players_a_length": 300,
+      "true_detection_each_length": 0.5,
+      "guard_passes": 0.0006
+    },
+    {
+      "players_a_length": 300,
+      "true_detection_each_length": 0.55,
+      "guard_passes": 0.2871
+    },
+    {
+      "players_a_length": 300,
+      "true_detection_each_length": 0.6,
+      "guard_passes": 0.9551
+    },
+    {
+      "players_a_length": 300,
+      "true_detection_each_length": 0.65,
+      "guard_passes": 1.0
+    },
+    {
+      "players_a_length": 300,
+      "true_detection_each_length": 0.7,
+      "guard_passes": 1.0
+    }
+  ],
+  "rough_guard_one_cell": [
+    {
+      "players": 1000,
+      "true_rate_one_cell": 0.1,
+      "guard_trips": 0.0
+    },
+    {
+      "players": 1000,
+      "true_rate_one_cell": 0.15,
+      "guard_trips": 0.0024
+    },
+    {
+      "players": 1000,
+      "true_rate_one_cell": 0.18,
+      "guard_trips": 0.4158
+    },
+    {
+      "players": 1000,
+      "true_rate_one_cell": 0.2,
+      "guard_trips": 0.9166
+    },
+    {
+      "players": 1000,
+      "true_rate_one_cell": 0.25,
+      "guard_trips": 1.0
+    }
+  ]
+}
