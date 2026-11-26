@@ -547,7 +547,7 @@ Shipped: Stockfish analysis of every move, explained weaknesses and strengths, t
   - The evaluation lab: every layer against its ground truth (10 sub-issues)
   - The scientific method for the algorithm (12 sub-issues)
   - Are the facts right? (11 sub-issues)
-  - Do we recommend the right thing? (5 sub-issues)
+  - Do we recommend the right thing? (6 sub-issues)
   - Is the profile right? (4 sub-issues)
   - Is the AI faithful? (1 sub-issue)
   - A pipeline speed scorecard, stages 1 to 4 (4 sub-issues)

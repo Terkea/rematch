@@ -8,6 +8,7 @@
     asked = lab.positions(games)                 # games -> the positions the engine is asked for
     found = lab.evaluate(fens, nodes=300_000)    # positions -> Stockfish searches (EXP-0008)
     judged = lab.judge(request)                  # games and searches -> judgements, accuracy
+    observed = lab.observe(request)              # Lichess games -> eval-only weakness counts
     run = lab.bench("smoke", out_dir="out")      # the Tier 1 benchmark (ADR 0100)
     manifest = lab.algorithm()                   # this build's manifest (ADR 0105)
 
@@ -26,6 +27,7 @@ from .bridge import (
     check,
     evaluate,
     judge,
+    observe,
     positions,
     profile,
     rank,
@@ -43,6 +45,7 @@ __all__ = [
     "check",
     "evaluate",
     "judge",
+    "observe",
     "models",
     "positions",
     "profile",

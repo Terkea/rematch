@@ -1,0 +1,553 @@
+{
+  "experiment": "EXP-0009",
+  "q": 0.3,
+  "q_grid": {
+    "0.1": {
+      "control_at_target": true,
+      "keys_at_target": 3,
+      "per_quantity": {
+        "W4.allowed": {
+          "n": 5472.0,
+          "power_climbing": 0.658075,
+          "power_small": 0.316149,
+          "se": 0.921568
+        },
+        "W4.missed": {
+          "n": 3272.0,
+          "power_climbing": 0.039335,
+          "power_small": 0.0,
+          "se": 1.380035
+        },
+        "W5": {
+          "n": 3466.0,
+          "power_climbing": 0.952486,
+          "power_small": 0.904972,
+          "se": 1.175242
+        },
+        "W6": {
+          "n": 4055.0,
+          "power_climbing": 0.990807,
+          "power_small": 0.981615,
+          "se": 1.044102
+        },
+        "W7.prep": {
+          "n": 5472.0,
+          "power_climbing": 0.520981,
+          "power_small": 0.041962,
+          "se": 0.797343
+        },
+        "W7.traps": {
+          "n": 5472.0,
+          "power_climbing": 0.821178,
+          "power_small": 0.642357,
+          "se": 0.821561
+        },
+        "W9a": {
+          "n": 5472.0,
+          "power_climbing": 0.99991,
+          "power_small": 0.999819,
+          "se": 0.690051
+        },
+        "W9b": {
+          "n": 656.0,
+          "power_climbing": 0.216464,
+          "power_small": 0.0,
+          "se": 2.486992
+        },
+        "accuracy": {
+          "n": 5472.0,
+          "power_climbing": 0.927087,
+          "power_small": 0.854174,
+          "se": 0.881047
+        }
+      }
+    },
+    "0.2": {
+      "control_at_target": true,
+      "keys_at_target": 5,
+      "per_quantity": {
+        "W4.allowed": {
+          "n": 10944.0,
+          "power_climbing": 0.957688,
+          "power_small": 0.915377,
+          "se": 0.651647
+        },
+        "W4.missed": {
+          "n": 6544.0,
+          "power_climbing": 0.090408,
+          "power_small": 0.0,
+          "se": 0.975832
+        },
+        "W5": {
+          "n": 6932.0,
+          "power_climbing": 0.999776,
+          "power_small": 0.999551,
+          "se": 0.831022
+        },
+        "W6": {
+          "n": 8110.0,
+          "power_climbing": 0.999996,
+          "power_small": 0.999993,
+          "se": 0.738292
+        },
+        "W7.prep": {
+          "n": 10944.0,
+          "power_climbing": 0.889333,
+          "power_small": 0.778667,
+          "se": 0.563807
+        },
+        "W7.traps": {
+          "n": 10944.0,
+          "power_climbing": 0.992847,
+          "power_small": 0.985693,
+          "se": 0.580931
+        },
+        "W9a": {
+          "n": 10944.0,
+          "power_climbing": 1.0,
+          "power_small": 1.0,
+          "se": 0.48794
+        },
+        "W9b": {
+          "n": 1312.0,
+          "power_climbing": 0.515781,
+          "power_small": 0.031561,
+          "se": 1.758569
+        },
+        "accuracy": {
+          "n": 10944.0,
+          "power_climbing": 0.999326,
+          "power_small": 0.998652,
+          "se": 0.622994
+        }
+      }
+    },
+    "0.3": {
+      "control_at_target": true,
+      "keys_at_target": 6,
+      "per_quantity": {
+        "W4.allowed": {
+          "n": 16416.0,
+          "power_climbing": 0.996883,
+          "power_small": 0.993766,
+          "se": 0.532068
+        },
+        "W4.missed": {
+          "n": 9816.0,
+          "power_climbing": 0.154859,
+          "power_small": 0.0,
+          "se": 0.796764
+        },
+        "W5": {
+          "n": 10398.0,
+          "power_climbing": 1.0,
+          "power_small": 0.999999,
+          "se": 0.678526
+        },
+        "W6": {
+          "n": 12165.0,
+          "power_climbing": 1.0,
+          "power_small": 1.0,
+          "se": 0.602813
+        },
+        "W7.prep": {
+          "n": 16416.0,
+          "power_climbing": 0.983041,
+          "power_small": 0.966083,
+          "se": 0.460346
+        },
+        "W7.traps": {
+          "n": 16416.0,
+          "power_climbing": 0.999854,
+          "power_small": 0.999709,
+          "se": 0.474328
+        },
+        "W9a": {
+          "n": 16416.0,
+          "power_climbing": 1.0,
+          "power_small": 1.0,
+          "se": 0.398401
+        },
+        "W9b": {
+          "n": 1968.0,
+          "power_climbing": 0.7491,
+          "power_small": 0.498199,
+          "se": 1.435866
+        },
+        "accuracy": {
+          "n": 16416.0,
+          "power_climbing": 0.999997,
+          "power_small": 0.999995,
+          "se": 0.508673
+        }
+      }
+    },
+    "0.4": {
+      "control_at_target": true,
+      "keys_at_target": 6,
+      "per_quantity": {
+        "W4.allowed": {
+          "n": 21888.0,
+          "power_climbing": 0.999833,
+          "power_small": 0.999666,
+          "se": 0.460784
+        },
+        "W4.missed": {
+          "n": 13088.0,
+          "power_climbing": 0.228442,
+          "power_small": 0.0,
+          "se": 0.690017
+        },
+        "W5": {
+          "n": 13864.0,
+          "power_climbing": 1.0,
+          "power_small": 1.0,
+          "se": 0.587621
+        },
+        "W6": {
+          "n": 16220.0,
+          "power_climbing": 1.0,
+          "power_small": 1.0,
+          "se": 0.522051
+        },
+        "W7.prep": {
+          "n": 21888.0,
+          "power_climbing": 0.998,
+          "power_small": 0.996,
+          "se": 0.398671
+        },
+        "W7.traps": {
+          "n": 21888.0,
+          "power_climbing": 0.999998,
+          "power_small": 0.999996,
+          "se": 0.41078
+        },
+        "W9a": {
+          "n": 21888.0,
+          "power_climbing": 1.0,
+          "power_small": 1.0,
+          "se": 0.345025
+        },
+        "W9b": {
+          "n": 2624.0,
+          "power_climbing": 0.885809,
+          "power_small": 0.771618,
+          "se": 1.243496
+        },
+        "accuracy": {
+          "n": 21888.0,
+          "power_climbing": 1.0,
+          "power_small": 1.0,
+          "se": 0.440523
+        }
+      }
+    },
+    "0.5": {
+      "control_at_target": true,
+      "keys_at_target": 7,
+      "per_quantity": {
+        "W4.allowed": {
+          "n": 27360.0,
+          "power_climbing": 0.999993,
+          "power_small": 0.999986,
+          "se": 0.412138
+        },
+        "W4.missed": {
+          "n": 16360.0,
+          "power_climbing": 0.306954,
+          "power_small": 0.0,
+          "se": 0.61717
+        },
+        "W5": {
+          "n": 17330.0,
+          "power_climbing": 1.0,
+          "power_small": 1.0,
+          "se": 0.525584
+        },
+        "W6": {
+          "n": 20275.0,
+          "power_climbing": 1.0,
+          "power_small": 1.0,
+          "se": 0.466937
+        },
+        "W7.prep": {
+          "n": 27360.0,
+          "power_climbing": 0.999804,
+          "power_small": 0.999608,
+          "se": 0.356583
+        },
+        "W7.traps": {
+          "n": 27360.0,
+          "power_climbing": 1.0,
+          "power_small": 1.0,
+          "se": 0.367413
+        },
+        "W9a": {
+          "n": 27360.0,
+          "power_climbing": 1.0,
+          "power_small": 1.0,
+          "se": 0.3086
+        },
+        "W9b": {
+          "n": 3280.0,
+          "power_climbing": 0.952936,
+          "power_small": 0.905872,
+          "se": 1.112217
+        },
+        "accuracy": {
+          "n": 27360.0,
+          "power_climbing": 1.0,
+          "power_small": 1.0,
+          "se": 0.394016
+        }
+      }
+    },
+    "0.6": {
+      "control_at_target": true,
+      "keys_at_target": 7,
+      "per_quantity": {
+        "W4.allowed": {
+          "n": 32832.0,
+          "power_climbing": 1.0,
+          "power_small": 0.999999,
+          "se": 0.376229
+        },
+        "W4.missed": {
+          "n": 19632.0,
+          "power_climbing": 0.386675,
+          "power_small": 0.0,
+          "se": 0.563397
+        },
+        "W5": {
+          "n": 20796.0,
+          "power_climbing": 1.0,
+          "power_small": 1.0,
+          "se": 0.479791
+        },
+        "W6": {
+          "n": 24330.0,
+          "power_climbing": 1.0,
+          "power_small": 1.0,
+          "se": 0.426253
+        },
+        "W7.prep": {
+          "n": 32832.0,
+          "power_climbing": 0.999983,
+          "power_small": 0.999966,
+          "se": 0.325514
+        },
+        "W7.traps": {
+          "n": 32832.0,
+          "power_climbing": 1.0,
+          "power_small": 1.0,
+          "se": 0.335401
+        },
+        "W9a": {
+          "n": 32832.0,
+          "power_climbing": 1.0,
+          "power_small": 1.0,
+          "se": 0.281712
+        },
+        "W9b": {
+          "n": 3936.0,
+          "power_climbing": 0.982067,
+          "power_small": 0.964135,
+          "se": 1.01531
+        },
+        "accuracy": {
+          "n": 32832.0,
+          "power_climbing": 1.0,
+          "power_small": 1.0,
+          "se": 0.359686
+        }
+      }
+    },
+    "0.7": {
+      "control_at_target": true,
+      "keys_at_target": 7,
+      "per_quantity": {
+        "W4.allowed": {
+          "n": 38304.0,
+          "power_climbing": 1.0,
+          "power_small": 1.0,
+          "se": 0.34832
+        },
+        "W4.missed": {
+          "n": 22904.0,
+          "power_climbing": 0.464583,
+          "power_small": 0.0,
+          "se": 0.521604
+        },
+        "W5": {
+          "n": 24262.0,
+          "power_climbing": 1.0,
+          "power_small": 1.0,
+          "se": 0.4442
+        },
+        "W6": {
+          "n": 28385.0,
+          "power_climbing": 1.0,
+          "power_small": 1.0,
+          "se": 0.394633
+        },
+        "W7.prep": {
+          "n": 38304.0,
+          "power_climbing": 0.999999,
+          "power_small": 0.999997,
+          "se": 0.301367
+        },
+        "W7.traps": {
+          "n": 38304.0,
+          "power_climbing": 1.0,
+          "power_small": 1.0,
+          "se": 0.310521
+        },
+        "W9a": {
+          "n": 38304.0,
+          "power_climbing": 1.0,
+          "power_small": 1.0,
+          "se": 0.260815
+        },
+        "W9b": {
+          "n": 4592.0,
+          "power_climbing": 0.993591,
+          "power_small": 0.987181,
+          "se": 0.939995
+        },
+        "accuracy": {
+          "n": 38304.0,
+          "power_climbing": 1.0,
+          "power_small": 1.0,
+          "se": 0.333004
+        }
+      }
+    },
+    "0.8": {
+      "control_at_target": true,
+      "keys_at_target": 7,
+      "per_quantity": {
+        "W4.allowed": {
+          "n": 43776.0,
+          "power_climbing": 1.0,
+          "power_small": 1.0,
+          "se": 0.325823
+        },
+        "W4.missed": {
+          "n": 26176.0,
+          "power_climbing": 0.538408,
+          "power_small": 0.076817,
+          "se": 0.487916
+        },
+        "W5": {
+          "n": 27728.0,
+          "power_climbing": 1.0,
+          "power_small": 1.0,
+          "se": 0.415511
+        },
+        "W6": {
+          "n": 32440.0,
+          "power_climbing": 1.0,
+          "power_small": 1.0,
+          "se": 0.369146
+        },
+        "W7.prep": {
+          "n": 43776.0,
+          "power_climbing": 1.0,
+          "power_small": 1.0,
+          "se": 0.281903
+        },
+        "W7.traps": {
+          "n": 43776.0,
+          "power_climbing": 1.0,
+          "power_small": 1.0,
+          "se": 0.290466
+        },
+        "W9a": {
+          "n": 43776.0,
+          "power_climbing": 1.0,
+          "power_small": 1.0,
+          "se": 0.24397
+        },
+        "W9b": {
+          "n": 5248.0,
+          "power_climbing": 0.997828,
+          "power_small": 0.995656,
+          "se": 0.879284
+        },
+        "accuracy": {
+          "n": 43776.0,
+          "power_climbing": 1.0,
+          "power_small": 1.0,
+          "se": 0.311497
+        }
+      }
+    },
+    "0.9": {
+      "control_at_target": true,
+      "keys_at_target": 7,
+      "per_quantity": {
+        "W4.allowed": {
+          "n": 49248.0,
+          "power_climbing": 1.0,
+          "power_small": 1.0,
+          "se": 0.307189
+        },
+        "W4.missed": {
+          "n": 29448.0,
+          "power_climbing": 0.606604,
+          "power_small": 0.213209,
+          "se": 0.460012
+        },
+        "W5": {
+          "n": 31194.0,
+          "power_climbing": 1.0,
+          "power_small": 1.0,
+          "se": 0.391747
+        },
+        "W6": {
+          "n": 36495.0,
+          "power_climbing": 1.0,
+          "power_small": 1.0,
+          "se": 0.348034
+        },
+        "W7.prep": {
+          "n": 49248.0,
+          "power_climbing": 1.0,
+          "power_small": 1.0,
+          "se": 0.265781
+        },
+        "W7.traps": {
+          "n": 49248.0,
+          "power_climbing": 1.0,
+          "power_small": 1.0,
+          "se": 0.273854
+        },
+        "W9a": {
+          "n": 49248.0,
+          "power_climbing": 1.0,
+          "power_small": 1.0,
+          "se": 0.230017
+        },
+        "W9b": {
+          "n": 5904.0,
+          "power_climbing": 0.999297,
+          "power_small": 0.998593,
+          "se": 0.828997
+        },
+        "accuracy": {
+          "n": 49248.0,
+          "power_climbing": 1.0,
+          "power_small": 1.0,
+          "se": 0.293682
+        }
+      }
+    }
+  },
+  "reaches_target": true,
+  "stage2": {
+    "cpu_hours": 4555.213293,
+    "games_per_player": 80,
+    "max_cpu_hours": 20.0,
+    "players_for_median_key": 5242.572844
+  }
+}

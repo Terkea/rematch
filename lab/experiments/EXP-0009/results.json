@@ -1,0 +1,1584 @@
+{
+  "adjusted": {
+    "W4.allowed": {
+      "ci80": [
+        -0.563598,
+        0.784737
+      ],
+      "ci95": [
+        -0.92048,
+        1.14162
+      ],
+      "ci97.5": [
+        -1.068533,
+        1.289672
+      ],
+      "ci99.4444": [
+        -1.348141,
+        1.56928
+      ],
+      "delta_observed": 3.172724,
+      "disattenuated": 0.487901,
+      "estimate": 0.11057,
+      "holm_reject": false,
+      "n": 16204,
+      "p": 0.833522,
+      "p_holm": 1.0,
+      "reads": "below the minimum effect",
+      "reliability": 0.051358,
+      "se": 0.526056
+    },
+    "W4.missed": {
+      "ci80": [
+        0.694138,
+        2.595824
+      ],
+      "ci95": [
+        0.190792,
+        3.09917
+      ],
+      "ci97.5": [
+        -0.01802,
+        3.307983
+      ],
+      "ci99.4444": [
+        -0.412379,
+        3.702341
+      ],
+      "delta_observed": 2.637236,
+      "disattenuated": 8.732529,
+      "estimate": 1.644981,
+      "holm_reject": false,
+      "n": 9653,
+      "p": 0.026615,
+      "p_holm": 0.159691,
+      "reads": "undetermined",
+      "reliability": 0.035485,
+      "se": 0.741947
+    },
+    "W5": {
+      "ci80": [
+        -1.352768,
+        0.44493
+      ],
+      "ci95": [
+        -1.82859,
+        0.920752
+      ],
+      "ci97.5": [
+        -2.025984,
+        1.118146
+      ],
+      "ci99.4444": [
+        -2.398778,
+        1.49094
+      ],
+      "delta_observed": 4.127007,
+      "disattenuated": -1.539824,
+      "estimate": -0.453919,
+      "holm_reject": false,
+      "n": 10416,
+      "p": 0.517513,
+      "p_holm": 1.0,
+      "reads": "below the minimum effect",
+      "reliability": 0.086899,
+      "se": 0.701375
+    },
+    "W6": {
+      "ci80": [
+        0.360505,
+        1.846168
+      ],
+      "ci95": [
+        -0.032726,
+        2.239399
+      ],
+      "ci97.5": [
+        -0.195857,
+        2.402531
+      ],
+      "ci99.4444": [
+        -0.503944,
+        2.710617
+      ],
+      "delta_observed": 3.317807,
+      "disattenuated": 4.6557,
+      "estimate": 1.103337,
+      "holm_reject": false,
+      "n": 12099,
+      "p": 0.056975,
+      "p_holm": 0.284874,
+      "reads": "below the minimum effect",
+      "reliability": 0.056162,
+      "se": 0.579634
+    },
+    "W7.prep": {
+      "ci80": [
+        1.283751,
+        2.472192
+      ],
+      "ci95": [
+        0.96919,
+        2.786754
+      ],
+      "ci97.5": [
+        0.838694,
+        2.917249
+      ],
+      "ci99.4444": [
+        0.592244,
+        3.1637
+      ],
+      "delta_observed": 1.946169,
+      "disattenuated": 13.509418,
+      "estimate": 1.877972,
+      "holm_reject": true,
+      "n": 16204,
+      "p": 5.1e-05,
+      "p_holm": 0.000409,
+      "reads": "precedes climbing",
+      "reliability": 0.019324,
+      "se": 0.463673
+    },
+    "W7.traps": {
+      "ci80": [
+        0.92386,
+        2.14923
+      ],
+      "ci95": [
+        0.599524,
+        2.473566
+      ],
+      "ci97.5": [
+        0.464973,
+        2.608117
+      ],
+      "ci99.4444": [
+        0.210864,
+        2.862226
+      ],
+      "delta_observed": 3.075272,
+      "disattenuated": 6.995032,
+      "estimate": 1.536545,
+      "holm_reject": true,
+      "n": 16204,
+      "p": 0.001309,
+      "p_holm": 0.009163,
+      "reads": "precedes climbing",
+      "reliability": 0.048252,
+      "se": 0.478081
+    },
+    "W9a": {
+      "ci80": [
+        -0.321383,
+        0.735932
+      ],
+      "ci95": [
+        -0.601238,
+        1.015787
+      ],
+      "ci97.5": [
+        -0.717335,
+        1.131884
+      ],
+      "ci99.4444": [
+        -0.936594,
+        1.351143
+      ],
+      "delta_observed": 5.071575,
+      "disattenuated": 0.572178,
+      "estimate": 0.207274,
+      "holm_reject": false,
+      "n": 16204,
+      "p": 0.615339,
+      "p_holm": 1.0,
+      "reads": "below the minimum effect",
+      "reliability": 0.131229,
+      "se": 0.412514
+    },
+    "W9b": {
+      "ci80": [
+        -1.705804,
+        1.984277
+      ],
+      "ci95": [
+        -2.68251,
+        2.960982
+      ],
+      "ci97.5": [
+        -3.087695,
+        3.366168
+      ],
+      "ci99.4444": [
+        -3.852918,
+        4.131391
+      ],
+      "delta_observed": 2.785073,
+      "disattenuated": 0.699913,
+      "estimate": 0.139236,
+      "holm_reject": false,
+      "n": 2094,
+      "p": 0.922955,
+      "p_holm": 1.0,
+      "reads": "undetermined",
+      "reliability": 0.039575,
+      "se": 1.439693
+    },
+    "accuracy": {
+      "ci80": [
+        2.400233,
+        3.669978
+      ],
+      "ci95": [
+        2.064152,
+        4.006059
+      ],
+      "ci97.5": [
+        1.924729,
+        4.145482
+      ],
+      "ci99.4444": [
+        1.661418,
+        4.408792
+      ],
+      "delta_observed": 3.634578,
+      "disattenuated": 11.690896,
+      "estimate": 3.035105,
+      "holm_reject": true,
+      "n": 16204,
+      "p": 0.0,
+      "p_holm": 0.0,
+      "reads": "precedes climbing",
+      "reliability": 0.067399,
+      "se": 0.495394
+    }
+  },
+  "algorithm_id": "algo-4.0.0+51733d23895f",
+  "attrition": {
+    "W4.allowed": {
+      "ipw_primary": {
+        "ci95": [
+          -2.150998,
+          -0.073283
+        ],
+        "estimate": -1.112141,
+        "n": 16204
+      },
+      "n": 17136,
+      "per_sd": -0.002078,
+      "se": 0.002073,
+      "stayed": 0.945612
+    },
+    "W4.missed": {
+      "ipw_primary": {
+        "ci95": [
+          -0.690576,
+          2.311061
+        ],
+        "estimate": 0.810242,
+        "n": 9653
+      },
+      "n": 10283,
+      "per_sd": -0.004224,
+      "se": 0.002799,
+      "stayed": 0.938734
+    },
+    "W5": {
+      "ipw_primary": {
+        "ci95": [
+          -4.232272,
+          -1.466895
+        ],
+        "estimate": -2.849584,
+        "n": 10416
+      },
+      "n": 11086,
+      "per_sd": -0.005608,
+      "se": 0.002812,
+      "stayed": 0.939563
+    },
+    "W6": {
+      "ipw_primary": {
+        "ci95": [
+          -2.156231,
+          0.139221
+        ],
+        "estimate": -1.008505,
+        "n": 12099
+      },
+      "n": 12686,
+      "per_sd": -0.004302,
+      "se": 0.002641,
+      "stayed": 0.953729
+    },
+    "W7.prep": {
+      "ipw_primary": {
+        "ci95": [
+          -0.266325,
+          1.581772
+        ],
+        "estimate": 0.657723,
+        "n": 16204
+      },
+      "n": 17136,
+      "per_sd": -0.001407,
+      "se": 0.001966,
+      "stayed": 0.945612
+    },
+    "W7.traps": {
+      "ipw_primary": {
+        "ci95": [
+          -0.831984,
+          1.062889
+        ],
+        "estimate": 0.115453,
+        "n": 16204
+      },
+      "n": 17136,
+      "per_sd": -0.001327,
+      "se": 0.001924,
+      "stayed": 0.945612
+    },
+    "W9a": {
+      "ipw_primary": {
+        "ci95": [
+          -0.849349,
+          0.789927
+        ],
+        "estimate": -0.029711,
+        "n": 16204
+      },
+      "n": 17136,
+      "per_sd": -0.00371,
+      "se": 0.001827,
+      "stayed": 0.945612
+    },
+    "W9b": {
+      "ipw_primary": {
+        "ci95": [
+          -3.081327,
+          2.659413
+        ],
+        "estimate": -0.210957,
+        "n": 2094
+      },
+      "n": 2225,
+      "per_sd": -0.005021,
+      "se": 0.007031,
+      "stayed": 0.941124
+    },
+    "accuracy": {
+      "ipw_primary": {
+        "ci95": [
+          -0.855774,
+          1.160668
+        ],
+        "estimate": 0.152447,
+        "n": 16204
+      },
+      "n": 17136,
+      "per_sd": -0.004498,
+      "se": 0.002195,
+      "stayed": 0.945612
+    }
+  },
+  "by_band": {
+    "B0": {
+      "W4.allowed": {
+        "ci95": [
+          -5.652899,
+          5.061585
+        ],
+        "estimate": -0.295657,
+        "n": 519
+      },
+      "W4.missed": {
+        "ci95": [
+          -0.79171,
+          18.23256
+        ],
+        "estimate": 8.720425,
+        "n": 391
+      },
+      "W5": {
+        "ci95": [
+          -11.644571,
+          4.687883
+        ],
+        "estimate": -3.478344,
+        "n": 338
+      },
+      "W6": {
+        "ci95": [
+          -8.032267,
+          5.447417
+        ],
+        "estimate": -1.292425,
+        "n": 439
+      },
+      "W7.prep": {
+        "ci95": [
+          -2.520718,
+          8.98007
+        ],
+        "estimate": 3.229676,
+        "n": 519
+      },
+      "W7.traps": {
+        "ci95": [
+          0.763143,
+          11.831714
+        ],
+        "estimate": 6.297429,
+        "n": 519
+      },
+      "W9a": {
+        "ci95": [
+          -5.652124,
+          7.14808
+        ],
+        "estimate": 0.747978,
+        "n": 519
+      },
+      "W9b": {
+        "estimate": null,
+        "n": 15
+      },
+      "accuracy": {
+        "ci95": [
+          -3.626558,
+          7.197223
+        ],
+        "estimate": 1.785333,
+        "n": 519
+      },
+      "players": 554
+    },
+    "B1": {
+      "W4.allowed": {
+        "ci95": [
+          -4.255574,
+          0.208971
+        ],
+        "estimate": -2.023301,
+        "n": 3782
+      },
+      "W4.missed": {
+        "ci95": [
+          -4.157959,
+          1.991845
+        ],
+        "estimate": -1.083057,
+        "n": 2575
+      },
+      "W5": {
+        "ci95": [
+          -6.022339,
+          -0.169712
+        ],
+        "estimate": -3.096026,
+        "n": 2509
+      },
+      "W6": {
+        "ci95": [
+          -4.122216,
+          0.729077
+        ],
+        "estimate": -1.69657,
+        "n": 3017
+      },
+      "W7.prep": {
+        "ci95": [
+          -1.651342,
+          2.288501
+        ],
+        "estimate": 0.318579,
+        "n": 3782
+      },
+      "W7.traps": {
+        "ci95": [
+          -1.168622,
+          2.843887
+        ],
+        "estimate": 0.837632,
+        "n": 3782
+      },
+      "W9a": {
+        "ci95": [
+          -1.963868,
+          1.553994
+        ],
+        "estimate": -0.204937,
+        "n": 3782
+      },
+      "W9b": {
+        "ci95": [
+          -15.870897,
+          8.902715
+        ],
+        "estimate": -3.484091,
+        "n": 179
+      },
+      "accuracy": {
+        "ci95": [
+          -0.536426,
+          3.563865
+        ],
+        "estimate": 1.51372,
+        "n": 3782
+      },
+      "players": 4009
+    },
+    "B2": {
+      "W4.allowed": {
+        "ci95": [
+          -2.007046,
+          1.243125
+        ],
+        "estimate": -0.38196,
+        "n": 7127
+      },
+      "W4.missed": {
+        "ci95": [
+          -1.660588,
+          2.829431
+        ],
+        "estimate": 0.584421,
+        "n": 4195
+      },
+      "W5": {
+        "ci95": [
+          -4.579611,
+          -0.149219
+        ],
+        "estimate": -2.364415,
+        "n": 4498
+      },
+      "W6": {
+        "ci95": [
+          -2.623499,
+          0.893244
+        ],
+        "estimate": -0.865128,
+        "n": 5221
+      },
+      "W7.prep": {
+        "ci95": [
+          -0.220972,
+          2.614523
+        ],
+        "estimate": 1.196775,
+        "n": 7127
+      },
+      "W7.traps": {
+        "ci95": [
+          -1.659885,
+          1.287383
+        ],
+        "estimate": -0.186251,
+        "n": 7127
+      },
+      "W9a": {
+        "ci95": [
+          -1.984251,
+          0.533961
+        ],
+        "estimate": -0.725145,
+        "n": 7127
+      },
+      "W9b": {
+        "ci95": [
+          -4.914531,
+          4.488181
+        ],
+        "estimate": -0.213175,
+        "n": 799
+      },
+      "accuracy": {
+        "ci95": [
+          -1.740664,
+          1.221714
+        ],
+        "estimate": -0.259475,
+        "n": 7127
+      },
+      "players": 7514
+    },
+    "B3": {
+      "W4.allowed": {
+        "ci95": [
+          -3.088147,
+          0.639513
+        ],
+        "estimate": -1.224317,
+        "n": 4776
+      },
+      "W4.missed": {
+        "ci95": [
+          -0.950996,
+          4.560014
+        ],
+        "estimate": 1.804509,
+        "n": 2492
+      },
+      "W5": {
+        "ci95": [
+          -6.082969,
+          -1.448712
+        ],
+        "estimate": -3.76584,
+        "n": 3071
+      },
+      "W6": {
+        "ci95": [
+          -2.636733,
+          1.56298
+        ],
+        "estimate": -0.536876,
+        "n": 3422
+      },
+      "W7.prep": {
+        "ci95": [
+          -1.650234,
+          1.60465
+        ],
+        "estimate": -0.022792,
+        "n": 4776
+      },
+      "W7.traps": {
+        "ci95": [
+          -2.716393,
+          0.583738
+        ],
+        "estimate": -1.066328,
+        "n": 4776
+      },
+      "W9a": {
+        "ci95": [
+          -0.520849,
+          2.302352
+        ],
+        "estimate": 0.890751,
+        "n": 4776
+      },
+      "W9b": {
+        "ci95": [
+          -2.31595,
+          5.139312
+        ],
+        "estimate": 1.411681,
+        "n": 1101
+      },
+      "accuracy": {
+        "ci95": [
+          -3.433474,
+          -0.142867
+        ],
+        "estimate": -1.78817,
+        "n": 4776
+      },
+      "players": 5059
+    }
+  },
+  "compute": {
+    "actual": {
+      "engine_nodes": 1000000,
+      "observe_games": 877072
+    },
+    "budget": {
+      "engine_nodes": 1000000,
+      "observe_games": 1200000
+    },
+    "cap": 1.5
+  },
+  "contemporaneous": {
+    "W4.allowed": {
+      "ci80": [
+        5.361902,
+        6.809147
+      ],
+      "ci95": [
+        4.97884,
+        7.19221
+      ],
+      "ci97.5": [
+        4.819926,
+        7.351123
+      ],
+      "ci99.4444": [
+        4.519807,
+        7.651243
+      ],
+      "delta_observed": 3.070398,
+      "disattenuated": 27.747978,
+      "estimate": 6.085525,
+      "holm_reject": true,
+      "n": 17136,
+      "p": 0.0,
+      "p_holm": 0.0,
+      "reads": "precedes climbing",
+      "reliability": 0.048099,
+      "se": 0.564646
+    },
+    "W4.missed": {
+      "ci80": [
+        4.132856,
+        6.199743
+      ],
+      "ci95": [
+        3.585784,
+        6.746815
+      ],
+      "ci97.5": [
+        3.358831,
+        6.973767
+      ],
+      "ci99.4444": [
+        2.930215,
+        7.402384
+      ],
+      "delta_observed": 2.14934,
+      "disattenuated": 33.65134,
+      "estimate": 5.166299,
+      "holm_reject": true,
+      "n": 10283,
+      "p": 0.0,
+      "p_holm": 0.0,
+      "reads": "precedes climbing",
+      "reliability": 0.02357,
+      "se": 0.8064
+    },
+    "W5": {
+      "ci80": [
+        11.589773,
+        13.389683
+      ],
+      "ci95": [
+        11.113366,
+        13.866091
+      ],
+      "ci97.5": [
+        10.915729,
+        14.063728
+      ],
+      "ci99.4444": [
+        10.542476,
+        14.436981
+      ],
+      "delta_observed": 4.190889,
+      "disattenuated": 41.722938,
+      "estimate": 12.489728,
+      "holm_reject": true,
+      "n": 11086,
+      "p": 0.0,
+      "p_holm": 0.0,
+      "reads": "precedes climbing",
+      "reliability": 0.08961,
+      "se": 0.702239
+    },
+    "W6": {
+      "ci80": [
+        7.709357,
+        9.275987
+      ],
+      "ci95": [
+        7.294695,
+        9.690649
+      ],
+      "ci97.5": [
+        7.122672,
+        9.862671
+      ],
+      "ci99.4444": [
+        6.797796,
+        10.187548
+      ],
+      "delta_observed": 2.977758,
+      "disattenuated": 39.928494,
+      "estimate": 8.492672,
+      "holm_reject": true,
+      "n": 12686,
+      "p": 0.0,
+      "p_holm": 0.0,
+      "reads": "precedes climbing",
+      "reliability": 0.04524,
+      "se": 0.611224
+    },
+    "W7.prep": {
+      "ci80": [
+        4.990268,
+        6.259753
+      ],
+      "ci95": [
+        4.654255,
+        6.595765
+      ],
+      "ci97.5": [
+        4.514861,
+        6.73516
+      ],
+      "ci99.4444": [
+        4.251604,
+        6.998417
+      ],
+      "delta_observed": 2.245481,
+      "disattenuated": 35.070501,
+      "estimate": 5.62501,
+      "holm_reject": true,
+      "n": 17136,
+      "p": 0.0,
+      "p_holm": 0.0,
+      "reads": "precedes climbing",
+      "reliability": 0.025725,
+      "se": 0.495292
+    },
+    "W7.traps": {
+      "ci80": [
+        6.3479,
+        7.625437
+      ],
+      "ci95": [
+        6.009757,
+        7.96358
+      ],
+      "ci97.5": [
+        5.869479,
+        8.103858
+      ],
+      "ci99.4444": [
+        5.604552,
+        8.368785
+      ],
+      "delta_observed": 2.743291,
+      "disattenuated": 35.655476,
+      "estimate": 6.986669,
+      "holm_reject": true,
+      "n": 17136,
+      "p": 0.0,
+      "p_holm": 0.0,
+      "reads": "precedes climbing",
+      "reliability": 0.038396,
+      "se": 0.498433
+    },
+    "W9a": {
+      "ci80": [
+        0.276146,
+        1.362252
+      ],
+      "ci95": [
+        -0.011329,
+        1.649727
+      ],
+      "ci97.5": [
+        -0.130588,
+        1.768986
+      ],
+      "ci99.4444": [
+        -0.355817,
+        1.994215
+      ],
+      "delta_observed": 4.894333,
+      "disattenuated": 2.343279,
+      "estimate": 0.819199,
+      "holm_reject": false,
+      "n": 17136,
+      "p": 0.053208,
+      "p_holm": 0.106416,
+      "reads": "below the minimum effect",
+      "reliability": 0.122217,
+      "se": 0.423747
+    },
+    "W9b": {
+      "ci80": [
+        0.529873,
+        4.587698
+      ],
+      "ci95": [
+        -0.544169,
+        5.661739
+      ],
+      "ci97.5": [
+        -0.989734,
+        6.107304
+      ],
+      "ci99.4444": [
+        -1.831217,
+        6.948788
+      ],
+      "delta_observed": 2.837028,
+      "disattenuated": 12.626945,
+      "estimate": 2.558785,
+      "holm_reject": false,
+      "n": 2225,
+      "p": 0.106042,
+      "p_holm": 0.106416,
+      "reads": "undetermined",
+      "reliability": 0.041065,
+      "se": 1.583169
+    },
+    "accuracy": {
+      "ci80": [
+        13.44678,
+        14.800319
+      ],
+      "ci95": [
+        13.08852,
+        15.158579
+      ],
+      "ci97.5": [
+        12.939897,
+        15.307203
+      ],
+      "ci99.4444": [
+        12.659209,
+        15.587891
+      ],
+      "delta_observed": 3.815265,
+      "disattenuated": 51.825936,
+      "estimate": 14.12355,
+      "holm_reject": true,
+      "n": 17136,
+      "p": 0.0,
+      "p_holm": 0.0,
+      "reads": "precedes climbing",
+      "reliability": 0.074267,
+      "se": 0.528086
+    }
+  },
+  "decision": {
+    "below_minimum": [
+      "W4.allowed",
+      "W6",
+      "W7.traps",
+      "W9a"
+    ],
+    "climbing": [],
+    "outcome": "need more data",
+    "positive_control_holds": false
+  },
+  "design": {
+    "delta": 14.0,
+    "months": {
+      "P0": "2026-07",
+      "P1": "2026-08",
+      "P2": "2026-09",
+      "P3": "2026-10"
+    },
+    "salt": "80b7ed61df63b5e94e96089d100887cef8465b13028260352639573bee9ae5d4",
+    "seed_namespace": "EXP-0009",
+    "simultaneous_level": 0.994444,
+    "slice": [
+      0.0,
+      0.3
+    ]
+  },
+  "experiment": "EXP-0009",
+  "exploratory": {
+    "blunder_rate": {
+      "ci80": [
+        0.322531,
+        1.616667
+      ],
+      "ci95": [
+        -0.020006,
+        1.959204
+      ],
+      "ci97.5": [
+        -0.162107,
+        2.101305
+      ],
+      "ci99.4444": [
+        -0.430476,
+        2.369674
+      ],
+      "delta_observed": 2.970477,
+      "disattenuated": 4.569766,
+      "estimate": 0.969599,
+      "n": 16204,
+      "p": 0.054815,
+      "reliability": 0.045019,
+      "se": 0.50491
+    }
+  },
+  "flow": {
+    "audience": 17138,
+    "by_band": {
+      "B0": 554,
+      "B1": 4009,
+      "B2": 7514,
+      "B3": 5059
+    },
+    "feature_months": 18968,
+    "observed_games": 17136,
+    "p0_history": 86819,
+    "p3_active": 16206,
+    "with_outcome": 16204
+  },
+  "games": {
+    "algorithm_id": "algo-4.0.0+51733d23895f",
+    "games_failed": 125,
+    "games_not_standard": 0,
+    "games_observed": 876947,
+    "games_read": 877072,
+    "games_with_an_opponent_in_the_other_slice": 91366
+  },
+  "level": {
+    "W4.allowed": {
+      "ci80": [
+        -0.462808,
+        1.229484
+      ],
+      "ci95": [
+        -0.91073,
+        1.677406
+      ],
+      "ci97.5": [
+        -1.09655,
+        1.863226
+      ],
+      "ci99.4444": [
+        -1.447486,
+        2.214162
+      ],
+      "delta_observed": 8.375827,
+      "disattenuated": 0.640741,
+      "estimate": 0.383338,
+      "holm_reject": false,
+      "n": 16204,
+      "p": 0.561514,
+      "p_holm": 1.0,
+      "reads": "below the minimum effect",
+      "reliability": 0.357931,
+      "se": 0.660251
+    },
+    "W4.missed": {
+      "ci80": [
+        1.550804,
+        3.536689
+      ],
+      "ci95": [
+        1.025172,
+        4.062321
+      ],
+      "ci97.5": [
+        0.807114,
+        4.280378
+      ],
+      "ci99.4444": [
+        0.395295,
+        4.692198
+      ],
+      "delta_observed": 5.764507,
+      "disattenuated": 6.177882,
+      "estimate": 2.543746,
+      "holm_reject": true,
+      "n": 9653,
+      "p": 0.001027,
+      "p_holm": 0.00616,
+      "reads": "precedes climbing",
+      "reliability": 0.169538,
+      "se": 0.774797
+    },
+    "W5": {
+      "ci80": [
+        1.063789,
+        3.061036
+      ],
+      "ci95": [
+        0.535149,
+        3.589675
+      ],
+      "ci97.5": [
+        0.315844,
+        3.808981
+      ],
+      "ci99.4444": [
+        -0.098332,
+        4.223156
+      ],
+      "delta_observed": 10.206748,
+      "disattenuated": 2.828891,
+      "estimate": 2.062412,
+      "holm_reject": true,
+      "n": 10416,
+      "p": 0.008127,
+      "p_holm": 0.040637,
+      "reads": "precedes climbing",
+      "reliability": 0.531519,
+      "se": 0.77923
+    },
+    "W6": {
+      "ci80": [
+        -1.033308,
+        0.647325
+      ],
+      "ci95": [
+        -1.478144,
+        1.092161
+      ],
+      "ci97.5": [
+        -1.662684,
+        1.276701
+      ],
+      "ci99.4444": [
+        -2.011202,
+        1.625219
+      ],
+      "delta_observed": 8.576208,
+      "disattenuated": -0.315044,
+      "estimate": -0.192992,
+      "holm_reject": false,
+      "n": 12099,
+      "p": 0.768507,
+      "p_holm": 1.0,
+      "reads": "below the minimum effect",
+      "reliability": 0.375262,
+      "se": 0.655702
+    },
+    "W7.prep": {
+      "ci80": [
+        5.073049,
+        6.703668
+      ],
+      "ci95": [
+        4.64145,
+        7.135267
+      ],
+      "ci97.5": [
+        4.462402,
+        7.314315
+      ],
+      "ci99.4444": [
+        4.124256,
+        7.652462
+      ],
+      "delta_observed": 11.21408,
+      "disattenuated": 7.351207,
+      "estimate": 5.888359,
+      "holm_reject": true,
+      "n": 16204,
+      "p": 0.0,
+      "p_holm": 0.0,
+      "reads": "precedes climbing",
+      "reliability": 0.64161,
+      "se": 0.636189
+    },
+    "W7.traps": {
+      "ci80": [
+        3.441139,
+        5.448672
+      ],
+      "ci95": [
+        2.909776,
+        5.980034
+      ],
+      "ci97.5": [
+        2.689341,
+        6.200469
+      ],
+      "ci99.4444": [
+        2.273033,
+        6.616778
+      ],
+      "delta_observed": 12.001059,
+      "disattenuated": 5.185265,
+      "estimate": 4.444905,
+      "holm_reject": true,
+      "n": 16204,
+      "p": 0.0,
+      "p_holm": 0.0,
+      "reads": "precedes climbing",
+      "reliability": 0.734823,
+      "se": 0.783243
+    },
+    "W9a": {
+      "ci80": [
+        -0.689488,
+        0.68801
+      ],
+      "ci95": [
+        -1.054089,
+        1.052612
+      ],
+      "ci97.5": [
+        -1.205344,
+        1.203867
+      ],
+      "ci99.4444": [
+        -1.491,
+        1.489523
+      ],
+      "delta_observed": 12.46073,
+      "disattenuated": -0.00083,
+      "estimate": -0.000739,
+      "holm_reject": false,
+      "n": 16204,
+      "p": 0.998903,
+      "p_holm": 1.0,
+      "reads": "below the minimum effect",
+      "reliability": 0.792193,
+      "se": 0.537434
+    },
+    "W9b": {
+      "ci80": [
+        1.168133,
+        4.775853
+      ],
+      "ci95": [
+        0.213228,
+        5.730758
+      ],
+      "ci97.5": [
+        -0.182914,
+        6.1269
+      ],
+      "ci99.4444": [
+        -0.931058,
+        6.875044
+      ],
+      "delta_observed": 4.831353,
+      "disattenuated": 8.61206,
+      "estimate": 2.971993,
+      "holm_reject": false,
+      "n": 2094,
+      "p": 0.034734,
+      "p_holm": 0.138934,
+      "reads": "undetermined",
+      "reliability": 0.119092,
+      "se": 1.407559
+    },
+    "accuracy": {
+      "ci80": [
+        5.148854,
+        7.299136
+      ],
+      "ci95": [
+        4.579709,
+        7.868281
+      ],
+      "ci97.5": [
+        4.3436,
+        8.10439
+      ],
+      "ci99.4444": [
+        3.897689,
+        8.550301
+      ],
+      "delta_observed": 11.894269,
+      "disattenuated": 7.325875,
+      "estimate": 6.223995,
+      "holm_reject": true,
+      "n": 16204,
+      "p": 0.0,
+      "p_holm": 0.0,
+      "reads": "precedes climbing",
+      "reliability": 0.721804,
+      "se": 0.838937
+    }
+  },
+  "months": {
+    "P0": {
+      "compressed_bytes": 29051046504,
+      "eval_games": 0,
+      "games_kept": 88092979,
+      "games_seen": 89288421,
+      "month": "2026-07",
+      "players": 943323,
+      "sha256": "68738b1c448f051dc8d42db645d5b01749988a3bc1c24981adfe44ea92060dc7",
+      "url": "https://database.lichess.org/standard/lichess_db_standard_rated_2026-07.pgn.zst"
+    },
+    "P1": {
+      "compressed_bytes": 30145862359,
+      "eval_games": 3004296,
+      "games_kept": 91136599,
+      "games_seen": 91912325,
+      "month": "2026-08",
+      "players": 958716,
+      "sha256": "6bf6fa8a5dee7bb81d1874ac312160060daf12f18a29dc2740a3bf6f5e5e6248",
+      "url": "https://database.lichess.org/standard/lichess_db_standard_rated_2026-08.pgn.zst"
+    },
+    "P2": {
+      "compressed_bytes": 29224520887,
+      "eval_games": 2806788,
+      "games_kept": 88643163,
+      "games_seen": 89616462,
+      "month": "2026-09",
+      "players": 963038,
+      "sha256": "1de8eb64fed443f4be310c779e8d60a13bcfc6e3b104bcb39a018eb056edec89",
+      "url": "https://database.lichess.org/standard/lichess_db_standard_rated_2026-09.pgn.zst"
+    },
+    "P3": {
+      "compressed_bytes": 30982323881,
+      "eval_games": 0,
+      "games_kept": 94072197,
+      "games_seen": 95395628,
+      "month": "2026-10",
+      "players": 1090165,
+      "sha256": "043906ebfade1bfeb7c00087590fac505370936c028525e4722e2dbd4986ae86",
+      "url": "https://database.lichess.org/standard/lichess_db_standard_rated_2026-10.pgn.zst"
+    }
+  },
+  "players": 17136,
+  "primary": {
+    "W4.allowed": {
+      "ci80": [
+        -1.866421,
+        -0.503051
+      ],
+      "ci95": [
+        -2.227283,
+        -0.142189
+      ],
+      "ci97.5": [
+        -2.376986,
+        0.007514
+      ],
+      "ci99.4444": [
+        -2.659712,
+        0.29024
+      ],
+      "delta_observed": 3.172724,
+      "disattenuated": -5.22778,
+      "estimate": -1.184736,
+      "holm_reject": false,
+      "n": 16204,
+      "p": 0.025929,
+      "p_holm": 0.20743,
+      "reads": "below the minimum effect",
+      "reliability": 0.051358,
+      "se": 0.531921
+    },
+    "W4.missed": {
+      "ci80": [
+        -0.241395,
+        1.733096
+      ],
+      "ci95": [
+        -0.764012,
+        2.255712
+      ],
+      "ci97.5": [
+        -0.980818,
+        2.472519
+      ],
+      "ci99.4444": [
+        -1.390275,
+        2.881975
+      ],
+      "delta_observed": 2.637236,
+      "disattenuated": 3.959412,
+      "estimate": 0.74585,
+      "holm_reject": false,
+      "n": 9653,
+      "p": 0.332947,
+      "p_holm": 1.0,
+      "reads": "undetermined",
+      "reliability": 0.035485,
+      "se": 0.770352
+    },
+    "W5": {
+      "ci80": [
+        -3.851552,
+        -2.024912
+      ],
+      "ci95": [
+        -4.335034,
+        -1.541429
+      ],
+      "ci97.5": [
+        -4.535606,
+        -1.340857
+      ],
+      "ci99.4444": [
+        -4.914402,
+        -0.962061
+      ],
+      "delta_observed": 4.127007,
+      "disattenuated": -9.967332,
+      "estimate": -2.938232,
+      "holm_reject": true,
+      "n": 10416,
+      "p": 3.7e-05,
+      "p_holm": 0.000337,
+      "reads": "precedes falling",
+      "reliability": 0.086899,
+      "se": 0.712667
+    },
+    "W6": {
+      "ci80": [
+        -1.786175,
+        -0.278273
+      ],
+      "ci95": [
+        -2.185293,
+        0.120845
+      ],
+      "ci97.5": [
+        -2.350866,
+        0.286419
+      ],
+      "ci99.4444": [
+        -2.663565,
+        0.599117
+      ],
+      "delta_observed": 3.317807,
+      "disattenuated": -4.355628,
+      "estimate": -1.032224,
+      "holm_reject": false,
+      "n": 12099,
+      "p": 0.079336,
+      "p_holm": 0.55535,
+      "reads": "below the minimum effect",
+      "reliability": 0.056162,
+      "se": 0.588311
+    },
+    "W7.prep": {
+      "ci80": [
+        0.050735,
+        1.266293
+      ],
+      "ci95": [
+        -0.271004,
+        1.588032
+      ],
+      "ci97.5": [
+        -0.404477,
+        1.721505
+      ],
+      "ci99.4444": [
+        -0.656551,
+        1.97358
+      ],
+      "delta_observed": 1.946169,
+      "disattenuated": 4.737101,
+      "estimate": 0.658514,
+      "holm_reject": false,
+      "n": 16204,
+      "p": 0.164976,
+      "p_holm": 0.989854,
+      "reads": "undetermined",
+      "reliability": 0.019324,
+      "se": 0.474253
+    },
+    "W7.traps": {
+      "ci80": [
+        -0.586819,
+        0.659872
+      ],
+      "ci95": [
+        -0.916798,
+        0.989851
+      ],
+      "ci97.5": [
+        -1.053689,
+        1.126743
+      ],
+      "ci99.4444": [
+        -1.312219,
+        1.385273
+      ],
+      "delta_observed": 3.075272,
+      "disattenuated": 0.166285,
+      "estimate": 0.036527,
+      "holm_reject": false,
+      "n": 16204,
+      "p": 0.940138,
+      "p_holm": 1.0,
+      "reads": "below the minimum effect",
+      "reliability": 0.048252,
+      "se": 0.486399
+    },
+    "W9a": {
+      "ci80": [
+        -0.554704,
+        0.515202
+      ],
+      "ci95": [
+        -0.837891,
+        0.798389
+      ],
+      "ci97.5": [
+        -0.955371,
+        0.915869
+      ],
+      "ci99.4444": [
+        -1.17724,
+        1.137739
+      ],
+      "delta_observed": 5.071575,
+      "disattenuated": -0.054522,
+      "estimate": -0.019751,
+      "holm_reject": false,
+      "n": 16204,
+      "p": 0.962261,
+      "p_holm": 1.0,
+      "reads": "below the minimum effect",
+      "reliability": 0.131229,
+      "se": 0.417426
+    },
+    "W9b": {
+      "ci80": [
+        -2.239593,
+        1.589918
+      ],
+      "ci95": [
+        -3.253203,
+        2.603528
+      ],
+      "ci97.5": [
+        -3.673698,
+        3.024023
+      ],
+      "ci99.4444": [
+        -4.467836,
+        3.818161
+      ],
+      "delta_observed": 2.785073,
+      "disattenuated": -1.632892,
+      "estimate": -0.324837,
+      "holm_reject": false,
+      "n": 2094,
+      "p": 0.827885,
+      "p_holm": 1.0,
+      "reads": "undetermined",
+      "reliability": 0.039575,
+      "se": 1.494092
+    },
+    "accuracy": {
+      "ci80": [
+        -0.753198,
+        0.50633
+      ],
+      "ci95": [
+        -1.086575,
+        0.839707
+      ],
+      "ci97.5": [
+        -1.224876,
+        0.978008
+      ],
+      "ci99.4444": [
+        -1.486069,
+        1.2392
+      ],
+      "delta_observed": 3.634578,
+      "disattenuated": -0.475456,
+      "estimate": -0.123434,
+      "holm_reject": false,
+      "n": 16204,
+      "p": 0.801671,
+      "p_holm": 1.0,
+      "reads": "below the minimum effect",
+      "reliability": 0.067399,
+      "se": 0.491407
+    }
+  },
+  "rating_change_sd": 53.789254,
+  "stage2": {
+    "cpu_hours": 4555.213293,
+    "games_per_player": 80,
+    "max_cpu_hours": 20.0,
+    "players_for_median_key": 5242.572844,
+    "runs": false
+  }
+}

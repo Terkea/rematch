@@ -1,0 +1,13 @@
+# The cohort (ADR 0114): external, in the data directory, git-ignored; each file's checksum is
+# written here once its month is streamed and verified, before the pilot (section 7).
+9086050e7305ea7f739cf03af4737e32bc7fba2a3f0ccc6b3a4415f194b97ebc  external:exp09-cohort/2026-07/meta.json
+56ab37f0734946f92b0af8b1de10ea5ce7421f915f34fb98e3651f0bbabef43d  external:exp09-cohort/2026-07/players.jsonl
+d60c42e3471c8b31f73e3fdf28232ed3a899b71f3744469a59334b477128060d  external:exp09-cohort/2026-08/meta.json
+ca0175b9cfd0138056ec3a564409f3e1e5aed7887e3448424d08d3451c59ad53  external:exp09-cohort/2026-08/players.jsonl
+5c639467933c9b02591c65af697c978fd27908cff51b94412c27069fa3e271a6  external:exp09-cohort/2026-09/meta.json
+61f644714688a45c246cfe4898aa20c71b95fefd6bdcf2b5c8dd3826aa0bb01b  external:exp09-cohort/2026-09/players.jsonl
+d44946929863592912ceb603050f453493793dbbe6e06222e332fe75818e98c9  external:exp09-cohort/2026-10/meta.json
+4cdd9f6b5081a73ec2a9313bd846f138eb1f9932a66e01f176bc8fa0d8c103e8  external:exp09-cohort/2026-10/players.jsonl
+30f9110448f41ffed75c1ad8d3c212486229ec86141786cd2b90cc2c95eaf6a7  external:exp09-cohort/2026-08/games.jsonl
+a9d62f460402351b0d83c7882d5d641a5e8736239dfef496908185742a61a406  external:exp09-cohort/2026-09/games.jsonl
+5b388585de3a966f36068bed5ae0caca1f5bdddfe616568c11f45e14e7c9d969  power.json

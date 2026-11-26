@@ -6101,6 +6101,277 @@
       "rule_sha256": "30451eb48702ecb82e38191e63342857be8813241888ede5fe3c5b1aac1e3c53",
       "seed_namespace": "EXP-0008",
       "verdict": "better"
+    },
+    {
+      "against": "algo-4.0.0+51733d23895f",
+      "algorithm_id": "algo-4.0.0+51733d23895f",
+      "analysis_sha256": "b7c6f6e50da02955c5066d0b8ecdcd83f5cb3aca8bb4a3acf2333bf90c8856e8",
+      "comparison": {
+        "effect:W4.allowed": {
+          "effect": 0.0,
+          "interval": [
+            -1.474384,
+            1.474384
+          ],
+          "level": "95%, HC3 over players",
+          "verdict": "no clear difference"
+        },
+        "effect:W4.missed": {
+          "effect": 0.0,
+          "interval": [
+            -2.135267,
+            2.135267
+          ],
+          "level": "95%, HC3 over players",
+          "verdict": "no clear difference"
+        },
+        "effect:W5": {
+          "effect": 0.0,
+          "interval": [
+            -1.975377,
+            1.975377
+          ],
+          "level": "95%, HC3 over players",
+          "verdict": "no clear difference"
+        },
+        "effect:W6": {
+          "effect": 0.0,
+          "interval": [
+            -1.630686,
+            1.630686
+          ],
+          "level": "95%, HC3 over players",
+          "verdict": "no clear difference"
+        },
+        "effect:W7.prep": {
+          "effect": 0.0,
+          "interval": [
+            -1.314537,
+            1.314537
+          ],
+          "level": "95%, HC3 over players",
+          "verdict": "no clear difference"
+        },
+        "effect:W7.traps": {
+          "effect": 0.0,
+          "interval": [
+            -1.348204,
+            1.348204
+          ],
+          "level": "95%, HC3 over players",
+          "verdict": "no clear difference"
+        },
+        "effect:W9a": {
+          "effect": 0.0,
+          "interval": [
+            -1.157025,
+            1.157025
+          ],
+          "level": "95%, HC3 over players",
+          "verdict": "no clear difference"
+        },
+        "effect:W9b": {
+          "effect": 0.0,
+          "interval": [
+            -4.141334,
+            4.141334
+          ],
+          "level": "95%, HC3 over players",
+          "verdict": "no clear difference"
+        },
+        "effect:accuracy": {
+          "effect": 0.0,
+          "interval": [
+            -1.362087,
+            1.362087
+          ],
+          "level": "95%, HC3 over players",
+          "verdict": "no clear difference"
+        },
+        "keys_preceding_climbing": {
+          "effect": 0.0,
+          "interval": null,
+          "level": "section 9's rule",
+          "verdict": "no clear difference"
+        },
+        "level_reliability": {
+          "effect": 0.0,
+          "interval": null,
+          "level": "any key below -0.05, mean above +0.02",
+          "verdict": "no clear difference"
+        }
+      },
+      "date": "2026-11-26",
+      "experiment": "EXP-0009",
+      "inputs_sha256": "819b977ab9ef780aaa00b93c5433af29b9cfeb2e1ca79a35c21d3e0ae49fdafb",
+      "measures": {
+        "climbing": [],
+        "effects": {
+          "W4.allowed": {
+            "estimate": -1.184736,
+            "interval": [
+              -2.227283,
+              -0.142189
+            ]
+          },
+          "W4.missed": {
+            "estimate": 0.74585,
+            "interval": [
+              -0.764012,
+              2.255712
+            ]
+          },
+          "W5": {
+            "estimate": -2.938232,
+            "interval": [
+              -4.335034,
+              -1.541429
+            ]
+          },
+          "W6": {
+            "estimate": -1.032224,
+            "interval": [
+              -2.185293,
+              0.120845
+            ]
+          },
+          "W7.prep": {
+            "estimate": 0.658514,
+            "interval": [
+              -0.271004,
+              1.588032
+            ]
+          },
+          "W7.traps": {
+            "estimate": 0.036527,
+            "interval": [
+              -0.916798,
+              0.989851
+            ]
+          },
+          "W9a": {
+            "estimate": -0.019751,
+            "interval": [
+              -0.837891,
+              0.798389
+            ]
+          },
+          "W9b": {
+            "estimate": -0.324837,
+            "interval": [
+              -3.253203,
+              2.603528
+            ]
+          },
+          "accuracy": {
+            "estimate": -0.123434,
+            "interval": [
+              -1.086575,
+              0.839707
+            ]
+          }
+        },
+        "outcome": "need more data",
+        "reliability": {
+          "W4.allowed": 0.357931,
+          "W4.missed": 0.169538,
+          "W5": 0.531519,
+          "W6": 0.375262,
+          "W7.prep": 0.64161,
+          "W7.traps": 0.734823,
+          "W9a": 0.792193,
+          "W9b": 0.119092
+        }
+      },
+      "metrics": {
+        "effect:W4.allowed": {
+          "interval": [
+            -2.227283,
+            -0.142189
+          ],
+          "level": "95%, HC3 over players",
+          "value": -1.184736
+        },
+        "effect:W4.missed": {
+          "interval": [
+            -0.764012,
+            2.255712
+          ],
+          "level": "95%, HC3 over players",
+          "value": 0.74585
+        },
+        "effect:W5": {
+          "interval": [
+            -4.335034,
+            -1.541429
+          ],
+          "level": "95%, HC3 over players",
+          "value": -2.938232
+        },
+        "effect:W6": {
+          "interval": [
+            -2.185293,
+            0.120845
+          ],
+          "level": "95%, HC3 over players",
+          "value": -1.032224
+        },
+        "effect:W7.prep": {
+          "interval": [
+            -0.271004,
+            1.588032
+          ],
+          "level": "95%, HC3 over players",
+          "value": 0.658514
+        },
+        "effect:W7.traps": {
+          "interval": [
+            -0.916798,
+            0.989851
+          ],
+          "level": "95%, HC3 over players",
+          "value": 0.036527
+        },
+        "effect:W9a": {
+          "interval": [
+            -0.837891,
+            0.798389
+          ],
+          "level": "95%, HC3 over players",
+          "value": -0.019751
+        },
+        "effect:W9b": {
+          "interval": [
+            -3.253203,
+            2.603528
+          ],
+          "level": "95%, HC3 over players",
+          "value": -0.324837
+        },
+        "effect:accuracy": {
+          "interval": [
+            -1.086575,
+            0.839707
+          ],
+          "level": "95%, HC3 over players",
+          "value": -0.123434
+        },
+        "keys_preceding_climbing": {
+          "at": "need more data: none",
+          "interval": null,
+          "level": "section 9's rule",
+          "value": 0.0
+        },
+        "level_reliability": {
+          "interval": null,
+          "level": "point estimates, SE about 0.008 each",
+          "value": 0.465246
+        }
+      },
+      "results_sha256": "82d941f1ca6db506667e25bcd90aad407256d139f2d07feb8d1d703ea0492186",
+      "rule_sha256": "f9ba26182a8cabf637160658235ea7d73a77e63d1477b7e3c9ce17bf31f899ed",
+      "seed_namespace": "EXP-0009",
+      "verdict": "no clear difference"
     }
   ],
   "schema": "leaderboard-v1",
@@ -6344,6 +6615,74 @@
         "better": "lower",
         "label": "D(300,000) − D(1 million), share of moves",
         "name": "step_up",
+        "role": "report"
+      }
+    ],
+    "EXP-0009": [
+      {
+        "better": "higher, no key 0.05 lower",
+        "label": "Mean split-half reliability of the eight keys' August level",
+        "name": "level_reliability",
+        "role": "primary"
+      },
+      {
+        "better": "report only",
+        "label": "Keys whose fall precedes climbing (section 9)",
+        "name": "keys_preceding_climbing",
+        "role": "report"
+      },
+      {
+        "better": "higher",
+        "label": "W4.missed: next month's Elo per SD of improvement",
+        "name": "effect:W4.missed",
+        "role": "report"
+      },
+      {
+        "better": "higher",
+        "label": "W4.allowed: next month's Elo per SD of improvement",
+        "name": "effect:W4.allowed",
+        "role": "report"
+      },
+      {
+        "better": "higher",
+        "label": "W5: next month's Elo per SD of improvement",
+        "name": "effect:W5",
+        "role": "report"
+      },
+      {
+        "better": "higher",
+        "label": "W6: next month's Elo per SD of improvement",
+        "name": "effect:W6",
+        "role": "report"
+      },
+      {
+        "better": "higher",
+        "label": "W7.traps: next month's Elo per SD of improvement",
+        "name": "effect:W7.traps",
+        "role": "report"
+      },
+      {
+        "better": "higher",
+        "label": "W7.prep: next month's Elo per SD of improvement",
+        "name": "effect:W7.prep",
+        "role": "report"
+      },
+      {
+        "better": "higher",
+        "label": "W9a: next month's Elo per SD of improvement",
+        "name": "effect:W9a",
+        "role": "report"
+      },
+      {
+        "better": "higher",
+        "label": "W9b: next month's Elo per SD of improvement",
+        "name": "effect:W9b",
+        "role": "report"
+      },
+      {
+        "better": "higher",
+        "label": "accuracy: next month's Elo per SD of improvement",
+        "name": "effect:accuracy",
         "role": "report"
       }
     ]

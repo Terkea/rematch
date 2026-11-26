@@ -9,6 +9,7 @@ pub mod generate;
 pub mod harness;
 pub mod lab;
 pub mod memo;
+pub mod observe;
 pub mod policy;
 pub mod results;
 pub mod run;

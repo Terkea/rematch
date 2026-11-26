@@ -1,6 +1,7 @@
 //! `lichess-db`: operator CLI for the Lichess database pipeline (R-11, ADR-R2-1, ADR-R2-9).
 //!
-//! Subcommands from R2 Tasks 19-22: `scan`, `build`, `bench`, `syzygy`; Task 35: `resume`.
+//! Subcommands from R2 Tasks 19-22: `scan`, `build`, `bench`, `syzygy`; Task 35: `resume`;
+//! EXP-0009 (ADR 0114): `cohort`.
 
 use clap::{Args, Parser, Subcommand};
 use futures::StreamExt;
@@ -41,6 +42,111 @@ enum Command {
     /// Re-enqueue the reference-game jobs of verified `building` band-reference builds after a
     /// crash between the row insert and the last job batch (idempotent; DATABASE_URL).
     Resume(ResumeArgs),
+    /// Follow the same anonymised players across monthly dumps (EXP-0009, ADR 0114): stream one
+    /// month, verify its SHA-256, and write the followed players' rapid summary (and, with
+    /// --games, their rapid games with Lichess's evaluations) to --out. No database.
+    Cohort(CohortArgs),
+}
+
+#[derive(Debug, Args)]
+struct CohortArgs {
+    /// Dump month, YYYY-MM.
+    #[arg(long, value_parser = parse_month)]
+    month: String,
+    /// Mirror root.
+    #[arg(long, default_value = DEFAULT_BASE_URL)]
+    base_url: String,
+    /// 64 hex digits; the same salt every month follows the same players.
+    #[arg(long)]
+    salt: String,
+    /// Follow a side when the fraction of its hash is below this, in [0, 1].
+    #[arg(long, default_value_t = 1.0)]
+    player_rate: f64,
+    /// Also write games.jsonl: the followed players' rapid games with [%eval].
+    #[arg(long)]
+    games: bool,
+    /// Output directory (created); the files appear only after the SHA-256 is verified.
+    #[arg(long)]
+    out: std::path::PathBuf,
+}
+
+async fn run_cohort(args: CohortArgs) -> anyhow::Result<()> {
+    use lichess_db::cohort::{CohortSink, write_line};
+    use std::io::{BufWriter, Write};
+    let salt = lichess_db::reference_select::parse_salt(&args.salt).map_err(anyhow::Error::msg)?;
+    anyhow::ensure!(
+        (0.0..=1.0).contains(&args.player_rate),
+        "--player-rate is in [0, 1]"
+    );
+    std::fs::create_dir_all(&args.out)?;
+    let client = http_client()?;
+    let src = DumpSource::new(args.base_url, args.month);
+    let expected = fetch_expected_sha(&client, &src).await?;
+    let (mut games, sha) = open_dump(&client, &src).await?;
+    let mut sink = CohortSink::new(salt, args.player_rate);
+    let part = args.out.join("games.jsonl.part");
+    let mut out = if args.games {
+        Some(BufWriter::new(std::fs::File::create(&part)?))
+    } else {
+        None
+    };
+    let mut written = 0u64;
+    while let Some(game) = games.next().await {
+        if let Some(line) = sink.offer(game?)
+            && let Some(w) = out.as_mut()
+        {
+            write_line(w, &line)?;
+            written += 1;
+        }
+        let st = sink.stats();
+        if st.seen.is_multiple_of(PROGRESS_EVERY) {
+            tracing::info!(
+                seen = st.seen,
+                kept = st.kept,
+                eval_games = written,
+                compressed_bytes = sha.bytes_read(),
+                "cohort"
+            );
+        }
+    }
+    let drained = drain_to_end(games).await?;
+    let compressed = sha.bytes_read();
+    let digest = sha.verify(&expected)?;
+    if let Some(mut w) = out {
+        w.flush()?;
+        std::fs::rename(&part, args.out.join("games.jsonl"))?;
+    }
+    let mut w = BufWriter::new(std::fs::File::create(args.out.join("players.jsonl"))?);
+    let players = sink.players();
+    for p in &players {
+        write_line(&mut w, p)?;
+    }
+    w.flush()?;
+    let st = sink.stats();
+    let meta = serde_json::json!({
+        "month": src.month,
+        "url": src.url(),
+        "sha256": digest,
+        "compressed_bytes": compressed,
+        "drained_unparsed_bytes": drained,
+        "games_seen": st.seen,
+        "games_kept": st.kept,
+        "malformed": st.malformed,
+        "player_rate": args.player_rate,
+        "salt": args.salt.trim(),
+        "players": players.len(),
+        "eval_games": written,
+    });
+    std::fs::write(
+        args.out.join("meta.json"),
+        format!(
+            "{}
+",
+            serde_json::to_string_pretty(&meta)?
+        ),
+    )?;
+    println!("{meta}");
+    Ok(())
 }
 
 #[derive(Debug, Args)]
@@ -326,6 +432,7 @@ async fn main() -> anyhow::Result<()> {
         Command::Build(args) => run_build(args).await?,
         Command::Bench(args) => run_bench(args).await?,
         Command::Resume(args) => run_resume(args).await?,
+        Command::Cohort(args) => run_cohort(args).await?,
     }
     Ok(())
 }
