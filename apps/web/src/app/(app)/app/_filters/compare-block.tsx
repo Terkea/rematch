@@ -8,7 +8,8 @@ import { type GlossaryEntry, STATS_GLOSSARY } from "./glossary";
 // The period comparison (T3): A | B | change for accuracy, blunders per game and score, with n
 // on each side. A table from `md`; below it each stat is a short block, with every cell labelled.
 // The change column only ever holds the verdict's words (ADR 0083 §6) and, when a verdict was
-// reached, the difference with its 80% range.
+// reached, the difference with its 80% range. A withheld verdict (ADR 0116) shows "Not called"
+// and the difference alone, in plain weight.
 
 /** Serif values: lining, tabular figures. */
 const LINING = { fontVariantNumeric: "lining-nums tabular-nums" } as const;
@@ -103,7 +104,9 @@ export function CompareBlock({
                     data-verdict={r.change.verdict}
                     className={cn(
                       "block text-base text-ink",
-                      r.change.verdict === "not_enough_games" ? "" : "font-medium",
+                      r.change.verdict === "not_enough_games" || r.change.verdict === "withheld"
+                        ? ""
+                        : "font-medium",
                     )}
                   >
                     {r.change.text}

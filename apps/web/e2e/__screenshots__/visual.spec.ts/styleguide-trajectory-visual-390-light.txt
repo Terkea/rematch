@@ -38,13 +38,13 @@ Measure	Around your peak	Your last 30 games	Change
 Rating
 Around your peak
 1,072 on average
-80% range 1,067 to 1,077, 30 rated games
+30 rated games
 Your last 30 games
 881 on average
-80% range 872 to 890, 30 rated games
+30 rated games
 Change
-Worse
-Difference −192 points, 80% range −202 to −182
+Not called
+Difference −192 points
 Accuracy
 Around your peak
 74.0%
