@@ -127,13 +127,19 @@ def in_slice(h: str, lo: float, hi: float) -> bool:
     return lo <= fraction(h) < hi
 
 
-def read_players(month: str, lo: float, hi: float) -> dict[str, dict[str, Any]]:
+def read_players(month: str, lo: float, hi: float,
+                 keep: set[str] | None = None) -> dict[str, dict[str, Any]]:
+    """The month's players in the slice (and in `keep`, when given); memory only, no result
+    depends on the filter's order."""
     out = {}
     with path_of(month, "players.jsonl").open(encoding="utf-8") as f:
         for line in f:
+            h = line[6:38]  # '{"h":"<32 hex>"', the line's first field
+            if keep is not None and h not in keep:
+                continue
             p = json.loads(line)
-            if in_slice(p["h"], lo, hi):
-                out[p["h"]] = p
+            if p["h"] == h and in_slice(h, lo, hi):
+                out[h] = p
     return out
 
 
@@ -155,9 +161,13 @@ def game_key(game_id: str) -> str:
 
 def eligible(lo: float, hi: float) -> tuple[dict[str, dict[str, Any]], dict[str, int]]:
     """Section 7's rules that read the players files only, in order; the counts of each step."""
-    months = {k: read_players(m, lo, hi) for k, m in MONTHS.items()}
+    p0 = read_players(MONTHS["P0"], lo, hi)
+    history = {h for h, p in p0.items() if p["rapid_games"] >= MIN_P0_RAPID}
+    months = {"P0": {h: p0[h] for h in history}}
+    for k in ("P1", "P2", "P3"):
+        months[k] = read_players(MONTHS[k], lo, hi, history)
     flow: dict[str, int] = {}
-    ids = [h for h, p in months["P0"].items() if p["rapid_games"] >= MIN_P0_RAPID]
+    ids = sorted(history)
     flow["p0_history"] = len(ids)
     ids = [h for h in ids if all(months[k].get(h, {}).get("eval_games", 0) >= MIN_EVAL_GAMES
                                  for k in FEATURE_MONTHS)]

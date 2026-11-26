@@ -127,7 +127,7 @@ This departs from ADR 0106's measurement rule (one interval in a band): there is
 ## 10. Analysis code
 
 - Entry point: `lab/experiments/EXP-0009/analysis.py` (`python analysis.py --out DIR` writes `DIR/results.json`, with the `algorithm_id` it ran on, and `DIR/figures/`; its `pilot` and `power` stages run before, in that order)
-- Analysis code sha256: `5a6f18f3552e9d460334d5604d16713ee15ac902472663777f3cdedc93b07900`
+- Analysis code sha256: `1197a801791c498b7ae288f1df127df2687bd1b1f3b6945f27699ebeed09af70`
 
 ## 11. Deviations
 

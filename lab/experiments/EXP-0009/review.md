@@ -22,3 +22,5 @@ Its concerns, and what was done about each before the pilot:
 12. **Players of the two slices can meet** (minor). Done: the run counts the games with an opponent in the other slice. Ratings ignore rated abandoned games, which are filtered out; noted as a limit.
 13. **The blunder rate cost power for no decision** (minor). Done: it is exploratory; the family is nine and the simultaneous level 1 − 0.05/9.
 14. **The contemporaneous family is partly mechanical** (minor). Done: it is descriptive for W5, W6 and accuracy (section 4).
+
+Changed after this review and before the pilot, with no number seen: `inputs.sha256` now holds the ten cohort files' checksums (the four months streamed and verified against Lichess's `sha256sums.txt` on 2026-11-24; their sizes and digests are in each `meta.json`), and `read_players` keeps only the P0-eligible players when it reads P1 to P3, which saves memory and changes no result.
