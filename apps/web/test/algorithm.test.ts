@@ -30,7 +30,11 @@ describe("the algorithm manifest's web fields", () => {
   });
 
   it("digests the trainer and focus rules as they are", () => {
-    for (const rel of ["apps/web/src/server/train/model.ts", "apps/web/src/server/focus/goal.ts"]) {
+    for (const rel of [
+      "apps/web/src/server/train/model.ts",
+      "apps/web/src/server/focus/goal.ts",
+      "apps/web/src/server/profile/obvious-capture.ts",
+    ]) {
       expect(manifest.components.recommendation.source_digest[rel], rel).toBe(digest(rel));
     }
   });

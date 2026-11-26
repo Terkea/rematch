@@ -21,6 +21,20 @@ on:
     paths:
       - lab/**
       - algorithm/**
+      - apps/web/package.json
+      - apps/web/scripts/lab-bridge.ts
+      - apps/web/scripts/build-lab-bridge.mjs
+      - apps/web/src/lib/algorithm.ts
+      - apps/web/src/lib/time-zone.ts
+      - apps/web/src/server/focus/goal.ts
+      - apps/web/src/server/lab/**
+      - apps/web/src/server/profile/obvious-capture.ts
+      - apps/web/src/server/stats/**
+      - apps/web/src/server/train/model.ts
+      - packages/chess-core/**
+      - package.json
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
       - backend/crates/ai/**
       - backend/crates/analysis/**
       - backend/crates/bench/**
@@ -96,8 +110,8 @@ jobs:
           mkdir -p lab-ctx/usr/local/bin
           $COMPOSE run --rm --no-deps -e LANE="$LANE" rust-dev sh -c \
             'cargo build --locked --release -p cli && cp /lane-target/release/cli /work/lab-ctx/usr/local/bin/cli && cp /usr/local/bin/stockfish /work/lab-ctx/usr/local/bin/stockfish'
-      - name: Build the lab image (uv sync --frozen)
-        run: docker build --build-context rematch=lab-ctx -t rematch-lab:ci lab
+      - name: Build the lab image (uv sync --frozen; the web's rules bundled from the lockfile)
+        run: docker build --build-context rematch=lab-ctx --build-context repo=. -t rematch-lab:ci lab
       - name: Contract tests (pytest)
         run: docker run --rm rematch-lab:ci pytest
       - name: Start Postgres (rematch_lab.analyse builds in a throwaway database)

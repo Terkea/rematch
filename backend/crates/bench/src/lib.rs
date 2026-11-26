@@ -8,6 +8,7 @@ pub mod flaws;
 pub mod generate;
 pub mod harness;
 pub mod lab;
+pub mod lab_rules;
 pub mod memo;
 pub mod observe;
 pub mod policy;

@@ -23,7 +23,7 @@ use sha2::{Digest, Sha256};
 /// The algorithm's version, for people (the hash is the proof). Bump it by the policy in
 /// `algorithm/CHANGELOG.md`: major when layer 1 to 3 output can change, minor when only the
 /// language layer changes, patch when nothing a replay can see changes.
-pub const VERSION: &str = "4.0.0";
+pub const VERSION: &str = "4.0.1";
 
 /// The manifest's path in the repository.
 pub const MANIFEST_PATH: &str = "algorithm/manifest.json";
@@ -219,6 +219,8 @@ fn python_int(root: &Path, rel: &str, name: &str) -> anyhow::Result<i64> {
 /// The TS files whose rules the web owns (checked again by `apps/web/test/algorithm.test.ts`).
 pub const TS_TRAINER: &str = "apps/web/src/server/train/model.ts";
 pub const TS_FOCUS: &str = "apps/web/src/server/focus/goal.ts";
+/// The free-capture check the trainer's `keepCandidate` calls (a pure module since #125).
+pub const TS_FREE_CAPTURE: &str = "apps/web/src/server/profile/obvious-capture.ts";
 pub const TS_GAME_STATS: &str = "apps/web/src/server/stats/game-stats.ts";
 
 /// Builds the manifest of the code under `root` (the repository root).
@@ -303,6 +305,7 @@ pub fn build(root: &Path) -> anyhow::Result<Manifest> {
             "backend/crates/ai/src/output/drills.rs",
             TS_TRAINER,
             TS_FOCUS,
+            TS_FREE_CAPTURE,
         ])?,
     });
     let mut models: Vec<&str> = AiModel::ALL.iter().map(|m| m.as_str()).collect();

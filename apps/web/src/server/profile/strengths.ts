@@ -11,7 +11,6 @@ import {
   weaknessEstimates,
   weaknessStateHistory,
 } from "@ci/db/generated";
-import { Chess } from "chess.js";
 import { and, asc, count, desc, eq, gte, inArray, isNotNull, lt, type SQL, sql } from "drizzle-orm";
 import type { DayRange } from "../filters/params";
 import { readOnly } from "../games";
@@ -30,9 +29,12 @@ import { type KpiDef, kpiDef, seriesLabel, weaknessDef } from "./catalogue";
 import { difficultyStatus } from "./difficulty";
 import { KPI_GLOSSARY } from "./glossary";
 import { CURRENT_WINDOW, latestSnapshots } from "./kpis";
+import { obviousCapture } from "./obvious-capture";
 import { ownsScope } from "./scope";
 import type { Area, CoachScope, Side as Colour, DifficultyStatus, WeaknessState } from "./types";
 import { openingNames } from "./weaknesses";
+
+export { obviousCapture };
 
 // The strengths page's read model (`/app/strengths`): the good things in a scope's games and what
 // to keep doing. Every claim passes one gate below, and each gate refuses to claim without its
@@ -547,32 +549,6 @@ export type HardSpots = {
 
 /** The engine's move, when the row records one (the strength ply already says it was played). */
 const playedBest = (c: HardSpotCandidate) => c.bestUci == null || c.bestUci === c.uci;
-
-const VALUE: Record<string, number> = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 100 };
-
-/**
- * True for a capture anyone would find (N11): a recapture on the square the opponent just
- * captured on, a capture of more than the capturing piece is worth, or one nothing can legally
- * take back. False for a quiet move or a move that is not legal in `fen`.
- */
-export function obviousCapture(fen: string, uci: string, prevSan: string | null): boolean {
-  let chess: Chess;
-  let move: ReturnType<Chess["move"]>;
-  try {
-    chess = new Chess(fen);
-    move = chess.move({
-      from: uci.slice(0, 2),
-      to: uci.slice(2, 4),
-      ...(uci.length > 4 ? { promotion: uci.slice(4, 5) } : {}),
-    });
-  } catch {
-    return false;
-  }
-  if (!move.captured) return false;
-  if (prevSan?.includes("x") && prevSan.replace(/[+#?!]/g, "").endsWith(move.to)) return true;
-  if ((VALUE[move.captured] ?? 0) > (VALUE[move.piece] ?? 0)) return true;
-  return !chess.moves({ verbose: true }).some((m) => m.to === move.to && m.captured);
-}
 
 /**
  * A move anyone would find: an obvious capture (`obviousCapture`). Finding the refutation of

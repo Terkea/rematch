@@ -1,7 +1,7 @@
 import { type EngineScore, winPercent } from "@ci/chess-core";
 import { Chess } from "chess.js";
 import { timeZoneOf } from "../../lib/time-zone";
-import { obviousCapture } from "../profile/strengths";
+import { obviousCapture } from "../profile/obvious-capture";
 import { fnv1a, type Interval, mulberry32, wilson } from "../stats";
 
 export { timeZoneOf };

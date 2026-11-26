@@ -21,11 +21,32 @@
     "reason": "a doc comment only: the production count it names is now 1 million; EXP-0001 does not call cli lab analyse (ADR 0113)"
   },
   {
+    "adr": "docs/decisions/0115-the-lab-calls-the-web-rules-through-node.md",
+    "blob": "1259eb461672997c2ac7a312c3d4b46007d992c1",
+    "experiment": "EXP-0001",
+    "path": "backend/crates/bench/src/lab.rs",
+    "reason": "check_version is pub(crate), so lab_rules.rs shares it; nothing EXP-0001 runs changed (ADR 0115)"
+  },
+  {
+    "adr": "docs/decisions/0115-the-lab-calls-the-web-rules-through-node.md",
+    "blob": "8b92478027a002a83bd2e72ceead1cd29f1ffe91",
+    "experiment": "EXP-0001",
+    "path": "backend/crates/bench/src/lab_rules.rs",
+    "reason": "a new module, cli lab trajectory and timeline, which the bench run never calls (ADR 0115)"
+  },
+  {
     "adr": "docs/decisions/0109-champion-and-challenger.md",
     "blob": "fd9d50a2899990b0517eec6543ed7cd95b072b2b",
     "experiment": "EXP-0001",
     "path": "backend/crates/bench/src/lib.rs",
     "reason": "variant_from_env and its test; an empty ALGO_VARIANT is None (ADR 0109 Amendment 1)"
+  },
+  {
+    "adr": "docs/decisions/0115-the-lab-calls-the-web-rules-through-node.md",
+    "blob": "89dba4cbfc725744bd53f8e756054bbb59fbf1b2",
+    "experiment": "EXP-0001",
+    "path": "backend/crates/bench/src/lib.rs",
+    "reason": "declares the lab_rules module only (ADR 0115)"
   },
   {
     "adr": "docs/decisions/0113-analyse-at-1-million-nodes.md",

@@ -1,7 +1,8 @@
 //! The lab bridge (ADR 0106): `cli lab profile` and `cli lab rank` on the committed fixture give
 //! the committed golden files byte for byte, every message validates against
 //! `lab/schemas/lab-v1.schema.json`, and `cli lab analyse` gives the same facts twice and facts
-//! whose profile is the one the production build stored.
+//! whose profile is the one the production build stored. `cli lab trajectory` and `cli lab
+//! timeline` (ADR 0115) give their golden files and exactly what the production functions give.
 //!
 //! `REPLAY_UPDATE=1` rewrites the golden files (after a deliberate algorithm change, ADR 0104).
 
@@ -316,4 +317,226 @@ async fn an_unknown_algo_variant_is_refused_before_anything_runs() {
     .await;
     assert_eq!(code, 1);
     assert!(errors.lock().unwrap()[0].starts_with("ALGO_VARIANT: unknown algorithm variant"));
+}
+
+/// `trajectory` (EXP-0015): the fixture gives the golden file, the same bytes twice, and each
+/// player's `trajectory` is exactly what the production `trajectory_input`, `compute` and
+/// `contract` give for those games.
+#[test]
+fn trajectory_is_the_production_rule() {
+    use bench::lab_rules::{TrajectoryRequest, trajectory_player};
+    use profile::coaching::trajectory::{
+        Prior, TrajectoryGame, WeaknessInput, compute, contract, trajectory_input,
+    };
+
+    let request = read("fixtures/trajectory-request.json");
+    assert_valid("TrajectoryRequest", &request);
+    let out = run_pure("trajectory", &request).expect("trajectory");
+    assert_valid("TrajectoryResponse", &out);
+    golden("fixtures/golden/trajectory-response.json", &out);
+    assert_eq!(run_pure("trajectory", &request).unwrap(), out);
+
+    let req: TrajectoryRequest = serde_json::from_str(&request).unwrap();
+    let doc: Value = serde_json::from_str(&out).unwrap();
+    for (i, p) in req.players.iter().enumerate() {
+        let games: Vec<TrajectoryGame> = p
+            .games
+            .iter()
+            .map(|g| TrajectoryGame {
+                id: g.id.clone(),
+                played_at: g.played_at,
+                own_rating: g.rating,
+                result: g.result.into(),
+                analysed: g.analysed,
+                accuracy: g.accuracy,
+                blunders: i32::try_from(g.blunders).unwrap(),
+            })
+            .collect();
+        let weaknesses = p
+            .weaknesses
+            .iter()
+            .map(|w| WeaknessInput {
+                series_key: w.series_key.as_str().to_owned(),
+                prior: Prior {
+                    mu: w.prior.mu,
+                    n0: w.prior.n0,
+                },
+                points: w
+                    .points
+                    .iter()
+                    .map(|x| (x.game_id.clone(), (x.events, x.opportunities)))
+                    .collect(),
+            })
+            .collect();
+        let (series, computed) = compute(&trajectory_input(
+            &games,
+            p.chesscom,
+            weaknesses,
+            p.seed.clone(),
+        ));
+        let direct = serde_json::to_value(contract(&series, &computed)).unwrap();
+        assert_eq!(doc["players"][i]["trajectory"], direct, "{}", p.id);
+        assert_eq!(
+            serde_json::to_value(trajectory_player(p).unwrap().trajectory).unwrap(),
+            direct
+        );
+    }
+    // The fixture's design (lab/fixtures/make-rules-requests.mjs): the peaked player is worse
+    // than at the peak, the steady one is not, the new one has too few games.
+    let by = |id: &str| {
+        doc["players"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|p| p["id"] == json!(id))
+            .unwrap()["trajectory"]
+            .clone()
+    };
+    let peaked = by("lab-peaked");
+    assert_eq!(peaked["kind"], json!("falling"));
+    assert_eq!(peaked["thenVsNow"]["then"]["basis"], json!("peak"));
+    assert_eq!(peaked["thenVsNow"]["rating"]["verdict"], json!("worse"));
+    assert_eq!(
+        peaked["thenVsNow"]["weaknesses"][0]["seriesKey"],
+        json!("W1")
+    );
+    assert_ne!(by("lab-steady")["kind"], json!("falling"));
+    assert_eq!(by("lab-new")["sufficient"], json!(false));
+    assert_eq!(by("lab-new")["needMore"], json!(8));
+
+    let err = run_pure(
+        "trajectory",
+        r#"{"schema_version":"lab-v1","players":[{"id":"x","seed":"s","games":[
+            {"id":"b","played_at":"2026-01-02T00:00:00Z","rating":1500,"result":"win"},
+            {"id":"a","played_at":"2026-01-01T00:00:00Z","rating":1500,"result":"win"}]}]}"#,
+    )
+    .unwrap_err();
+    assert!(err.to_string().contains("oldest first"), "{err}");
+    // The same instant: the loader's order is by id.
+    let err = run_pure(
+        "trajectory",
+        r#"{"schema_version":"lab-v1","players":[{"id":"x","seed":"s","games":[
+            {"id":"b","played_at":"2026-01-01T00:00:00Z","rating":1500,"result":"win"},
+            {"id":"a","played_at":"2026-01-01T00:00:00Z","rating":1500,"result":"win"}]}]}"#,
+    )
+    .unwrap_err();
+    assert!(err.to_string().contains("oldest first"), "{err}");
+    let w = r#"{"series_key":"W1","prior":{"mu":0.1,"n0":2},"points":[]}"#;
+    let err = run_pure(
+        "trajectory",
+        &format!(
+            r#"{{"schema_version":"lab-v1","players":[{{"id":"x","seed":"s","games":[],
+            "weaknesses":[{w},{w},{w},{w}]}}]}}"#
+        ),
+    )
+    .unwrap_err();
+    assert!(err.to_string().contains("at most 3"), "{err}");
+    let err = run_pure(
+        "trajectory",
+        r#"{"schema_version":"lab-v1","players":[{"id":"x","seed":"s","games":[],
+            "weaknesses":[{"series_key":"W9d","prior":{"mu":0.1,"n0":2},"points":[]}]}]}"#,
+    )
+    .unwrap_err();
+    assert!(err.to_string().contains("not a binomial"), "{err}");
+    let err = run_pure("trajectory", r#"{"schema_version":"lab-v0","players":[]}"#).unwrap_err();
+    assert!(err.to_string().contains("lab-v0"), "{err}");
+}
+
+/// `timeline` (EXP-0014): the fixture gives the golden file, the same bytes twice, and each
+/// series' replay is exactly what the build's `evaluate_all` gives for those points.
+#[test]
+fn timeline_is_the_production_rule() {
+    use bench::lab_rules::{TimelineRequest, timeline_player};
+    use profile::timeline_job::evaluate_all;
+    use profile_core::timeline::series::SeriesPoint;
+    use profile_core::timeline::states::DETECTOR_VERSION;
+
+    let request = read("fixtures/timeline-request.json");
+    assert_valid("TimelineRequest", &request);
+    let out = run_pure("timeline", &request).expect("timeline");
+    assert_valid("TimelineResponse", &out);
+    golden("fixtures/golden/timeline-response.json", &out);
+    assert_eq!(run_pure("timeline", &request).unwrap(), out);
+
+    let req: TimelineRequest = serde_json::from_str(&request).unwrap();
+    let doc: Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(doc["detector_version"], json!(DETECTOR_VERSION));
+    for (i, p) in req.players.iter().enumerate() {
+        let series = p
+            .series
+            .iter()
+            .map(|(k, pts)| {
+                let pts = pts
+                    .iter()
+                    .map(|x| SeriesPoint {
+                        game_id: x.game_id,
+                        played_at: x.played_at,
+                        events: x.events,
+                        opportunities: x.opportunities,
+                        protocol: String::new(),
+                    })
+                    .collect();
+                (k.clone(), pts)
+            })
+            .collect();
+        let reference =
+            profile::estimates::with_model_baselines(p.reference.as_ref(), &p.model_reference);
+        let direct = evaluate_all(&series, reference.as_ref());
+        let ours = timeline_player(p);
+        assert_eq!(ours.series.len(), direct.len());
+        for (key, o) in &direct {
+            let mine = &ours.series[key];
+            assert_eq!(mine.state, o.state, "{key}");
+            assert_eq!(mine.p_imp, o.p_imp, "{key}");
+            assert_eq!(mine.invalid_points, o.invalid_points, "{key}");
+            assert_eq!(mine.rows.len(), o.rows.len(), "{key}");
+            for (a, b) in mine.rows.iter().zip(&o.rows) {
+                assert_eq!(a.kind, b.kind.as_str());
+                assert_eq!((a.from, a.to), (b.from, b.to));
+                assert_eq!(a.at_game_id, b.at_game_id);
+                assert_eq!(
+                    a.onset.as_ref().map(|x| x.game_id),
+                    b.onset.as_ref().map(|x| x.game_id)
+                );
+                assert_eq!(a.p_change, b.p_change);
+                assert_eq!((a.rate_before, a.rate_after), (b.rate_before, b.rate_after));
+                assert_eq!(a.evidence, b.evidence);
+            }
+            assert_eq!(
+                doc["players"][i]["series"][key.to_string()]["state"],
+                serde_json::to_value(o.state).unwrap()
+            );
+        }
+    }
+    // The fixture's design: W1 falls from three times the peers' rate to half of it, so a change
+    // is confirmed (an onset row); the opening line and the player without a benchmark stay
+    // `not_an_issue`.
+    let w1 = &doc["players"][0]["series"]["W1"];
+    assert!(
+        w1["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|r| r["kind"] == json!("onset")),
+        "no confirmed change: {w1}"
+    );
+    assert_ne!(w1["state"], json!("not_an_issue"));
+    assert_eq!(
+        doc["players"][0]["series"]["opening:white:italian-game"]["state"],
+        json!("not_an_issue")
+    );
+    assert_eq!(
+        doc["players"][1]["series"]["W1"]["state"],
+        json!("not_an_issue")
+    );
+
+    let err = run_pure(
+        "timeline",
+        r#"{"schema_version":"lab-v1","players":[{"id":"x","series":{"W1":[
+            {"game_id":"g1","played_at":"2026-01-01T00:00:00Z","events":0,"opportunities":1}]}}]}"#,
+    )
+    .unwrap_err();
+    assert!(err.to_string().to_lowercase().contains("uuid"), "{err}");
+    let err = run_pure("timeline", r#"{"schema_version":"lab-v0","players":[]}"#).unwrap_err();
+    assert!(err.to_string().contains("lab-v0"), "{err}");
 }

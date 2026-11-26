@@ -1,0 +1,178 @@
+{
+  "schema_version": "lab-v1",
+  "algorithm_id": "ALGORITHM_ID",
+  "detector_version": "tl-v1",
+  "players": [
+    {
+      "id": "lab-improves",
+      "series": {
+        "W1": {
+          "state": "resolved",
+          "p_imp": 1.0,
+          "invalid_points": 0,
+          "rows": [
+            {
+              "kind": "transition",
+              "from": null,
+              "to": "not_an_issue",
+              "at_game_id": "00000000-0000-4000-8000-000000000001",
+              "at_played_at": "2026-03-01T18:00:00Z",
+              "onset": null,
+              "p_change": null,
+              "rate_before": null,
+              "rate_after": null,
+              "evidence": {
+                "k": 2,
+                "n": 50,
+                "confidence": 0.0
+              }
+            },
+            {
+              "kind": "transition",
+              "from": "not_an_issue",
+              "to": "active",
+              "at_game_id": "00000000-0000-4000-8000-000000000014",
+              "at_played_at": "2026-03-17T14:00:00Z",
+              "onset": null,
+              "p_change": null,
+              "rate_before": null,
+              "rate_after": null,
+              "evidence": {
+                "k": 30,
+                "n": 1000,
+                "confidence": 0.9999979714013414
+              }
+            },
+            {
+              "kind": "transition",
+              "from": "active",
+              "to": "improving",
+              "at_game_id": "00000000-0000-4000-8000-000000000051",
+              "at_played_at": "2026-05-07T10:00:00Z",
+              "onset": null,
+              "p_change": 0.9994456029106472,
+              "rate_before": 0.02983606557377049,
+              "rate_after": 0.005,
+              "evidence": {
+                "k": 5,
+                "n": 1000,
+                "confidence": 0.05346354431672651
+              }
+            },
+            {
+              "kind": "onset",
+              "from": "active",
+              "to": "improving",
+              "at_game_id": "00000000-0000-4000-8000-000000000051",
+              "at_played_at": "2026-05-07T10:00:00Z",
+              "onset": {
+                "game_id": "00000000-0000-4000-8000-00000000003e",
+                "played_at": "2026-04-21T14:00:00Z",
+                "low": "2026-04-19T22:00:00Z",
+                "high": "2026-04-22T10:00:00Z"
+              },
+              "p_change": 0.9994456029106472,
+              "rate_before": 0.02983606557377049,
+              "rate_after": 0.005,
+              "evidence": {
+                "k": 5,
+                "n": 1000,
+                "confidence": 0.05346354431672651
+              }
+            },
+            {
+              "kind": "transition",
+              "from": "improving",
+              "to": "resolved",
+              "at_game_id": "00000000-0000-4000-8000-00000000006e",
+              "at_played_at": "2026-05-31T14:00:00Z",
+              "onset": null,
+              "p_change": null,
+              "rate_before": null,
+              "rate_after": null,
+              "evidence": {
+                "k": 12,
+                "n": 2450,
+                "confidence": 0.0034442761523291177
+              }
+            }
+          ]
+        },
+        "W9b": {
+          "state": "not_an_issue",
+          "p_imp": null,
+          "invalid_points": 0,
+          "rows": [
+            {
+              "kind": "transition",
+              "from": null,
+              "to": "not_an_issue",
+              "at_game_id": "00000000-0000-4000-8000-000000000001",
+              "at_played_at": "2026-03-01T18:00:00Z",
+              "onset": null,
+              "p_change": null,
+              "rate_before": null,
+              "rate_after": null,
+              "evidence": {
+                "k": 1,
+                "n": 4,
+                "confidence": 0.0
+              }
+            }
+          ]
+        },
+        "opening:white:italian-game": {
+          "state": "not_an_issue",
+          "p_imp": null,
+          "invalid_points": 0,
+          "rows": [
+            {
+              "kind": "transition",
+              "from": null,
+              "to": "not_an_issue",
+              "at_game_id": "00000000-0000-4000-8000-000000000001",
+              "at_played_at": "2026-03-01T18:00:00Z",
+              "onset": null,
+              "p_change": null,
+              "rate_before": null,
+              "rate_after": null,
+              "evidence": {
+                "k": 0,
+                "n": 1,
+                "confidence": 0.0
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "lab-no-benchmark",
+      "series": {
+        "W1": {
+          "state": "not_an_issue",
+          "p_imp": null,
+          "invalid_points": 0,
+          "rows": [
+            {
+              "kind": "transition",
+              "from": null,
+              "to": "not_an_issue",
+              "at_game_id": "00000000-0000-4000-8000-000000000001",
+              "at_played_at": "2026-03-01T18:00:00Z",
+              "onset": null,
+              "p_change": null,
+              "rate_before": null,
+              "rate_after": null,
+              "evidence": {
+                "k": 3,
+                "n": 50,
+                "confidence": 0.0
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

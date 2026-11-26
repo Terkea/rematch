@@ -9,10 +9,17 @@
     found = lab.evaluate(fens, nodes=300_000)    # positions -> Stockfish searches (EXP-0008)
     judged = lab.judge(request)                  # games and searches -> judgements, accuracy
     observed = lab.observe(request)              # Lichess games -> eval-only weakness counts
+    traj = lab.trajectory(players)               # rated games -> the trajectory verdict (EXP-0015)
+    states = lab.timeline(players)               # series points -> change states (EXP-0014)
+    goals = lab.focus_target(items)              # rate and peer -> the weekly target (EXP-0011)
+    held = lab.focus_progress(items)             # a focus's games -> met, not met (EXP-0011)
+    drills = lab.trainer_sources(candidates)     # positions -> drillable, source (EXP-0012)
     run = lab.bench("smoke", out_dir="out")      # the Tier 1 benchmark (ADR 0100)
     manifest = lab.algorithm()                   # this build's manifest (ADR 0105)
 
-Every response carries `schema_version` and the `algorithm_id` that produced it.
+The focus and trainer steps are the web's own TypeScript, run in Node (ADR 0115); the rest is
+the Rust `cli`. Every response carries `schema_version` and the
+`algorithm_id` that produced it.
 """
 
 from . import models
@@ -26,12 +33,17 @@ from .bridge import (
     call_raw,
     check,
     evaluate,
+    focus_progress,
+    focus_target,
     judge,
     observe,
     positions,
     profile,
     rank,
     tag_motifs,
+    timeline,
+    trainer_sources,
+    trajectory,
 )
 
 __all__ = [
@@ -44,6 +56,8 @@ __all__ = [
     "call_raw",
     "check",
     "evaluate",
+    "focus_progress",
+    "focus_target",
     "judge",
     "observe",
     "models",
@@ -51,4 +65,7 @@ __all__ = [
     "profile",
     "rank",
     "tag_motifs",
+    "timeline",
+    "trainer_sources",
+    "trajectory",
 ]
