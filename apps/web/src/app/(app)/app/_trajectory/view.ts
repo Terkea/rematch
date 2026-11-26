@@ -209,7 +209,8 @@ function change(r: { result: ThenNowRow["result"] }, detail: string | null): Com
 function ratingChange(t: Ready, shown: boolean): CompareChange {
   if (t.rating.verdict === "not_enough_games") return change({ result: t.rating }, null);
   const diff = `Difference ${signed(Math.round(t.rating.diff.value))} points`;
-  if (!shown) return { verdict: "withheld", text: "Not called", detail: diff };
+  const why = "A rating moves after every game, so this isn't judged on its own.";
+  if (!shown) return { verdict: "withheld", text: "Not called", detail: `${diff}. ${why}` };
   return change(
     { result: t.rating },
     `${diff}, 80% range ${signed(Math.floor(t.rating.diff.interval.low))} to ${signed(Math.ceil(t.rating.diff.interval.high))}`,

@@ -132,7 +132,11 @@ describe("trajectoryView, with the rating's verdict withheld (EXP-0015, ADR 0116
       text: "Not called",
       detail: expect.any(String),
     });
-    expect(r?.change.detail).toMatch(/^Difference −\d+ points$/);
+    expect(r?.change.detail).toMatch(
+      /^Difference −\d+ points\. A rating moves after every game, so this isn't judged on its own\.$/,
+    );
+    expect(r?.explain.measured).toMatch(/^Your rating moves after every game/);
+    expect(r?.explain.measured).not.toMatch(/\bmean\b/);
     expect(r?.a.value).toMatch(/^\d,\d{3} on average$/);
     expect(r?.a.detail).toBe("30 rated games");
     expect(r?.b.detail).toBe("30 rated games");
