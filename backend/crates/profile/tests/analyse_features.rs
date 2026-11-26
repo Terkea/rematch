@@ -1222,7 +1222,7 @@ async fn load_series_points_groups_by_key(pool: PgPool) {
     assert_eq!(ids, want);
     assert!(
         w1.iter()
-            .all(|p| p.opportunities == 3 && p.protocol == "sf19-n300k-v1")
+            .all(|p| p.opportunities == 3 && p.protocol == engine::ANALYSIS_PROTOCOL)
     );
     let stored: i64 = sqlx::query_scalar(
         "SELECT count(DISTINCT series_key) FROM weakness_series_point WHERE account_id = $1",
