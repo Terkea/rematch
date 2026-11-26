@@ -62,7 +62,7 @@ Rematch suggests the weakness that costs you most and sets a target over your ne
 
 ### What changed since your peak
 
-Your rating line with the peak marked, then the games around the peak against your last games: rating, accuracy, blunders per game, score and your top weaknesses, each called better or worse only when the evidence separates.
+Your rating line with the peak marked, then the games around the peak against your last games: rating, accuracy, blunders per game, score and your top weaknesses. Each measure but the rating is called better or worse only when the evidence separates. The rating's change is shown as a number with no verdict, because the rule told 44% to 78% of simulated players whose strength never changed that their rating was falling ([EXP-0015](lab/experiments/EXP-0015/decision.md)).
 
 <picture><source media="(prefers-color-scheme: dark)" srcset="site/public/shots/trajectory-dark.webp"><img src="site/public/shots/trajectory-light.webp" width="760" alt="A rating trajectory: the line rising to a peak of 1,111 and falling to 816, with the games around the peak and the last 30 games shaded."></picture>
 
@@ -384,6 +384,7 @@ From your rated games in one time class, each with its pre-game rating ([ADR 008
 - Windows: `W = min(30, floor(n / 2))` games each. "Now" is the last W rated games. "Then" is the W games centred on the peak, clamped to end before "now", or your first W games if the peak is inside "now".
 - Then against now: rating, accuracy, blunders per game and score, by the period-comparison rules, plus your top three ranked weaknesses as events per chance in each window, under the prior behind the stored estimate.
 - The words: "Clearly worse" only with that verdict. The headline states facts ("peaked at 1,111 in March 2026 and is 816 now"), and a clearly worse measure is named as the likeliest place to look, never as the cause.
+- The rating itself gets no verdict since `algo-5.0.0` ([ADR 0116](docs/decisions/0116-hide-the-trajectory-rating-verdict.md)): a rating carries over from game to game, so the rule's range was six to thirteen times too narrow. The table shows both windows' averages and the difference, "Not called", and the coach is never told the rating is falling or rising. The rule still runs for the lab, so its replacement (EXP-0030) can be measured against it.
 
 The web and the coach compute it with the same seeds and stream; a shared fixture checks every window and number to 1e-9.
 

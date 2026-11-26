@@ -8,6 +8,13 @@ The site builds this file into /docs/progress/ and shows the newest entry on the
 
 See also the [experiments](/rematch/docs/experiments/) and the [roadmap](/rematch/docs/roadmap/).
 
+## 2026-11-26: algo-5.0.0 stops calling the rating rising or falling
+
+- The trajectory no longer tells a player or the coach that their rating is falling, rising, clearly worse or clearly better than at their peak. The headline states the peak, the current rating and the change as numbers ("Your rapid rating peaked at 1,080 in February 2026 and is 816 now (−264)."), and the then | now table shows both windows' average ratings and the difference, marked "Not called" ([ADR 0116](decisions/0116-hide-the-trajectory-rating-verdict.md), #136).
+- That is EXP-0015's decision: the rule told 44% to 78% of simulated players whose strength never changed that their rating was falling. Accuracy, blunders per game, score and the top weaknesses keep their "better" and "worse", and the coach's inputs stored before the upgrade are cut the same way when it reads them. A report written before the upgrade keeps its words until the next one replaces it.
+- The rule still runs behind the switch, so the lab and EXP-0030 measure it exactly as before; turning the verdict back on for a rule that passes is one line and a major version.
+- The release arena against `algo-4.0.1` found no clear difference on any metric of the six live experiments (EXP-0001, EXP-0002, EXP-0007, EXP-0008, EXP-0009 and EXP-0015): nothing the lab measures moved, which is the point.
+
 ## 2026-11-26: EXP-0015, the trajectory's "falling" is mostly a false alarm
 
 - We simulated 700 players whose strength never changes, rated game by game by Glicko-2 with Lichess's own constants, and sent each history through the production trajectory ([EXP-0015](https://github.com/Terkea/rematch/blob/main/lab/experiments/EXP-0015/decision.md), #110). It told 44% of them their rating was falling at 60 rated games, 62% at 120 and 78% at 250, against the 15% we registered as acceptable, and told 44% and 30% at 60 and 120 games that it was rising.
