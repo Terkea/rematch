@@ -27,7 +27,7 @@ export const TRAJECTORY_GLOSSARY = {
   trajectoryNotCalled: {
     name: "Rating trajectory",
     meaning: "Where your rating has been, its peak, and how your play then compares with now.",
-    measured: `Your rating before each rated game of the time control (on chess.com, your rating after the previous game). "Then" is the ${TRAJECTORY_WINDOW} games around your peak, or your first ${TRAJECTORY_WINDOW} games when the peak is recent; "now" is your last ${TRAJECTORY_WINDOW}. With fewer than ${2 * TRAJECTORY_WINDOW} rated games each window is half of them. A change in accuracy, blunders, score or a weakness is called only when the ${PCT}% evidence separates the two windows, with at least ${KPI_MIN_GAMES} games on each side. The rating's own change is shown and not called: see Rating.`,
+    measured: `Your rating before each rated game of the time control (on chess.com, your rating after the previous game). "Then" is the ${TRAJECTORY_WINDOW} games around your peak, or your first ${TRAJECTORY_WINDOW} games when the peak is recent; "now" is your last ${TRAJECTORY_WINDOW}. With fewer than ${2 * TRAJECTORY_WINDOW} rated games each window is half of them. A change in accuracy, blunders, score or a weakness is called only when the ${PCT}% evidence separates the two windows, with at least ${KPI_MIN_GAMES} games on each side. The rating's own change is shown and not called: see the Rating row.`,
     whyItMatters:
       "A rating moves for many reasons; comparing how you played then and now shows which ones are yours.",
     tip: "Start with the measure that is clearly worse: it is the likeliest place to work on.",
@@ -35,7 +35,7 @@ export const TRAJECTORY_GLOSSARY = {
   ratingNotCalled: {
     name: "Rating",
     meaning: "Your average rating before each game in the window.",
-    measured: `The mean of your pre-game ratings over the window's rated games, and the difference between the two windows. The difference is not called better or worse. A rating carries over from one game to the next, so ${TRAJECTORY_WINDOW} ratings in a row hold far less evidence than ${TRAJECTORY_WINDOW} separate results, and in a test on 700 simulated players whose strength never changed, the rule we used told 44% to 78% of them their rating was falling.`,
+    measured: `Your rating moves after every game, so a drop can look bigger than it is. The table shows the average of your pre-game ratings in each window and the difference, and that difference is not called better or worse. A rating carries over from one game to the next, so ${TRAJECTORY_WINDOW} ratings in a row hold far less evidence than ${TRAJECTORY_WINDOW} separate results. In a test on 700 simulated players whose strength never changed, the rule we used told 44% to 78% of them their rating was falling.`,
     whyItMatters:
       "A number that moves with every game is easy to over-read, so the table gives it as two averages and their difference.",
     tip: "Look at the measures that are clearly worse: they are the likeliest places to work on.",

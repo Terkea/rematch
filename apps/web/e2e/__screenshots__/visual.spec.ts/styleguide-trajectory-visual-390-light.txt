@@ -44,7 +44,7 @@ Your last 30 games
 30 rated games
 Change
 Not called
-Difference −192 points
+Difference −192 points. A rating moves after every game, so this isn't judged on its own.
 Accuracy
 Around your peak
 74.0%

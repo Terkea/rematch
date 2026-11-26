@@ -51,7 +51,7 @@ Rating
 30 rated games
 
 Not called
-Difference −192 points
+Difference −192 points. A rating moves after every game, so this isn't judged on its own.
 
 Accuracy
 
