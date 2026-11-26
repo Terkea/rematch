@@ -1529,6 +1529,388 @@
       "verdict": "no clear difference"
     },
     {
+      "against": "algo-4.0.0+51733d23895f",
+      "algorithm_id": "algo-4.0.1+fcda2762eeeb",
+      "analysis_sha256": "b9ac1812a845c2f334794de51b5bf9b97c9ff71837adcf497e339e6c07e11add",
+      "comparison": {
+        "clean_false_alarms": {
+          "effect": 0.0,
+          "interval": [
+            -0.450908,
+            0.450908
+          ],
+          "level": 0.8,
+          "verdict": "no clear difference"
+        },
+        "coverage": {
+          "effect": 0.0,
+          "effect_is": "the change in the distance from 0.8",
+          "interval": [
+            0.0,
+            0.0
+          ],
+          "level": 0.8,
+          "margin": 0.05,
+          "verdict": "no clear difference"
+        },
+        "recall_at_2": {
+          "effect": 0.0,
+          "guard_interval": [
+            -0.013841,
+            0.013841
+          ],
+          "guard_level": 0.8,
+          "interval": [
+            -0.038251,
+            0.038251
+          ],
+          "level": 0.975,
+          "verdict": "no clear difference"
+        }
+      },
+      "date": "2026-11-26",
+      "experiment": "EXP-0001",
+      "inputs_sha256": "3f137dac5d397969ad6ed82cda1763c16524c9a2fc68d2efef949b09396ebece",
+      "measures": {
+        "clean": {
+          "exp1-clean-0": true,
+          "exp1-clean-1": true
+        },
+        "flawed": {
+          "exp1-hang-0": {
+            "covered": [
+              false,
+              false,
+              true,
+              true
+            ],
+            "flaw": "hang",
+            "hit2": true
+          },
+          "exp1-hang-1": {
+            "covered": [
+              true,
+              true,
+              true,
+              true
+            ],
+            "flaw": "hang",
+            "hit2": true
+          },
+          "exp1-hang-2": {
+            "covered": [
+              true,
+              true,
+              true,
+              true
+            ],
+            "flaw": "hang",
+            "hit2": true
+          },
+          "exp1-hang-3": {
+            "covered": [
+              true,
+              true,
+              true,
+              true
+            ],
+            "flaw": "hang",
+            "hit2": true
+          },
+          "exp1-hang-4": {
+            "covered": [
+              true,
+              true,
+              true,
+              true
+            ],
+            "flaw": "hang",
+            "hit2": true
+          },
+          "exp1-hang-5": {
+            "covered": [
+              true,
+              true,
+              true,
+              true
+            ],
+            "flaw": "hang",
+            "hit2": true
+          },
+          "exp1-lowclockblunder-0": {
+            "covered": [
+              true,
+              true,
+              true,
+              true
+            ],
+            "flaw": "low_clock_blunder",
+            "hit2": true
+          },
+          "exp1-lowclockblunder-1": {
+            "covered": [
+              true,
+              true,
+              true,
+              true
+            ],
+            "flaw": "low_clock_blunder",
+            "hit2": true
+          },
+          "exp1-lowclockblunder-2": {
+            "covered": [
+              true,
+              true,
+              true,
+              true
+            ],
+            "flaw": "low_clock_blunder",
+            "hit2": true
+          },
+          "exp1-lowclockblunder-3": {
+            "covered": [
+              true,
+              true,
+              true,
+              true
+            ],
+            "flaw": "low_clock_blunder",
+            "hit2": true
+          },
+          "exp1-lowclockblunder-4": {
+            "covered": [
+              true,
+              false,
+              false,
+              true
+            ],
+            "flaw": "low_clock_blunder",
+            "hit2": true
+          },
+          "exp1-lowclockblunder-5": {
+            "covered": [
+              false,
+              false,
+              true,
+              true
+            ],
+            "flaw": "low_clock_blunder",
+            "hit2": true
+          },
+          "exp1-missmate-0": {
+            "covered": [
+              true,
+              true,
+              true,
+              true
+            ],
+            "flaw": "miss_mate",
+            "hit2": false
+          },
+          "exp1-missmate-1": {
+            "covered": [
+              true,
+              false,
+              false,
+              false
+            ],
+            "flaw": "miss_mate",
+            "hit2": false
+          },
+          "exp1-missmate-2": {
+            "covered": [
+              true,
+              true,
+              true,
+              true
+            ],
+            "flaw": "miss_mate",
+            "hit2": false
+          },
+          "exp1-missmate-3": {
+            "covered": [
+              true,
+              true,
+              true,
+              true
+            ],
+            "flaw": "miss_mate",
+            "hit2": false
+          },
+          "exp1-missmate-4": {
+            "covered": [
+              true,
+              true,
+              false,
+              false
+            ],
+            "flaw": "miss_mate",
+            "hit2": false
+          },
+          "exp1-missmate-5": {
+            "covered": [
+              true,
+              true,
+              true,
+              true
+            ],
+            "flaw": "miss_mate",
+            "hit2": false
+          },
+          "exp1-noconvert-0": {
+            "covered": [
+              true,
+              true,
+              true,
+              true
+            ],
+            "flaw": "no_convert",
+            "hit2": true
+          },
+          "exp1-noconvert-1": {
+            "covered": [
+              true,
+              true,
+              true,
+              true
+            ],
+            "flaw": "no_convert",
+            "hit2": true
+          },
+          "exp1-noconvert-2": {
+            "covered": [
+              true,
+              true,
+              false,
+              false
+            ],
+            "flaw": "no_convert",
+            "hit2": true
+          },
+          "exp1-noconvert-3": {
+            "covered": [
+              false,
+              false,
+              false,
+              false
+            ],
+            "flaw": "no_convert",
+            "hit2": false
+          },
+          "exp1-noconvert-4": {
+            "covered": [
+              true,
+              true,
+              true,
+              true
+            ],
+            "flaw": "no_convert",
+            "hit2": true
+          },
+          "exp1-noconvert-5": {
+            "covered": [
+              false,
+              true,
+              true,
+              false
+            ],
+            "flaw": "no_convert",
+            "hit2": true
+          },
+          "exp1-openingblunder-0": {
+            "covered": [
+              true,
+              true,
+              true,
+              false
+            ],
+            "flaw": "opening_blunder",
+            "hit2": true
+          },
+          "exp1-openingblunder-1": {
+            "covered": [
+              true,
+              true,
+              true,
+              true
+            ],
+            "flaw": "opening_blunder",
+            "hit2": true
+          },
+          "exp1-openingblunder-2": {
+            "covered": [
+              true,
+              true,
+              true,
+              true
+            ],
+            "flaw": "opening_blunder",
+            "hit2": false
+          },
+          "exp1-openingblunder-3": {
+            "covered": [
+              true,
+              true,
+              false,
+              false
+            ],
+            "flaw": "opening_blunder",
+            "hit2": false
+          },
+          "exp1-openingblunder-4": {
+            "covered": [
+              true,
+              false,
+              false,
+              false
+            ],
+            "flaw": "opening_blunder",
+            "hit2": false
+          },
+          "exp1-openingblunder-5": {
+            "covered": [
+              true,
+              true,
+              false,
+              false
+            ],
+            "flaw": "opening_blunder",
+            "hit2": false
+          }
+        }
+      },
+      "metrics": {
+        "clean_false_alarms": {
+          "interval": [
+            0.549092,
+            1.0
+          ],
+          "level": 0.8,
+          "value": 1.0
+        },
+        "coverage": {
+          "interval": [
+            0.675,
+            0.866667
+          ],
+          "level": 0.95,
+          "value": 0.775
+        },
+        "recall_at_2": {
+          "interval": [
+            0.455136,
+            0.781261
+          ],
+          "level": 0.95,
+          "value": 0.633333
+        }
+      },
+      "results_sha256": "c96e61ddf18c12dff6386913f960e5412dff1b64195b34d3e5bb01e827012ce4",
+      "rule_sha256": "6a91c4bd4d5e8d47d57f1590e86182c90892525cc5595371b3f9caa318f97e56",
+      "seed_namespace": "EXP-0001",
+      "verdict": "no clear difference"
+    },
+    {
       "against": "algo-1.1.0+fa5e2186e1dd",
       "algorithm_id": "algo-1.1.0+fa5e2186e1dd",
       "analysis_sha256": "bc0a9ec07c49f65f175008784d359c09491b3f29263d42779d19081e09f2f391",
@@ -6191,6 +6573,859 @@
       "verdict": "no clear difference"
     },
     {
+      "against": "algo-4.0.0+51733d23895f",
+      "algorithm_id": "algo-4.0.1+fcda2762eeeb",
+      "analysis_sha256": "e9ea836c40dd4a59423dae73f5fc1b6354bcc61ae71765d8e7a74d58a11d18ec",
+      "comparison": {
+        "precision_backRankMate": {
+          "effect": 0.0,
+          "floor": 0.8,
+          "interval": [
+            -0.042996,
+            0.042996
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "measured": true,
+          "verdict": "no clear difference"
+        },
+        "precision_deflection": {
+          "effect": 0.0,
+          "floor": 0.8,
+          "interval": [
+            -0.049994,
+            0.049994
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "measured": true,
+          "verdict": "no clear difference"
+        },
+        "precision_discoveredAttack": {
+          "effect": 0.0,
+          "floor": 0.8,
+          "interval": [
+            -0.007606,
+            0.007606
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "measured": true,
+          "verdict": "no clear difference"
+        },
+        "precision_fork": {
+          "effect": 0.0,
+          "floor": 0.8,
+          "interval": [
+            -0.009121,
+            0.009121
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "measured": true,
+          "verdict": "no clear difference"
+        },
+        "precision_hangingPiece": {
+          "effect": 0.0,
+          "floor": 0.8,
+          "interval": [
+            -0.03076,
+            0.03076
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "measured": true,
+          "verdict": "no clear difference"
+        },
+        "precision_mate": {
+          "effect": 0.0,
+          "floor": 0.8,
+          "interval": [
+            -0.001077,
+            0.001077
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "measured": true,
+          "verdict": "no clear difference"
+        },
+        "precision_mateIn1": {
+          "effect": 0.0,
+          "floor": 0.8,
+          "interval": [
+            -0.002816,
+            0.002816
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "measured": true,
+          "verdict": "no clear difference"
+        },
+        "precision_mateIn2": {
+          "effect": 0.0,
+          "floor": 0.8,
+          "interval": [
+            -0.001992,
+            0.001992
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "measured": true,
+          "verdict": "no clear difference"
+        },
+        "precision_mateIn3": {
+          "effect": 0.0,
+          "floor": 0.8,
+          "interval": [
+            -0.0044,
+            0.0044
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "measured": true,
+          "verdict": "no clear difference"
+        },
+        "precision_mateIn4Plus": {
+          "effect": 0.0,
+          "floor": 0.8,
+          "interval": [
+            -0.0219,
+            0.0219
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "measured": true,
+          "verdict": "no clear difference"
+        },
+        "precision_pin": {
+          "effect": 0.0,
+          "floor": 0.8,
+          "interval": [
+            -0.047804,
+            0.047804
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "measured": true,
+          "verdict": "no clear difference"
+        },
+        "precision_promotion": {
+          "effect": 0.0,
+          "floor": 0.8,
+          "interval": [
+            -0.011427,
+            0.011427
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "measured": true,
+          "verdict": "no clear difference"
+        },
+        "precision_sacrifice": {
+          "effect": 0.0,
+          "floor": 0.8,
+          "interval": [
+            -0.021991,
+            0.021991
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "measured": true,
+          "verdict": "no clear difference"
+        },
+        "precision_skewer": {
+          "effect": 0.0,
+          "floor": 0.8,
+          "interval": [
+            -0.042079,
+            0.042079
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "measured": true,
+          "verdict": "no clear difference"
+        },
+        "precision_smotheredMate": {
+          "effect": 0.0,
+          "floor": 0.8,
+          "interval": [
+            -0.0466,
+            0.0466
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "measured": true,
+          "verdict": "no clear difference"
+        },
+        "recall_backRankMate": {
+          "effect": 0.0,
+          "interval": [
+            -0.0111,
+            0.0111
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "measured": true,
+          "verdict": "no clear difference"
+        },
+        "recall_deflection": {
+          "effect": 0.0,
+          "interval": [
+            -0.03989,
+            0.03989
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "measured": true,
+          "verdict": "no clear difference"
+        },
+        "recall_discoveredAttack": {
+          "effect": 0.0,
+          "interval": [
+            -0.025636,
+            0.025636
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "measured": true,
+          "verdict": "no clear difference"
+        },
+        "recall_fork": {
+          "effect": 0.0,
+          "interval": [
+            -0.022279,
+            0.022279
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "measured": true,
+          "verdict": "no clear difference"
+        },
+        "recall_hangingPiece": {
+          "effect": 0.0,
+          "interval": [
+            -0.006873,
+            0.006873
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "measured": true,
+          "verdict": "no clear difference"
+        },
+        "recall_mate": {
+          "effect": 0.0,
+          "interval": [
+            -0.0008,
+            0.0008
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "measured": true,
+          "verdict": "no clear difference"
+        },
+        "recall_mateIn1": {
+          "effect": 0.0,
+          "interval": [
+            -0.0027,
+            0.0027
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "measured": true,
+          "verdict": "no clear difference"
+        },
+        "recall_mateIn2": {
+          "effect": 0.0,
+          "interval": [
+            -0.0015,
+            0.0015
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "measured": true,
+          "verdict": "no clear difference"
+        },
+        "recall_mateIn3": {
+          "effect": 0.0,
+          "interval": [
+            -0.0044,
+            0.0044
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "measured": true,
+          "verdict": "no clear difference"
+        },
+        "recall_mateIn4Plus": {
+          "effect": 0.0,
+          "interval": [
+            -0.0219,
+            0.0219
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "measured": true,
+          "verdict": "no clear difference"
+        },
+        "recall_pin": {
+          "effect": 0.0,
+          "interval": [
+            -0.029223,
+            0.029223
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "measured": true,
+          "verdict": "no clear difference"
+        },
+        "recall_promotion": {
+          "effect": 0.0,
+          "interval": [
+            -0.048777,
+            0.048777
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "measured": true,
+          "verdict": "no clear difference"
+        },
+        "recall_sacrifice": {
+          "effect": 0.0,
+          "interval": [
+            -0.023847,
+            0.023847
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "measured": true,
+          "verdict": "no clear difference"
+        },
+        "recall_skewer": {
+          "effect": 0.0,
+          "interval": [
+            -0.037857,
+            0.037857
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "measured": true,
+          "verdict": "no clear difference"
+        },
+        "recall_smotheredMate": {
+          "effect": 0.0,
+          "interval": [
+            -0.0466,
+            0.0466
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "measured": true,
+          "verdict": "no clear difference"
+        },
+        "trusted_tags": {
+          "effect": 0.0,
+          "gained": [],
+          "interval": null,
+          "level": "section 9's rule",
+          "lost": [],
+          "verdict": "no clear difference"
+        }
+      },
+      "date": "2026-11-26",
+      "experiment": "EXP-0007",
+      "inputs_sha256": "6547596c9d408a8528ead4a665e5cc2310bf28bb43f16e60d329553b703f528b",
+      "measures": {
+        "backRankMate": {
+          "decision": "hidden pending a human audit",
+          "precision": {
+            "estimate": 0.6059,
+            "interval": [
+              0.5751,
+              0.6359
+            ]
+          },
+          "recall": {
+            "estimate": 1.0,
+            "interval": [
+              0.9889,
+              1.0
+            ]
+          }
+        },
+        "deflection": {
+          "decision": "hidden until fixed",
+          "precision": {
+            "estimate": 0.5621,
+            "interval": [
+              0.5265,
+              0.5972
+            ]
+          },
+          "recall": {
+            "estimate": 0.3345,
+            "interval": [
+              0.3069,
+              0.3633
+            ]
+          }
+        },
+        "discoveredAttack": {
+          "decision": "trusted",
+          "precision": {
+            "estimate": 0.9921,
+            "interval": [
+              0.9854,
+              0.9957
+            ]
+          },
+          "recall": {
+            "estimate": 0.8579,
+            "interval": [
+              0.8388,
+              0.875
+            ]
+          }
+        },
+        "fork": {
+          "decision": "trusted",
+          "precision": {
+            "estimate": 0.9763,
+            "interval": [
+              0.9691,
+              0.9819
+            ]
+          },
+          "recall": {
+            "estimate": 0.7247,
+            "interval": [
+              0.7086,
+              0.7401
+            ]
+          }
+        },
+        "hangingPiece": {
+          "decision": "hidden pending a human audit",
+          "precision": {
+            "estimate": 0.5717,
+            "interval": [
+              0.5498,
+              0.5933
+            ]
+          },
+          "recall": {
+            "estimate": 0.9988,
+            "interval": [
+              0.992,
+              0.9998
+            ]
+          }
+        },
+        "mate": {
+          "decision": "trusted",
+          "precision": {
+            "estimate": 0.9995,
+            "interval": [
+              0.9985,
+              0.9999
+            ]
+          },
+          "recall": {
+            "estimate": 1.0,
+            "interval": [
+              0.9992,
+              1.0
+            ]
+          }
+        },
+        "mateIn1": {
+          "decision": "trusted",
+          "precision": {
+            "estimate": 0.9997,
+            "interval": [
+              0.9969,
+              1.0
+            ]
+          },
+          "recall": {
+            "estimate": 1.0,
+            "interval": [
+              0.9973,
+              1.0
+            ]
+          }
+        },
+        "mateIn2": {
+          "decision": "trusted",
+          "precision": {
+            "estimate": 0.9992,
+            "interval": [
+              0.9973,
+              0.9998
+            ]
+          },
+          "recall": {
+            "estimate": 1.0,
+            "interval": [
+              0.9985,
+              1.0
+            ]
+          }
+        },
+        "mateIn3": {
+          "decision": "trusted",
+          "precision": {
+            "estimate": 1.0,
+            "interval": [
+              0.9956,
+              1.0
+            ]
+          },
+          "recall": {
+            "estimate": 1.0,
+            "interval": [
+              0.9956,
+              1.0
+            ]
+          }
+        },
+        "mateIn4Plus": {
+          "decision": "trusted",
+          "precision": {
+            "estimate": 1.0,
+            "interval": [
+              0.9781,
+              1.0
+            ]
+          },
+          "recall": {
+            "estimate": 1.0,
+            "interval": [
+              0.9781,
+              1.0
+            ]
+          }
+        },
+        "pin": {
+          "decision": "hidden pending a human audit",
+          "precision": {
+            "estimate": 0.4018,
+            "interval": [
+              0.3684,
+              0.436
+            ]
+          },
+          "recall": {
+            "estimate": 0.201,
+            "interval": [
+              0.1811,
+              0.2224
+            ]
+          }
+        },
+        "promotion": {
+          "decision": "trusted",
+          "precision": {
+            "estimate": 0.998,
+            "interval": [
+              0.9867,
+              0.9997
+            ]
+          },
+          "recall": {
+            "estimate": 0.816,
+            "interval": [
+              0.7791,
+              0.8479
+            ]
+          }
+        },
+        "sacrifice": {
+          "decision": "hidden pending a human audit",
+          "precision": {
+            "estimate": 0.5284,
+            "interval": [
+              0.5128,
+              0.5439
+            ]
+          },
+          "recall": {
+            "estimate": 0.8239,
+            "interval": [
+              0.8064,
+              0.8401
+            ]
+          }
+        },
+        "skewer": {
+          "decision": "hidden pending a human audit",
+          "precision": {
+            "estimate": 0.8098,
+            "interval": [
+              0.7783,
+              0.8377
+            ]
+          },
+          "recall": {
+            "estimate": 0.8968,
+            "interval": [
+              0.8672,
+              0.9204
+            ]
+          }
+        },
+        "smotheredMate": {
+          "decision": "trusted",
+          "precision": {
+            "estimate": 1.0,
+            "interval": [
+              0.9534,
+              1.0
+            ]
+          },
+          "recall": {
+            "estimate": 1.0,
+            "interval": [
+              0.9534,
+              1.0
+            ]
+          }
+        }
+      },
+      "metrics": {
+        "precision_backRankMate": {
+          "interval": [
+            0.5751,
+            0.6359
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "value": 0.6059
+        },
+        "precision_deflection": {
+          "interval": [
+            0.5265,
+            0.5972
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "value": 0.5621
+        },
+        "precision_discoveredAttack": {
+          "interval": [
+            0.9854,
+            0.9957
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "value": 0.9921
+        },
+        "precision_fork": {
+          "interval": [
+            0.9691,
+            0.9819
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "value": 0.9763
+        },
+        "precision_hangingPiece": {
+          "interval": [
+            0.5498,
+            0.5933
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "value": 0.5717
+        },
+        "precision_mate": {
+          "interval": [
+            0.9985,
+            0.9999
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "value": 0.9995
+        },
+        "precision_mateIn1": {
+          "interval": [
+            0.9969,
+            1.0
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "value": 0.9997
+        },
+        "precision_mateIn2": {
+          "interval": [
+            0.9973,
+            0.9998
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "value": 0.9992
+        },
+        "precision_mateIn3": {
+          "interval": [
+            0.9956,
+            1.0
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "value": 1.0
+        },
+        "precision_mateIn4Plus": {
+          "interval": [
+            0.9781,
+            1.0
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "value": 1.0
+        },
+        "precision_pin": {
+          "interval": [
+            0.3684,
+            0.436
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "value": 0.4018
+        },
+        "precision_promotion": {
+          "interval": [
+            0.9867,
+            0.9997
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "value": 0.998
+        },
+        "precision_sacrifice": {
+          "interval": [
+            0.5128,
+            0.5439
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "value": 0.5284
+        },
+        "precision_skewer": {
+          "interval": [
+            0.7783,
+            0.8377
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "value": 0.8098
+        },
+        "precision_smotheredMate": {
+          "interval": [
+            0.9534,
+            1.0
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "value": 1.0
+        },
+        "recall_backRankMate": {
+          "interval": [
+            0.9889,
+            1.0
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "value": 1.0
+        },
+        "recall_deflection": {
+          "interval": [
+            0.3069,
+            0.3633
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "value": 0.3345
+        },
+        "recall_discoveredAttack": {
+          "interval": [
+            0.8388,
+            0.875
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "value": 0.8579
+        },
+        "recall_fork": {
+          "interval": [
+            0.7086,
+            0.7401
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "value": 0.7247
+        },
+        "recall_hangingPiece": {
+          "interval": [
+            0.992,
+            0.9998
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "value": 0.9988
+        },
+        "recall_mate": {
+          "interval": [
+            0.9992,
+            1.0
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "value": 1.0
+        },
+        "recall_mateIn1": {
+          "interval": [
+            0.9973,
+            1.0
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "value": 1.0
+        },
+        "recall_mateIn2": {
+          "interval": [
+            0.9985,
+            1.0
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "value": 1.0
+        },
+        "recall_mateIn3": {
+          "interval": [
+            0.9956,
+            1.0
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "value": 1.0
+        },
+        "recall_mateIn4Plus": {
+          "interval": [
+            0.9781,
+            1.0
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "value": 1.0
+        },
+        "recall_pin": {
+          "interval": [
+            0.1811,
+            0.2224
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "value": 0.201
+        },
+        "recall_promotion": {
+          "interval": [
+            0.7791,
+            0.8479
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "value": 0.816
+        },
+        "recall_sacrifice": {
+          "interval": [
+            0.8064,
+            0.8401
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "value": 0.8239
+        },
+        "recall_skewer": {
+          "interval": [
+            0.8672,
+            0.9204
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "value": 0.8968
+        },
+        "recall_smotheredMate": {
+          "interval": [
+            0.9534,
+            1.0
+          ],
+          "level": "Bonferroni 95%, 30 intervals",
+          "value": 1.0
+        },
+        "trusted_tags": {
+          "at": "9 of 15: fork, discoveredAttack, promotion, smotheredMate, mate, mateIn1, mateIn2, mateIn3, mateIn4Plus",
+          "interval": null,
+          "level": "section 9's rule",
+          "tags": [
+            "fork",
+            "discoveredAttack",
+            "promotion",
+            "smotheredMate",
+            "mate",
+            "mateIn1",
+            "mateIn2",
+            "mateIn3",
+            "mateIn4Plus"
+          ],
+          "value": 0.6
+        }
+      },
+      "results_sha256": "945fd11ce195bef74bfba1384bfff7a4a6f578da21c9e69d6ea9dfc29a132655",
+      "rule_sha256": "65cdc6c77961efcbd279a26caa7b11365ced5a1c47eedf712eb6460ecb8851d4",
+      "seed_namespace": "EXP-0007",
+      "verdict": "no clear difference"
+    },
+    {
       "against": "algo-3.0.0+554036a3b27c",
       "algorithm_id": "algo-3.0.0+554036a3b27c",
       "analysis_sha256": "8aca6d49c804dee94a35938c90ddd8bd515e9a0af08b4af971f31ceebd5258e1",
@@ -6351,6 +7586,87 @@
       "rule_sha256": "30451eb48702ecb82e38191e63342857be8813241888ede5fe3c5b1aac1e3c53",
       "seed_namespace": "EXP-0008",
       "verdict": "better"
+    },
+    {
+      "against": "algo-4.0.0+51733d23895f",
+      "algorithm_id": "algo-4.0.1+fcda2762eeeb",
+      "analysis_sha256": "8aca6d49c804dee94a35938c90ddd8bd515e9a0af08b4af971f31ceebd5258e1",
+      "comparison": {
+        "ships_the_chosen_count": {
+          "effect": 0.0,
+          "interval": null,
+          "level": "section 9's rule",
+          "verdict": "no clear difference"
+        },
+        "step_down": {
+          "effect": 0.0,
+          "interval": [
+            -0.01529,
+            0.01529
+          ],
+          "level": "95%, t over games",
+          "verdict": "no clear difference"
+        },
+        "step_up": {
+          "effect": 0.0,
+          "interval": [
+            -0.00701,
+            0.00701
+          ],
+          "level": "95%, t over games",
+          "verdict": "no clear difference"
+        }
+      },
+      "date": "2026-11-26",
+      "experiment": "EXP-0008",
+      "inputs_sha256": "185ace4ca38fb68ededcb80a5115f244be41476d7c19bbbcc451ce56ec7102db",
+      "measures": {
+        "chosen_nodes": 1000000,
+        "outcome": "300k falls short",
+        "production_nodes": 1000000,
+        "step_down": {
+          "estimate": 0.012226,
+          "interval": [
+            0.001414,
+            0.023037
+          ]
+        },
+        "step_up": {
+          "estimate": 0.024632,
+          "interval": [
+            0.019675,
+            0.029588
+          ]
+        }
+      },
+      "metrics": {
+        "ships_the_chosen_count": {
+          "at": "300k falls short: 1,000,000 nodes; the version uses 1,000,000",
+          "interval": null,
+          "level": "section 9's rule",
+          "value": 1.0
+        },
+        "step_down": {
+          "interval": [
+            0.001414,
+            0.023037
+          ],
+          "level": "95%, t over games",
+          "value": 0.012226
+        },
+        "step_up": {
+          "interval": [
+            0.019675,
+            0.029588
+          ],
+          "level": "95%, t over games",
+          "value": 0.024632
+        }
+      },
+      "results_sha256": "cc3ee5abcad2e07c848cf7393c60cea3ef85fb93da1793b8ca9b3b0b66d0dff3",
+      "rule_sha256": "30451eb48702ecb82e38191e63342857be8813241888ede5fe3c5b1aac1e3c53",
+      "seed_namespace": "EXP-0008",
+      "verdict": "no clear difference"
     },
     {
       "against": "algo-4.0.0+51733d23895f",
@@ -6619,6 +7935,277 @@
         }
       },
       "results_sha256": "82d941f1ca6db506667e25bcd90aad407256d139f2d07feb8d1d703ea0492186",
+      "rule_sha256": "f9ba26182a8cabf637160658235ea7d73a77e63d1477b7e3c9ce17bf31f899ed",
+      "seed_namespace": "EXP-0009",
+      "verdict": "no clear difference"
+    },
+    {
+      "against": "algo-4.0.0+51733d23895f",
+      "algorithm_id": "algo-4.0.1+fcda2762eeeb",
+      "analysis_sha256": "b7c6f6e50da02955c5066d0b8ecdcd83f5cb3aca8bb4a3acf2333bf90c8856e8",
+      "comparison": {
+        "effect:W4.allowed": {
+          "effect": 0.0,
+          "interval": [
+            -1.474384,
+            1.474384
+          ],
+          "level": "95%, HC3 over players",
+          "verdict": "no clear difference"
+        },
+        "effect:W4.missed": {
+          "effect": 0.0,
+          "interval": [
+            -2.135267,
+            2.135267
+          ],
+          "level": "95%, HC3 over players",
+          "verdict": "no clear difference"
+        },
+        "effect:W5": {
+          "effect": 0.0,
+          "interval": [
+            -1.975377,
+            1.975377
+          ],
+          "level": "95%, HC3 over players",
+          "verdict": "no clear difference"
+        },
+        "effect:W6": {
+          "effect": 0.0,
+          "interval": [
+            -1.630686,
+            1.630686
+          ],
+          "level": "95%, HC3 over players",
+          "verdict": "no clear difference"
+        },
+        "effect:W7.prep": {
+          "effect": 0.0,
+          "interval": [
+            -1.314537,
+            1.314537
+          ],
+          "level": "95%, HC3 over players",
+          "verdict": "no clear difference"
+        },
+        "effect:W7.traps": {
+          "effect": 0.0,
+          "interval": [
+            -1.348204,
+            1.348204
+          ],
+          "level": "95%, HC3 over players",
+          "verdict": "no clear difference"
+        },
+        "effect:W9a": {
+          "effect": 0.0,
+          "interval": [
+            -1.157025,
+            1.157025
+          ],
+          "level": "95%, HC3 over players",
+          "verdict": "no clear difference"
+        },
+        "effect:W9b": {
+          "effect": 0.0,
+          "interval": [
+            -4.141334,
+            4.141334
+          ],
+          "level": "95%, HC3 over players",
+          "verdict": "no clear difference"
+        },
+        "effect:accuracy": {
+          "effect": 0.0,
+          "interval": [
+            -1.362087,
+            1.362087
+          ],
+          "level": "95%, HC3 over players",
+          "verdict": "no clear difference"
+        },
+        "keys_preceding_climbing": {
+          "effect": 0.0,
+          "interval": null,
+          "level": "section 9's rule",
+          "verdict": "no clear difference"
+        },
+        "level_reliability": {
+          "effect": 0.0,
+          "interval": null,
+          "level": "any key below -0.05, mean above +0.02",
+          "verdict": "no clear difference"
+        }
+      },
+      "date": "2026-11-26",
+      "experiment": "EXP-0009",
+      "inputs_sha256": "819b977ab9ef780aaa00b93c5433af29b9cfeb2e1ca79a35c21d3e0ae49fdafb",
+      "measures": {
+        "climbing": [],
+        "effects": {
+          "W4.allowed": {
+            "estimate": -1.184736,
+            "interval": [
+              -2.227283,
+              -0.142189
+            ]
+          },
+          "W4.missed": {
+            "estimate": 0.74585,
+            "interval": [
+              -0.764012,
+              2.255712
+            ]
+          },
+          "W5": {
+            "estimate": -2.938232,
+            "interval": [
+              -4.335034,
+              -1.541429
+            ]
+          },
+          "W6": {
+            "estimate": -1.032224,
+            "interval": [
+              -2.185293,
+              0.120845
+            ]
+          },
+          "W7.prep": {
+            "estimate": 0.658514,
+            "interval": [
+              -0.271004,
+              1.588032
+            ]
+          },
+          "W7.traps": {
+            "estimate": 0.036527,
+            "interval": [
+              -0.916798,
+              0.989851
+            ]
+          },
+          "W9a": {
+            "estimate": -0.019751,
+            "interval": [
+              -0.837891,
+              0.798389
+            ]
+          },
+          "W9b": {
+            "estimate": -0.324837,
+            "interval": [
+              -3.253203,
+              2.603528
+            ]
+          },
+          "accuracy": {
+            "estimate": -0.123434,
+            "interval": [
+              -1.086575,
+              0.839707
+            ]
+          }
+        },
+        "outcome": "need more data",
+        "reliability": {
+          "W4.allowed": 0.357931,
+          "W4.missed": 0.169538,
+          "W5": 0.531519,
+          "W6": 0.375262,
+          "W7.prep": 0.64161,
+          "W7.traps": 0.734823,
+          "W9a": 0.792193,
+          "W9b": 0.119092
+        }
+      },
+      "metrics": {
+        "effect:W4.allowed": {
+          "interval": [
+            -2.227283,
+            -0.142189
+          ],
+          "level": "95%, HC3 over players",
+          "value": -1.184736
+        },
+        "effect:W4.missed": {
+          "interval": [
+            -0.764012,
+            2.255712
+          ],
+          "level": "95%, HC3 over players",
+          "value": 0.74585
+        },
+        "effect:W5": {
+          "interval": [
+            -4.335034,
+            -1.541429
+          ],
+          "level": "95%, HC3 over players",
+          "value": -2.938232
+        },
+        "effect:W6": {
+          "interval": [
+            -2.185293,
+            0.120845
+          ],
+          "level": "95%, HC3 over players",
+          "value": -1.032224
+        },
+        "effect:W7.prep": {
+          "interval": [
+            -0.271004,
+            1.588032
+          ],
+          "level": "95%, HC3 over players",
+          "value": 0.658514
+        },
+        "effect:W7.traps": {
+          "interval": [
+            -0.916798,
+            0.989851
+          ],
+          "level": "95%, HC3 over players",
+          "value": 0.036527
+        },
+        "effect:W9a": {
+          "interval": [
+            -0.837891,
+            0.798389
+          ],
+          "level": "95%, HC3 over players",
+          "value": -0.019751
+        },
+        "effect:W9b": {
+          "interval": [
+            -3.253203,
+            2.603528
+          ],
+          "level": "95%, HC3 over players",
+          "value": -0.324837
+        },
+        "effect:accuracy": {
+          "interval": [
+            -1.086575,
+            0.839707
+          ],
+          "level": "95%, HC3 over players",
+          "value": -0.123434
+        },
+        "keys_preceding_climbing": {
+          "at": "need more data: none",
+          "interval": null,
+          "level": "section 9's rule",
+          "value": 0.0
+        },
+        "level_reliability": {
+          "interval": null,
+          "level": "point estimates, SE about 0.008 each",
+          "value": 0.465246
+        }
+      },
+      "results_sha256": "6dea30f5d9a901a8ae6a8b6629f087b4842c970c73660b0e4fa9f116e80ae3b6",
       "rule_sha256": "f9ba26182a8cabf637160658235ea7d73a77e63d1477b7e3c9ce17bf31f899ed",
       "seed_namespace": "EXP-0009",
       "verdict": "no clear difference"
