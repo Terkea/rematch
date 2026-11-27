@@ -62,6 +62,8 @@ export type TrajectoryView =
       /** The section's "What is this?": it says the rating is not called while it is withheld. */
       explain: GlossaryEntry;
       headline: string;
+      /** "It is 540 now. Your highest was 1,111, in March 2026.": the plain facts under it. */
+      facts: string;
       since: string;
       /** "Based on 523 rated rapid games." */
       basis: string;
@@ -109,26 +111,34 @@ function verdictWords(v: string): string {
 
 type Ready = Extract<Trajectory, { kind: TrajectoryKind }>;
 
+/** The difference of two shown ratings, from the rounded numbers on the page, so it adds up. */
+const shownDiff = (a: number, b: number) => Math.round(b) - Math.round(a);
+
 /**
  * "Your rapid rating averaged 1,492 over your last 30 games, down from 1,560 over your first 30
- * (−68). It is 1,488 now. Your highest was 1,610, in April 2026." With the verdict withheld the
- * first sentence names no direction.
+ * (−68)." With the verdict withheld it names no direction.
  */
 function headline(t: Ready, tc: TimeClass, shown: boolean): string {
   const last = `${rating(t.now.meanRating)} over your last ${t.now.games} games`;
   const first = `${rating(t.then.meanRating)} over your first ${t.then.games}`;
-  const delta = signed(t.change);
-  const lead =
-    shown && t.kind === "rising"
-      ? `Your ${tc} rating averaged ${last}, up from ${first} (${delta}).`
-      : shown && t.kind === "falling"
-        ? `Your ${tc} rating averaged ${last}, down from ${first} (${delta}).`
-        : `Your ${tc} rating averaged ${last} and ${first} (${delta})${shown ? ": no clear change" : ""}.`;
+  // A no-break space keeps the difference on the line of the numbers it belongs to.
+  const delta = `\u00a0(${signed(shownDiff(t.then.meanRating, t.now.meanRating))})`;
+  if (shown && t.kind === "rising") {
+    return `Your ${tc} rating averaged ${last}, up from ${first}${delta}.`;
+  }
+  if (shown && t.kind === "falling") {
+    return `Your ${tc} rating averaged ${last}, down from ${first}${delta}.`;
+  }
+  return `Your ${tc} rating averaged ${last} and ${first}${delta}${shown ? ": no clear change" : ""}.`;
+}
+
+/** "It is 1,488 now. Your highest was 1,610, in April 2026.": the peak as a plain fact. */
+function facts(t: Ready): string {
   const peak =
     t.peak.gameId !== null && t.peak.rating > t.current.rating
       ? ` Your highest was ${rating(t.peak.rating)}, in ${monthOf(t.peak.at)}.`
       : "";
-  return `${lead} It is ${rating(t.current.rating)} now.${peak}`;
+  return `It is ${rating(t.current.rating)} now.${peak}`;
 }
 
 const pct0 = (v: number) => `${Math.round(v * 100)}%`;
@@ -191,7 +201,12 @@ function change(r: { result: ThenNowRow["result"] }, detail: string | null): Com
 /** The rating row's change: its verdict, or "Not called" with the difference alone. */
 function ratingChange(t: Ready, shown: boolean): CompareChange {
   if (t.rating.verdict === "not_enough_games") return change({ result: t.rating }, null);
-  const diff = `Difference ${signed(Math.round(t.rating.diff.value))} points`;
+  const { a, b } = t.ratingSides;
+  const shown2 =
+    a.kind === "estimate" && b.kind === "estimate"
+      ? shownDiff(a.value, b.value)
+      : Math.round(t.rating.diff.value);
+  const diff = `Difference ${signed(shown2)} points`;
   const why = "A rating moves after every game, so this isn't judged on its own.";
   if (!shown) return { verdict: "withheld", text: "Not called", detail: `${diff}. ${why}` };
   return change(
@@ -224,7 +239,7 @@ function compareRows(t: Ready, shown: boolean): CompareViewRow[] {
       const detail =
         res.verdict === "not_enough_games" || r.a.kind !== "estimate" || r.b.kind !== "estimate"
           ? null
-          : `Difference ${signed(Math.round((r.b.value - r.a.value) * 100))} points of chances`;
+          : `Difference ${signed(Math.round(r.b.value * 100) - Math.round(r.a.value * 100))} points of chances`;
       rows.push({
         key: r.key,
         label: r.label,
@@ -284,6 +299,7 @@ export function trajectoryView(
       ? TRAJECTORY_GLOSSARY.trajectory
       : TRAJECTORY_GLOSSARY.trajectoryNotCalled,
     headline: headline(t, tc, ratingVerdict),
+    facts: facts(t),
     since: phrases.length > 0 ? `${lead}: ${phrases.join(", ")}.` : "",
     basis: `Based on ${count.format(t.games)} rated ${tc} ${t.games === 1 ? "game" : "games"}.`,
     chart: {

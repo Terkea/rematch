@@ -100,8 +100,9 @@ describe("trajectoryView, with the rating's verdict stated (EXP-0030, ADR 0117)"
     const v = trajectoryView(t, "rapid");
     if (v.state !== "ready") throw new Error("expected a trajectory");
     expect(v.headline).toBe(
-      "Your rapid rating averaged 637 over your last 30 games, down from 902 over your first 30 (−265). It is 500 now. Your highest was 1,080, in February 2026.",
+      "Your rapid rating averaged 637 over your last 30 games, down from 902 over your first 30\u00a0(−265).",
     );
+    expect(v.facts).toBe("It is 500 now. Your highest was 1,080, in February 2026.");
     // No difference against the peak: it is a maximum of the rating's own wander.
     expect(v.headline).not.toMatch(/peaked at|from its peak/);
     expect(v.kind).toBe("falling");
@@ -113,8 +114,10 @@ describe("trajectoryView, with the rating's verdict stated (EXP-0030, ADR 0117)"
     const v = trajectoryView(rise(), "blitz");
     if (v.state !== "ready") throw new Error("expected a trajectory");
     expect(v.headline).toBe(
-      "Your blitz rating averaged 1,058 over your last 30 games, up from 858 over your first 30 (+200). It is 1,120 now.",
+      "Your blitz rating averaged 1,058 over your last 30 games, up from 858 over your first 30\u00a0(+200).",
     );
+    // The current rating is the highest: no separate peak.
+    expect(v.facts).toBe("It is 1,120 now.");
     expect(v.compare.a.label).toBe("Your first 30 games");
   });
 
@@ -122,8 +125,9 @@ describe("trajectoryView, with the rating's verdict stated (EXP-0030, ADR 0117)"
     const v = trajectoryView(level(), "rapid");
     if (v.state !== "ready") throw new Error("expected a trajectory");
     expect(v.headline).toBe(
-      "Your rapid rating averaged 900 over your last 30 games and 900 over your first 30 (±0): no clear change. It is 900 now. Your highest was 912, in January 2026.",
+      "Your rapid rating averaged 900 over your last 30 games and 900 over your first 30\u00a0(±0): no clear change.",
     );
+    expect(v.facts).toBe("It is 900 now. Your highest was 912, in January 2026.");
     expect(v.kind).toBe("flat");
   });
 
@@ -167,6 +171,30 @@ describe("trajectoryView, with the rating's verdict stated (EXP-0030, ADR 0117)"
     expect(w?.a.detail).toMatch(/^80% range \d+% to \d+%, 90 of 300 chances in 30 games$/);
   });
 
+  it("shows differences that add up from the numbers beside them", () => {
+    // The first number in a shown text: "902 on average", "27%", "−265".
+    const num = (s: string) =>
+      Number((s.replace(/,/g, "").replace("−", "-").match(/-?\d+/) ?? ["NaN"])[0]);
+    for (const t of [falling(), rise(), level()]) {
+      const v = trajectoryView(t, "rapid");
+      if (v.state !== "ready") throw new Error("expected a trajectory");
+      const m = v.headline.match(
+        /averaged ([\d,]+) .* ([\d,]+) over your first \d+\s\(([−+±][\d,]+)\)/,
+      );
+      if (!m) throw new Error(v.headline);
+      const [, last, first, delta] = m as unknown as [string, string, string, string];
+      expect(Number.isFinite(num(last))).toBe(true);
+      expect(num(delta.replace("±", ""))).toBe(num(last) - num(first));
+      const r = v.compare.rows[0];
+      const d = r?.change.detail?.match(/^Difference ([−+±][\d,]+) points/)?.[1] ?? "";
+      expect(num(d.replace("±", ""))).toBe(num(r?.b.value ?? "") - num(r?.a.value ?? ""));
+      for (const w of v.compare.rows.filter((x) => x.key.startsWith("weakness:"))) {
+        const p = w.change.detail?.match(/^Difference ([−+±]\d+) points of chances/)?.[1];
+        if (p) expect(num(p.replace("±", ""))).toBe(num(w.b.value) - num(w.a.value));
+      }
+    }
+  });
+
   it("says how many more rated games it needs", () => {
     const games = rated([900, 910, 905]);
     const t = computeTrajectory({ games, current: null, stats: [], weaknesses: [], seed: "v" });
@@ -184,7 +212,7 @@ describe("trajectoryView, with the rating's verdict withheld (ADR 0116)", () => 
     const v = trajectoryView(falling(), "rapid", HIDDEN);
     if (v.state !== "ready") throw new Error("expected a trajectory");
     expect(v.headline).toBe(
-      "Your rapid rating averaged 637 over your last 30 games and 902 over your first 30 (−265). It is 500 now. Your highest was 1,080, in February 2026.",
+      "Your rapid rating averaged 637 over your last 30 games and 902 over your first 30\u00a0(−265).",
     );
     expect(v.kind).toBeNull();
     for (const t of [rise(), level()]) {

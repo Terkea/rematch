@@ -67,8 +67,11 @@ describe("TrajectorySection", () => {
     const section = screen.getByRole("region", { name: "Rating trajectory" });
     expect(
       within(section).getByText(
-        /averaged \d+ over your last 30 games, down from 902 over your first 30 .* Your highest was 1,080, in February 2026\./,
+        /^Your rapid rating averaged \d+ over your last 30 games, down from 902 over your first 30\s\(−\d+\)\.$/,
       ),
+    ).toBeTruthy();
+    expect(
+      within(section).getByText("It is 500 now. Your highest was 1,080, in February 2026."),
     ).toBeTruthy();
     expect(within(section).getByText(/^Since your first games: accuracy/)).toBeTruthy();
     const table = container.querySelector('[data-slot="then-now"]');

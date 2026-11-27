@@ -10,7 +10,7 @@ const PCT = Math.round(CONFIDENCE * 100);
 export const TRAJECTORY_GLOSSARY = {
   trajectory: {
     name: "Rating trajectory",
-    meaning: "Where your rating has been, its peak, and how your play then compares with now.",
+    meaning: "Where your rating has been, and how your first games compare with your last.",
     measured: `Your rating before each rated game of the time control (on chess.com, your rating after the previous game). "Then" is your first ${TRAJECTORY_WINDOW} rated games, "now" your last ${TRAJECTORY_WINDOW}. With fewer than ${2 * TRAJECTORY_WINDOW} rated games each window is half of them. A change is called only when the ${PCT}% evidence separates the two windows, with at least ${KPI_MIN_GAMES} games on each side. For the rating, that evidence counts how a rating carries over from one game to the next.`,
     whyItMatters:
       "A rating moves for many reasons; comparing how you played then and now shows which ones are yours.",
@@ -27,7 +27,7 @@ export const TRAJECTORY_GLOSSARY = {
   // EXP-0015 (ADR 0116): the section and the rating row while the rating's verdict is withheld.
   trajectoryNotCalled: {
     name: "Rating trajectory",
-    meaning: "Where your rating has been, its peak, and how your play then compares with now.",
+    meaning: "Where your rating has been, and how your first games compare with your last.",
     measured: `Your rating before each rated game of the time control (on chess.com, your rating after the previous game). "Then" is your first ${TRAJECTORY_WINDOW} rated games, "now" your last ${TRAJECTORY_WINDOW}. With fewer than ${2 * TRAJECTORY_WINDOW} rated games each window is half of them. A change in accuracy, blunders, score or a weakness is called only when the ${PCT}% evidence separates the two windows, with at least ${KPI_MIN_GAMES} games on each side. The rating's own change is shown and not called: see the Rating row.`,
     whyItMatters:
       "A rating moves for many reasons; comparing how you played then and now shows which ones are yours.",

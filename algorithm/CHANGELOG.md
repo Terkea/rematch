@@ -8,7 +8,7 @@ One entry per algorithm version, newest first. The id is `algo-<version>+<hash>`
 
 Each entry says what changed, why, the ADR, and the benchmark delta (the scorecard before and after; `cli bench compare` once it exists).
 
-## algo-6.0.0+e51884dc834a
+## algo-6.0.0+f40a2b27677a
 
 2026-11-27. The trajectory's rating verdict comes back, from a rule that counts the rating's memory and compares your first games with your last, as EXP-0030 decided.
 
