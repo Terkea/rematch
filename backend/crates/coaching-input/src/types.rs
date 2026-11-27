@@ -710,8 +710,9 @@ wire_enum!(
         Worse => "worse",
         NoClearChange => "no_clear_change",
         NotEnoughGames => "not_enough_games",
-        // `thenVsNow.rating` only, while `trajectory::RATING_VERDICT_SHOWN` is false (EXP-0015,
-        // ADR 0116): the rule computed a verdict and the coach is not told it.
+        // `thenVsNow.rating` only (ADR 0116): a verdict the coach is not told, on any trajectory
+        // that `trajectory::player_visible` does not pass (since `algo-6.0.0`, one built by a rule
+        // other than EXP-0030's).
         Withheld => "withheld",
     }
 );
@@ -846,11 +847,18 @@ pub struct Trajectory {
     /// The latest stored rating.
     #[serde(deserialize_with = "nullable")]
     pub current: Option<RatingAt>,
-    /// `current - peak` with a `peak` "then" window, else `current` minus the first window's
-    /// mean, in rating points.
+    /// Since `algo-6.0.0` (EXP-0030), the last window's mean minus the first window's, in rating
+    /// points: the difference the verdict tests. Earlier inputs: `current - peak` with a `peak`
+    /// "then" window, else `current` minus the first window's mean.
     #[serde(deserialize_with = "nullable")]
     #[schemars(range(min = -4000, max = 4000))]
     pub change: Option<i32>,
+    /// The rule that computed `kind` and the rating's verdict (`memory-halves` since
+    /// `algo-6.0.0`). Absent on inputs built before it, whose verdict EXP-0015 found wrong, so
+    /// `trajectory::player_visible` withholds theirs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(extend("x-optional" = true))]
+    pub rating_rule: Option<String>,
     /// The newest months of the line, oldest first.
     #[schemars(length(max = LIMITS.trajectory_months))]
     pub months: Vec<MonthRating>,

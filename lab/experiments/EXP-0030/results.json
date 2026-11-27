@@ -1,0 +1,3695 @@
+{
+  "algorithm_id": "algo-5.0.1+d9c1f47013b6",
+  "candidates": {
+    "memory-before": {
+      "arena": {
+        "120": {
+          "effect": -0.5315,
+          "interval": [
+            -0.557467,
+            -0.504062
+          ],
+          "verdict": "better"
+        },
+        "250": {
+          "effect": -0.6935,
+          "interval": [
+            -0.716963,
+            -0.6676
+          ],
+          "verdict": "better"
+        },
+        "60": {
+          "effect": -0.3545,
+          "interval": [
+            -0.379919,
+            -0.328704
+          ],
+          "verdict": "better"
+        }
+      },
+      "checks": {
+        "beats_champion": true,
+        "chesscom_guard": true,
+        "detection_guard": true,
+        "primary_within": true,
+        "rough_guard": true,
+        "transfer_guard": true
+      },
+      "chesscom": [
+        {
+          "ci80": [
+            0.075306,
+            0.098052
+          ],
+          "ci95": [
+            0.070169,
+            0.105
+          ],
+          "ci_decision": null,
+          "games": 60,
+          "guard": "passes",
+          "k": 86,
+          "n": 1000,
+          "share": 0.086,
+          "side": "falling"
+        },
+        {
+          "ci80": [
+            0.085658,
+            0.109663
+          ],
+          "ci95": [
+            0.080169,
+            0.116915
+          ],
+          "ci_decision": null,
+          "games": 60,
+          "guard": "passes",
+          "k": 97,
+          "n": 1000,
+          "share": 0.097,
+          "side": "rising"
+        },
+        {
+          "ci80": [
+            0.087546,
+            0.111769
+          ],
+          "ci95": [
+            0.081995,
+            0.119074
+          ],
+          "ci_decision": null,
+          "games": 120,
+          "guard": "passes",
+          "k": 99,
+          "n": 1000,
+          "share": 0.099,
+          "side": "falling"
+        },
+        {
+          "ci80": [
+            0.09038,
+            0.114925
+          ],
+          "ci95": [
+            0.084739,
+            0.122307
+          ],
+          "ci_decision": null,
+          "games": 120,
+          "guard": "passes",
+          "k": 102,
+          "n": 1000,
+          "share": 0.102,
+          "side": "rising"
+        },
+        {
+          "ci80": [
+            0.091326,
+            0.115976
+          ],
+          "ci95": [
+            0.085655,
+            0.123384
+          ],
+          "ci_decision": null,
+          "games": 250,
+          "guard": "passes",
+          "k": 103,
+          "n": 1000,
+          "share": 0.103,
+          "side": "falling"
+        },
+        {
+          "ci80": [
+            0.084715,
+            0.10861
+          ],
+          "ci95": [
+            0.079257,
+            0.115835
+          ],
+          "ci_decision": null,
+          "games": 250,
+          "guard": "passes",
+          "k": 96,
+          "n": 1000,
+          "share": 0.096,
+          "side": "rising"
+        }
+      ],
+      "clears": true,
+      "detection": [
+        {
+          "ci80": [
+            0.32858,
+            0.399575
+          ],
+          "ci95": [
+            0.310954,
+            0.419168
+          ],
+          "ci_decision": null,
+          "decline": 100,
+          "false_alarm_same_length": 0.103,
+          "games": 60,
+          "k": 109,
+          "n": 300,
+          "share": 0.363333
+        },
+        {
+          "ci80": [
+            0.682216,
+            0.748758
+          ],
+          "ci95": [
+            0.663186,
+            0.764669
+          ],
+          "ci_decision": null,
+          "decline": 200,
+          "false_alarm_same_length": 0.103,
+          "games": 60,
+          "guard": "passes",
+          "k": 215,
+          "n": 300,
+          "share": 0.716667
+        },
+        {
+          "ci80": [
+            0.476379,
+            0.550142
+          ],
+          "ci95": [
+            0.456964,
+            0.569366
+          ],
+          "ci_decision": null,
+          "decline": 100,
+          "false_alarm_same_length": 0.1085,
+          "games": 120,
+          "k": 154,
+          "n": 300,
+          "share": 0.513333
+        },
+        {
+          "ci80": [
+            0.850266,
+            0.898965
+          ],
+          "ci95": [
+            0.834626,
+            0.909183
+          ],
+          "ci_decision": null,
+          "decline": 200,
+          "false_alarm_same_length": 0.1085,
+          "games": 120,
+          "guard": "passes",
+          "k": 263,
+          "n": 300,
+          "share": 0.876667
+        },
+        {
+          "ci80": [
+            0.617372,
+            0.687625
+          ],
+          "ci95": [
+            0.597848,
+            0.704941
+          ],
+          "ci_decision": null,
+          "decline": 100,
+          "false_alarm_same_length": 0.101,
+          "games": 250,
+          "k": 196,
+          "n": 300,
+          "share": 0.653333
+        },
+        {
+          "ci80": [
+            0.919917,
+            0.955291
+          ],
+          "ci95": [
+            0.907161,
+            0.961714
+          ],
+          "ci_decision": null,
+          "decline": 200,
+          "false_alarm_same_length": 0.101,
+          "games": 250,
+          "guard": "passes",
+          "k": 282,
+          "n": 300,
+          "share": 0.94
+        }
+      ],
+      "only_undecided": false,
+      "primary": [
+        {
+          "ci80": [
+            0.094613,
+            0.112039
+          ],
+          "ci95": [
+            0.090431,
+            0.117091
+          ],
+          "ci_decision": [
+            0.08724,
+            0.121229
+          ],
+          "games": 60,
+          "k": 206,
+          "n": 2000,
+          "read": "within the bound",
+          "share": 0.103,
+          "side": "falling"
+        },
+        {
+          "ci80": [
+            0.080695,
+            0.09698
+          ],
+          "ci95": [
+            0.076828,
+            0.101749
+          ],
+          "ci_decision": [
+            0.07389,
+            0.105669
+          ],
+          "games": 60,
+          "k": 177,
+          "n": 2000,
+          "read": "within the bound",
+          "share": 0.0885,
+          "side": "rising"
+        },
+        {
+          "ci80": [
+            0.099907,
+            0.117736
+          ],
+          "ci95": [
+            0.095613,
+            0.122889
+          ],
+          "ci_decision": [
+            0.092332,
+            0.127103
+          ],
+          "games": 120,
+          "k": 217,
+          "n": 2000,
+          "read": "within the bound",
+          "share": 0.1085,
+          "side": "falling"
+        },
+        {
+          "ci80": [
+            0.080216,
+            0.09646
+          ],
+          "ci95": [
+            0.076361,
+            0.101219
+          ],
+          "ci_decision": [
+            0.073432,
+            0.105131
+          ],
+          "games": 120,
+          "k": 176,
+          "n": 2000,
+          "read": "within the bound",
+          "share": 0.088,
+          "side": "rising"
+        },
+        {
+          "ci80": [
+            0.09269,
+            0.109965
+          ],
+          "ci95": [
+            0.088549,
+            0.11498
+          ],
+          "ci_decision": [
+            0.085392,
+            0.11909
+          ],
+          "games": 250,
+          "k": 202,
+          "n": 2000,
+          "read": "within the bound",
+          "share": 0.101,
+          "side": "falling"
+        },
+        {
+          "ci80": [
+            0.092209,
+            0.109446
+          ],
+          "ci95": [
+            0.088079,
+            0.114452
+          ],
+          "ci_decision": [
+            0.08493,
+            0.118554
+          ],
+          "games": 250,
+          "k": 201,
+          "n": 2000,
+          "read": "within the bound",
+          "share": 0.1005,
+          "side": "rising"
+        }
+      ],
+      "rough": [
+        {
+          "ci80": [
+            0.112209,
+            0.139021
+          ],
+          "ci95": [
+            0.105926,
+            0.146944
+          ],
+          "ci_decision": null,
+          "games": 60,
+          "guard": "passes",
+          "k": 125,
+          "n": 1000,
+          "share": 0.125,
+          "side": "falling"
+        },
+        {
+          "ci80": [
+            0.123659,
+            0.151531
+          ],
+          "ci95": [
+            0.117073,
+            0.159705
+          ],
+          "ci_decision": null,
+          "games": 60,
+          "guard": "passes",
+          "k": 137,
+          "n": 1000,
+          "share": 0.137,
+          "side": "rising"
+        },
+        {
+          "ci80": [
+            0.127484,
+            0.155693
+          ],
+          "ci95": [
+            0.120801,
+            0.163946
+          ],
+          "ci_decision": null,
+          "games": 120,
+          "guard": "passes",
+          "k": 141,
+          "n": 1000,
+          "share": 0.141,
+          "side": "falling"
+        },
+        {
+          "ci80": [
+            0.122703,
+            0.15049
+          ],
+          "ci95": [
+            0.116142,
+            0.158644
+          ],
+          "ci_decision": null,
+          "games": 120,
+          "guard": "passes",
+          "k": 136,
+          "n": 1000,
+          "share": 0.136,
+          "side": "rising"
+        },
+        {
+          "ci80": [
+            0.103647,
+            0.129612
+          ],
+          "ci95": [
+            0.097606,
+            0.137333
+          ],
+          "ci_decision": null,
+          "games": 250,
+          "guard": "passes",
+          "k": 116,
+          "n": 1000,
+          "share": 0.116,
+          "side": "falling"
+        },
+        {
+          "ci80": [
+            0.124615,
+            0.152572
+          ],
+          "ci95": [
+            0.118005,
+            0.160766
+          ],
+          "ci_decision": null,
+          "games": 250,
+          "guard": "passes",
+          "k": 138,
+          "n": 1000,
+          "share": 0.138,
+          "side": "rising"
+        }
+      ]
+    },
+    "memory-halves": {
+      "arena": {
+        "120": {
+          "effect": -0.523,
+          "interval": [
+            -0.548994,
+            -0.495543
+          ],
+          "verdict": "better"
+        },
+        "250": {
+          "effect": -0.69,
+          "interval": [
+            -0.713544,
+            -0.664027
+          ],
+          "verdict": "better"
+        },
+        "60": {
+          "effect": -0.3545,
+          "interval": [
+            -0.379919,
+            -0.328704
+          ],
+          "verdict": "better"
+        }
+      },
+      "checks": {
+        "beats_champion": true,
+        "chesscom_guard": true,
+        "detection_guard": true,
+        "primary_within": true,
+        "rough_guard": true,
+        "transfer_guard": true
+      },
+      "chesscom": [
+        {
+          "ci80": [
+            0.075306,
+            0.098052
+          ],
+          "ci95": [
+            0.070169,
+            0.105
+          ],
+          "ci_decision": null,
+          "games": 60,
+          "guard": "passes",
+          "k": 86,
+          "n": 1000,
+          "share": 0.086,
+          "side": "falling"
+        },
+        {
+          "ci80": [
+            0.085658,
+            0.109663
+          ],
+          "ci95": [
+            0.080169,
+            0.116915
+          ],
+          "ci_decision": null,
+          "games": 60,
+          "guard": "passes",
+          "k": 97,
+          "n": 1000,
+          "share": 0.097,
+          "side": "rising"
+        },
+        {
+          "ci80": [
+            0.075306,
+            0.098052
+          ],
+          "ci95": [
+            0.070169,
+            0.105
+          ],
+          "ci_decision": null,
+          "games": 120,
+          "guard": "passes",
+          "k": 86,
+          "n": 1000,
+          "share": 0.086,
+          "side": "falling"
+        },
+        {
+          "ci80": [
+            0.095111,
+            0.120178
+          ],
+          "ci95": [
+            0.089323,
+            0.127685
+          ],
+          "ci_decision": null,
+          "games": 120,
+          "guard": "passes",
+          "k": 107,
+          "n": 1000,
+          "share": 0.107,
+          "side": "rising"
+        },
+        {
+          "ci80": [
+            0.086602,
+            0.110716
+          ],
+          "ci95": [
+            0.081082,
+            0.117995
+          ],
+          "ci_decision": null,
+          "games": 250,
+          "guard": "passes",
+          "k": 98,
+          "n": 1000,
+          "share": 0.098,
+          "side": "falling"
+        },
+        {
+          "ci80": [
+            0.078124,
+            0.101224
+          ],
+          "ci95": [
+            0.072888,
+            0.108257
+          ],
+          "ci_decision": null,
+          "games": 250,
+          "guard": "passes",
+          "k": 89,
+          "n": 1000,
+          "share": 0.089,
+          "side": "rising"
+        }
+      ],
+      "clears": true,
+      "detection": [
+        {
+          "ci80": [
+            0.32858,
+            0.399575
+          ],
+          "ci95": [
+            0.310954,
+            0.419168
+          ],
+          "ci_decision": null,
+          "decline": 100,
+          "false_alarm_same_length": 0.103,
+          "games": 60,
+          "k": 109,
+          "n": 300,
+          "share": 0.363333
+        },
+        {
+          "ci80": [
+            0.682216,
+            0.748758
+          ],
+          "ci95": [
+            0.663186,
+            0.764669
+          ],
+          "ci_decision": null,
+          "decline": 200,
+          "false_alarm_same_length": 0.103,
+          "games": 60,
+          "guard": "passes",
+          "k": 215,
+          "n": 300,
+          "share": 0.716667
+        },
+        {
+          "ci80": [
+            0.459791,
+            0.533578
+          ],
+          "ci95": [
+            0.44049,
+            0.552928
+          ],
+          "ci_decision": null,
+          "decline": 100,
+          "false_alarm_same_length": 0.117,
+          "games": 120,
+          "k": 149,
+          "n": 300,
+          "share": 0.496667
+        },
+        {
+          "ci80": [
+            0.811034,
+            0.865263
+          ],
+          "ci95": [
+            0.794256,
+            0.877146
+          ],
+          "ci_decision": null,
+          "decline": 200,
+          "false_alarm_same_length": 0.117,
+          "games": 120,
+          "guard": "passes",
+          "k": 252,
+          "n": 300,
+          "share": 0.84
+        },
+        {
+          "ci80": [
+            0.689086,
+            0.755149
+          ],
+          "ci95": [
+            0.67013,
+            0.770889
+          ],
+          "ci_decision": null,
+          "decline": 100,
+          "false_alarm_same_length": 0.1045,
+          "games": 250,
+          "k": 217,
+          "n": 300,
+          "share": 0.723333
+        },
+        {
+          "ci80": [
+            0.97952,
+            0.995144
+          ],
+          "ci95": [
+            0.971017,
+            0.996593
+          ],
+          "ci_decision": null,
+          "decline": 200,
+          "false_alarm_same_length": 0.1045,
+          "games": 250,
+          "guard": "passes",
+          "k": 297,
+          "n": 300,
+          "share": 0.99
+        }
+      ],
+      "only_undecided": false,
+      "primary": [
+        {
+          "ci80": [
+            0.094613,
+            0.112039
+          ],
+          "ci95": [
+            0.090431,
+            0.117091
+          ],
+          "ci_decision": [
+            0.08724,
+            0.121229
+          ],
+          "games": 60,
+          "k": 206,
+          "n": 2000,
+          "read": "within the bound",
+          "share": 0.103,
+          "side": "falling"
+        },
+        {
+          "ci80": [
+            0.080695,
+            0.09698
+          ],
+          "ci95": [
+            0.076828,
+            0.101749
+          ],
+          "ci_decision": [
+            0.07389,
+            0.105669
+          ],
+          "games": 60,
+          "k": 177,
+          "n": 2000,
+          "read": "within the bound",
+          "share": 0.0885,
+          "side": "rising"
+        },
+        {
+          "ci80": [
+            0.108102,
+            0.126527
+          ],
+          "ci95": [
+            0.103642,
+            0.131826
+          ],
+          "ci_decision": [
+            0.100228,
+            0.136154
+          ],
+          "games": 120,
+          "k": 234,
+          "n": 2000,
+          "read": "within the bound",
+          "share": 0.117,
+          "side": "falling"
+        },
+        {
+          "ci80": [
+            0.076388,
+            0.092294
+          ],
+          "ci95": [
+            0.072626,
+            0.096969
+          ],
+          "ci_decision": [
+            0.069771,
+            0.100816
+          ],
+          "games": 120,
+          "k": 168,
+          "n": 2000,
+          "read": "within the bound",
+          "share": 0.084,
+          "side": "rising"
+        },
+        {
+          "ci80": [
+            0.096056,
+            0.113593
+          ],
+          "ci95": [
+            0.091843,
+            0.118674
+          ],
+          "ci_decision": [
+            0.088627,
+            0.122833
+          ],
+          "games": 250,
+          "k": 209,
+          "n": 2000,
+          "read": "within the bound",
+          "share": 0.1045,
+          "side": "falling"
+        },
+        {
+          "ci80": [
+            0.086447,
+            0.103219
+          ],
+          "ci95": [
+            0.082446,
+            0.108109
+          ],
+          "ci_decision": [
+            0.0794,
+            0.112122
+          ],
+          "games": 250,
+          "k": 189,
+          "n": 2000,
+          "read": "within the bound",
+          "share": 0.0945,
+          "side": "rising"
+        }
+      ],
+      "rough": [
+        {
+          "ci80": [
+            0.112209,
+            0.139021
+          ],
+          "ci95": [
+            0.105926,
+            0.146944
+          ],
+          "ci_decision": null,
+          "games": 60,
+          "guard": "passes",
+          "k": 125,
+          "n": 1000,
+          "share": 0.125,
+          "side": "falling"
+        },
+        {
+          "ci80": [
+            0.123659,
+            0.151531
+          ],
+          "ci95": [
+            0.117073,
+            0.159705
+          ],
+          "ci_decision": null,
+          "games": 60,
+          "guard": "passes",
+          "k": 137,
+          "n": 1000,
+          "share": 0.137,
+          "side": "rising"
+        },
+        {
+          "ci80": [
+            0.117929,
+            0.145281
+          ],
+          "ci95": [
+            0.111493,
+            0.153332
+          ],
+          "ci_decision": null,
+          "games": 120,
+          "guard": "passes",
+          "k": 131,
+          "n": 1000,
+          "share": 0.131,
+          "side": "falling"
+        },
+        {
+          "ci80": [
+            0.127484,
+            0.155693
+          ],
+          "ci95": [
+            0.120801,
+            0.163946
+          ],
+          "ci_decision": null,
+          "games": 120,
+          "guard": "passes",
+          "k": 141,
+          "n": 1000,
+          "share": 0.141,
+          "side": "rising"
+        },
+        {
+          "ci80": [
+            0.117929,
+            0.145281
+          ],
+          "ci95": [
+            0.111493,
+            0.153332
+          ],
+          "ci_decision": null,
+          "games": 250,
+          "guard": "passes",
+          "k": 131,
+          "n": 1000,
+          "share": 0.131,
+          "side": "falling"
+        },
+        {
+          "ci80": [
+            0.130355,
+            0.158812
+          ],
+          "ci95": [
+            0.123601,
+            0.167124
+          ],
+          "ci_decision": null,
+          "games": 250,
+          "guard": "passes",
+          "k": 144,
+          "n": 1000,
+          "share": 0.144,
+          "side": "rising"
+        }
+      ]
+    }
+  },
+  "champion": {
+    "chesscom": [
+      {
+        "falling": {
+          "ci80": [
+            0.418011,
+            0.458192
+          ],
+          "ci95": [
+            0.407545,
+            0.46893
+          ],
+          "ci_decision": null,
+          "k": 438,
+          "n": 1000,
+          "share": 0.438
+        },
+        "games": 60,
+        "rising": {
+          "ci80": [
+            0.388249,
+            0.428052
+          ],
+          "ci95": [
+            0.377948,
+            0.438756
+          ],
+          "ci_decision": null,
+          "k": 408,
+          "n": 1000,
+          "share": 0.408
+        }
+      },
+      {
+        "falling": {
+          "ci80": [
+            0.619322,
+            0.658222
+          ],
+          "ci95": [
+            0.608752,
+            0.668184
+          ],
+          "ci_decision": null,
+          "k": 639,
+          "n": 1000,
+          "share": 0.639
+        },
+        "games": 120,
+        "rising": {
+          "ci80": [
+            0.248487,
+            0.28428
+          ],
+          "ci95": [
+            0.239547,
+            0.294244
+          ],
+          "ci_decision": null,
+          "k": 266,
+          "n": 1000,
+          "share": 0.266
+        }
+      },
+      {
+        "falling": {
+          "ci80": [
+            0.765838,
+            0.799234
+          ],
+          "ci95": [
+            0.756395,
+            0.807439
+          ],
+          "ci_decision": null,
+          "k": 783,
+          "n": 1000,
+          "share": 0.783
+        },
+        "games": 250,
+        "rising": {
+          "ci80": [
+            0.135145,
+            0.164006
+          ],
+          "ci95": [
+            0.128274,
+            0.172412
+          ],
+          "ci_decision": null,
+          "k": 149,
+          "n": 1000,
+          "share": 0.149
+        }
+      }
+    ],
+    "falling": [
+      {
+        "ci80": [
+          0.443264,
+          0.471805
+        ],
+        "ci95": [
+          0.435769,
+          0.479394
+        ],
+        "ci_decision": null,
+        "games": 60,
+        "k": 915,
+        "n": 2000,
+        "share": 0.4575
+      },
+      {
+        "ci80": [
+          0.626135,
+          0.653635
+        ],
+        "ci95": [
+          0.618714,
+          0.66075
+        ],
+        "ci_decision": null,
+        "games": 120,
+        "k": 1280,
+        "n": 2000,
+        "share": 0.64
+      },
+      {
+        "ci80": [
+          0.782682,
+          0.805835
+        ],
+        "ci95": [
+          0.776235,
+          0.811636
+        ],
+        "ci_decision": null,
+        "games": 250,
+        "k": 1589,
+        "n": 2000,
+        "share": 0.7945
+      }
+    ],
+    "rising": [
+      {
+        "ci80": [
+          0.396979,
+          0.425167
+        ],
+        "ci95": [
+          0.389627,
+          0.432714
+        ],
+        "ci_decision": null,
+        "games": 60,
+        "k": 822,
+        "n": 2000,
+        "share": 0.411
+      },
+      {
+        "ci80": [
+          0.280625,
+          0.306714
+        ],
+        "ci95": [
+          0.273954,
+          0.313838
+        ],
+        "ci_decision": null,
+        "games": 120,
+        "k": 587,
+        "n": 2000,
+        "share": 0.2935
+      },
+      {
+        "ci80": [
+          0.153666,
+          0.174886
+        ],
+        "ci95": [
+          0.148419,
+          0.180869
+        ],
+        "ci_decision": null,
+        "games": 250,
+        "k": 328,
+        "n": 2000,
+        "share": 0.164
+      }
+    ],
+    "rough": [
+      {
+        "falling": {
+          "ci80": [
+            0.409075,
+            0.449158
+          ],
+          "ci95": [
+            0.398654,
+            0.45989
+          ],
+          "ci_decision": null,
+          "k": 429,
+          "n": 1000,
+          "share": 0.429
+        },
+        "games": 60,
+        "rising": {
+          "ci80": [
+            0.419005,
+            0.459196
+          ],
+          "ci95": [
+            0.408533,
+            0.469934
+          ],
+          "ci_decision": null,
+          "k": 439,
+          "n": 1000,
+          "share": 0.439
+        }
+      },
+      {
+        "falling": {
+          "ci80": [
+            0.60519,
+            0.6444
+          ],
+          "ci95": [
+            0.59457,
+            0.654474
+          ],
+          "ci_decision": null,
+          "k": 625,
+          "n": 1000,
+          "share": 0.625
+        },
+        "games": 120,
+        "rising": {
+          "ci80": [
+            0.285693,
+            0.32295
+          ],
+          "ci95": [
+            0.276285,
+            0.333215
+          ],
+          "ci_decision": null,
+          "k": 304,
+          "n": 1000,
+          "share": 0.304
+        }
+      },
+      {
+        "falling": {
+          "ci80": [
+            0.771997,
+            0.805055
+          ],
+          "ci95": [
+            0.76263,
+            0.813159
+          ],
+          "ci_decision": null,
+          "k": 789,
+          "n": 1000,
+          "share": 0.789
+        },
+        "games": 250,
+        "rising": {
+          "ci80": [
+            0.144741,
+            0.174377
+          ],
+          "ci95": [
+            0.137646,
+            0.182964
+          ],
+          "ci_decision": null,
+          "k": 159,
+          "n": 1000,
+          "share": 0.159
+        }
+      }
+    ]
+  },
+  "cohort": {
+    "all": {
+      "falling": {
+        "ci80": [
+          0.152679,
+          0.158747
+        ],
+        "ci95": [
+          0.151106,
+          0.160385
+        ],
+        "ci_decision": null,
+        "k": 3652,
+        "n": 23457,
+        "share": 0.155689
+      },
+      "mean_z": 0.207385,
+      "mean_z2": 2.548894,
+      "players": 23457,
+      "rising": {
+        "ci80": [
+          0.222677,
+          0.229678
+        ],
+        "ci95": [
+          0.22085,
+          0.231557
+        ],
+        "ci_decision": null,
+        "k": 5305,
+        "n": 23457,
+        "share": 0.226159
+      },
+      "two_sided": {
+        "ci80": [
+          0.377791,
+          0.385921
+        ],
+        "ci95": [
+          0.37565,
+          0.388084
+        ],
+        "ci_decision": null,
+        "ci_transfer": [
+          0.37565,
+          0.388084
+        ],
+        "k": 8957,
+        "n": 23457,
+        "share": 0.381848
+      }
+    },
+    "games_median": 74,
+    "guard": "passes",
+    "pseudonyms": 23563,
+    "settled": {
+      "falling": {
+        "ci80": [
+          0.109677,
+          0.116
+        ],
+        "ci95": [
+          0.108055,
+          0.117726
+        ],
+        "ci_decision": null,
+        "k": 1855,
+        "n": 16445,
+        "share": 0.1128
+      },
+      "mean_z": 0.376491,
+      "mean_z2": 2.374377,
+      "players": 16445,
+      "rising": {
+        "ci80": [
+          0.238792,
+          0.247365
+        ],
+        "ci95": [
+          0.236557,
+          0.249668
+        ],
+        "ci_decision": null,
+        "k": 3997,
+        "n": 16445,
+        "share": 0.243053
+      },
+      "two_sided": {
+        "ci80": [
+          0.351083,
+          0.360652
+        ],
+        "ci95": [
+          0.34857,
+          0.363203
+        ],
+        "ci_decision": null,
+        "ci_transfer": [
+          0.34857,
+          0.363203
+        ],
+        "k": 5852,
+        "n": 16445,
+        "share": 0.355853
+      }
+    },
+    "settled_pooled_rms": {
+      "falling": {
+        "ci80": [
+          0.120312,
+          0.12689
+        ],
+        "ci95": [
+          0.118621,
+          0.128681
+        ],
+        "ci_decision": null,
+        "k": 2032,
+        "n": 16445,
+        "share": 0.123563
+      },
+      "mean_z": 0.43199,
+      "mean_z2": 3.102514,
+      "players": 16445,
+      "rising": {
+        "ci80": [
+          0.260557,
+          0.269377
+        ],
+        "ci95": [
+          0.258254,
+          0.271743
+        ],
+        "ci_decision": null,
+        "k": 4357,
+        "n": 16445,
+        "share": 0.264944
+      },
+      "two_sided": {
+        "ci80": [
+          0.383648,
+          0.393389
+        ],
+        "ci95": [
+          0.381085,
+          0.395982
+        ],
+        "ci_decision": null,
+        "ci_transfer": [
+          0.381085,
+          0.395982
+        ],
+        "k": 6389,
+        "n": 16445,
+        "share": 0.388507
+      }
+    },
+    "settled_step_rms_median": 6.534524,
+    "sign_lag1": 0.029155,
+    "skipped": {
+      "no_movement": 106,
+      "not_five_and_five": 0
+    },
+    "slice": "8",
+    "step_lag1": 0.036262,
+    "step_rms_median": 8.443933
+  },
+  "compute": {
+    "actual": {
+      "cohort_lines": 3955242,
+      "simulated_games": 4079000,
+      "trajectory_players": 65400
+    },
+    "budget": {
+      "cohort_lines": 3955242,
+      "simulated_games": 4079000,
+      "trajectory_players": 65400
+    },
+    "cap": 1.5
+  },
+  "decision": "ship memory-halves",
+  "design": {
+    "arm_players": 300,
+    "burn_in": 300,
+    "checkpoints": [
+      60,
+      120,
+      250
+    ],
+    "cohort": {
+      "min_games": 40,
+      "months": [
+        "2026-07",
+        "2026-08",
+        "2026-09",
+        "2026-10"
+      ],
+      "slice": "8"
+    },
+    "decision_level": 0.9875,
+    "decline_players": 300,
+    "declines": [
+      100,
+      200
+    ],
+    "form_sensitivity": [
+      [
+        0.0,
+        20.0
+      ],
+      500
+    ],
+    "glicko1_players": 1000,
+    "new_players": 300,
+    "rough": {
+      "day_sd": 30.0,
+      "form": [
+        40.0,
+        0.8
+      ],
+      "game_minutes": 20.0,
+      "long_break": [
+        0.04,
+        14.0,
+        90.0
+      ],
+      "session_extra_games": 2.5,
+      "session_gap_days": 1.2,
+      "tilt": [
+        20.0,
+        60.0
+      ]
+    },
+    "rough_players": 1000,
+    "rules": [
+      "peak-bootstrap",
+      "memory-halves",
+      "memory-before"
+    ],
+    "seed_names": [
+      "settled",
+      "decline/100/60",
+      "decline/100/120",
+      "decline/100/250",
+      "decline/200/60",
+      "decline/200/120",
+      "decline/200/250",
+      "rough",
+      "rough-decline/200/120",
+      "elo/10",
+      "elo/32",
+      "glicko1",
+      "new-account",
+      "rough-form/0",
+      "rough-form/20"
+    ],
+    "seed_namespace": "EXP-0030-fb2f150c7574",
+    "settled_players": 2000,
+    "step_cap": 30.0
+  },
+  "diagnostics": {
+    "decline": {
+      "100/120": {
+        "abs_error_at_start": 23.858418,
+        "mean_error_at_start": -3.281139,
+        "unsettled": false
+      },
+      "100/250": {
+        "abs_error_at_start": 23.023177,
+        "mean_error_at_start": -0.107182,
+        "unsettled": false
+      },
+      "100/60": {
+        "abs_error_at_start": 25.565263,
+        "mean_error_at_start": 4.286326,
+        "unsettled": false
+      },
+      "200/120": {
+        "abs_error_at_start": 26.170534,
+        "mean_error_at_start": -1.451091,
+        "unsettled": false
+      },
+      "200/250": {
+        "abs_error_at_start": 25.52654,
+        "mean_error_at_start": -0.961515,
+        "unsettled": false
+      },
+      "200/60": {
+        "abs_error_at_start": 23.967654,
+        "mean_error_at_start": 2.214572,
+        "unsettled": false
+      }
+    },
+    "glicko1": {
+      "abs_error_at_start": 32.338533,
+      "mean_error_at_start": 2.017878,
+      "unsettled": false
+    },
+    "interval": {
+      "memory-before": {
+        "120": {
+          "diff_mean": -1.222461,
+          "diff_sd": 25.423875,
+          "half_width_mean": 32.248743,
+          "honest_half_width": 32.582006
+        },
+        "250": {
+          "diff_mean": -0.355892,
+          "diff_sd": 27.594841,
+          "half_width_mean": 36.032044,
+          "honest_half_width": 35.364212
+        },
+        "60": {
+          "diff_mean": -1.257,
+          "diff_sd": 20.506824,
+          "half_width_mean": 26.510933,
+          "honest_half_width": 26.280553
+        }
+      },
+      "memory-halves": {
+        "120": {
+          "diff_mean": -2.28495,
+          "diff_sd": 34.772885,
+          "half_width_mean": 43.792615,
+          "honest_half_width": 44.563245
+        },
+        "250": {
+          "diff_mean": -2.115067,
+          "diff_sd": 39.69507,
+          "half_width_mean": 50.885855,
+          "honest_half_width": 50.871279
+        },
+        "60": {
+          "diff_mean": -1.257,
+          "diff_sd": 20.506824,
+          "half_width_mean": 26.510933,
+          "honest_half_width": 26.280553
+        }
+      },
+      "peak-bootstrap": {
+        "120": {
+          "diff_mean": -10.919817,
+          "diff_sd": 33.93102,
+          "half_width_mean": 3.675992,
+          "honest_half_width": 43.484352
+        },
+        "250": {
+          "diff_mean": -25.501867,
+          "diff_sd": 37.875221,
+          "half_width_mean": 3.702342,
+          "honest_half_width": 48.539049
+        },
+        "60": {
+          "diff_mean": -1.257,
+          "diff_sd": 20.506824,
+          "half_width_mean": 3.660767,
+          "honest_half_width": 26.280553
+        }
+      }
+    },
+    "positive_control_falling_250": 0.7945,
+    "rough": {
+      "abs_error_at_start": 34.793529,
+      "mean_error_at_start": -13.679248,
+      "unsettled": false
+    },
+    "rough_days_median": 217.531717,
+    "rough_rd_mean": 49.819052,
+    "settled": {
+      "abs_error_at_start": 24.673391,
+      "mean_error_at_start": 1.048887,
+      "unsettled": false
+    },
+    "settled_error_sd": 30.939998,
+    "settled_rd_mean": 45.000307,
+    "steps": {
+      "glicko1": {
+        "sign_lag1": -0.023649,
+        "step_lag1": -0.026315,
+        "step_rms_median": 9.562949
+      },
+      "rough": {
+        "sign_lag1": 0.02125,
+        "step_lag1": 0.019964,
+        "step_rms_median": 6.308724
+      },
+      "settled": {
+        "sign_lag1": -0.007469,
+        "step_lag1": -0.007929,
+        "step_rms_median": 5.449771
+      }
+    }
+  },
+  "experiment": "EXP-0030",
+  "exploratory": {
+    "games_30": {
+      "memory-before": {
+        "falling": {
+          "ci80": [
+            0.085967,
+            0.102699
+          ],
+          "ci95": [
+            0.081977,
+            0.107579
+          ],
+          "ci_decision": null,
+          "k": 188,
+          "n": 2000,
+          "share": 0.094
+        },
+        "rising": {
+          "ci80": [
+            0.081653,
+            0.098021
+          ],
+          "ci95": [
+            0.077763,
+            0.10281
+          ],
+          "ci_decision": null,
+          "k": 179,
+          "n": 2000,
+          "share": 0.0895
+        }
+      },
+      "memory-halves": {
+        "falling": {
+          "ci80": [
+            0.085967,
+            0.102699
+          ],
+          "ci95": [
+            0.081977,
+            0.107579
+          ],
+          "ci_decision": null,
+          "k": 188,
+          "n": 2000,
+          "share": 0.094
+        },
+        "rising": {
+          "ci80": [
+            0.081653,
+            0.098021
+          ],
+          "ci95": [
+            0.077763,
+            0.10281
+          ],
+          "ci_decision": null,
+          "k": 179,
+          "n": 2000,
+          "share": 0.0895
+        }
+      },
+      "peak-bootstrap": {
+        "falling": {
+          "ci80": [
+            0.395985,
+            0.424162
+          ],
+          "ci95": [
+            0.388637,
+            0.431708
+          ],
+          "ci_decision": null,
+          "k": 820,
+          "n": 2000,
+          "share": 0.41
+        },
+        "rising": {
+          "ci80": [
+            0.397476,
+            0.425669
+          ],
+          "ci95": [
+            0.390123,
+            0.433217
+          ],
+          "ci_decision": null,
+          "k": 823,
+          "n": 2000,
+          "share": 0.4115
+        }
+      }
+    },
+    "mean_change": {
+      "memory-before": [
+        {
+          "all": -1.231,
+          "games": 60,
+          "when_falling": -37.169903
+        },
+        {
+          "all": -1.223,
+          "games": 120,
+          "when_falling": -45.940092
+        },
+        {
+          "all": -0.3535,
+          "games": 250,
+          "when_falling": -48.306931
+        }
+      ],
+      "memory-halves": [
+        {
+          "all": -1.231,
+          "games": 60,
+          "when_falling": -37.169903
+        },
+        {
+          "all": -2.262,
+          "games": 120,
+          "when_falling": -62.034188
+        },
+        {
+          "all": -2.0965,
+          "games": 250,
+          "when_falling": -70.143541
+        }
+      ],
+      "peak-bootstrap": [
+        {
+          "all": -13.3525,
+          "games": 60,
+          "when_falling": -41.639344
+        },
+        {
+          "all": -25.508,
+          "games": 120,
+          "when_falling": -50.692188
+        },
+        {
+          "all": -42.613,
+          "games": 250,
+          "when_falling": -59.692259
+        }
+      ]
+    },
+    "new_account": [
+      {
+        "games": 60,
+        "memory-before": {
+          "falling": {
+            "ci80": [
+              0.073969,
+              0.117127
+            ],
+            "ci95": [
+              0.065364,
+              0.131585
+            ],
+            "ci_decision": null,
+            "k": 28,
+            "n": 300,
+            "share": 0.093333
+          },
+          "rising": {
+            "ci80": [
+              0.082929,
+              0.128058
+            ],
+            "ci95": [
+              0.073757,
+              0.14294
+            ],
+            "ci_decision": null,
+            "k": 31,
+            "n": 300,
+            "share": 0.103333
+          }
+        },
+        "memory-halves": {
+          "falling": {
+            "ci80": [
+              0.073969,
+              0.117127
+            ],
+            "ci95": [
+              0.065364,
+              0.131585
+            ],
+            "ci_decision": null,
+            "k": 28,
+            "n": 300,
+            "share": 0.093333
+          },
+          "rising": {
+            "ci80": [
+              0.082929,
+              0.128058
+            ],
+            "ci95": [
+              0.073757,
+              0.14294
+            ],
+            "ci_decision": null,
+            "k": 31,
+            "n": 300,
+            "share": 0.103333
+          }
+        },
+        "peak-bootstrap": {
+          "falling": {
+            "ci80": [
+              0.354604,
+              0.426594
+            ],
+            "ci95": [
+              0.33653,
+              0.446251
+            ],
+            "ci_decision": null,
+            "k": 117,
+            "n": 300,
+            "share": 0.39
+          },
+          "rising": {
+            "ci80": [
+              0.377466,
+              0.450144
+            ],
+            "ci95": [
+              0.359049,
+              0.469809
+            ],
+            "ci_decision": null,
+            "k": 124,
+            "n": 300,
+            "share": 0.413333
+          }
+        }
+      },
+      {
+        "games": 120,
+        "memory-before": {
+          "falling": {
+            "ci80": [
+              0.025094,
+              0.053285
+            ],
+            "ci95": [
+              0.020595,
+              0.064454
+            ],
+            "ci_decision": null,
+            "k": 11,
+            "n": 300,
+            "share": 0.036667
+          },
+          "rising": {
+            "ci80": [
+              0.022387,
+              0.049361
+            ],
+            "ci95": [
+              0.018205,
+              0.060262
+            ],
+            "ci_decision": null,
+            "k": 10,
+            "n": 300,
+            "share": 0.033333
+          }
+        },
+        "memory-halves": {
+          "falling": {
+            "ci80": [
+              0.094974,
+              0.142533
+            ],
+            "ci95": [
+              0.085093,
+              0.157933
+            ],
+            "ci_decision": null,
+            "k": 35,
+            "n": 300,
+            "share": 0.116667
+          },
+          "rising": {
+            "ci80": [
+              0.119346,
+              0.171205
+            ],
+            "ci95": [
+              0.108185,
+              0.187501
+            ],
+            "ci_decision": null,
+            "k": 43,
+            "n": 300,
+            "share": 0.143333
+          }
+        },
+        "peak-bootstrap": {
+          "falling": {
+            "ci80": [
+              0.496339,
+              0.569965
+            ],
+            "ci95": [
+              0.476815,
+              0.589009
+            ],
+            "ci_decision": null,
+            "k": 160,
+            "n": 300,
+            "share": 0.533333
+          },
+          "rising": {
+            "ci80": [
+              0.26405,
+              0.331498
+            ],
+            "ci95": [
+              0.247811,
+              0.350663
+            ],
+            "ci_decision": null,
+            "k": 89,
+            "n": 300,
+            "share": 0.296667
+          }
+        }
+      },
+      {
+        "games": 250,
+        "memory-before": {
+          "falling": {
+            "ci80": [
+              0.01708,
+              0.041408
+            ],
+            "ci95": [
+              0.013573,
+              0.051729
+            ],
+            "ci_decision": null,
+            "k": 8,
+            "n": 300,
+            "share": 0.026667
+          },
+          "rising": {
+            "ci80": [
+              0.022387,
+              0.049361
+            ],
+            "ci95": [
+              0.018205,
+              0.060262
+            ],
+            "ci_decision": null,
+            "k": 10,
+            "n": 300,
+            "share": 0.033333
+          }
+        },
+        "memory-halves": {
+          "falling": {
+            "ci80": [
+              0.15023,
+              0.206624
+            ],
+            "ci95": [
+              0.137677,
+              0.223832
+            ],
+            "ci_decision": null,
+            "k": 53,
+            "n": 300,
+            "share": 0.176667
+          },
+          "rising": {
+            "ci80": [
+              0.140922,
+              0.196041
+            ],
+            "ci95": [
+              0.128765,
+              0.212997
+            ],
+            "ci_decision": null,
+            "k": 50,
+            "n": 300,
+            "share": 0.166667
+          }
+        },
+        "peak-bootstrap": {
+          "falling": {
+            "ci80": [
+              0.553215,
+              0.625805
+            ],
+            "ci95": [
+              0.533548,
+              0.644176
+            ],
+            "ci_decision": null,
+            "k": 177,
+            "n": 300,
+            "share": 0.59
+          },
+          "rising": {
+            "ci80": [
+              0.235282,
+              0.300592
+            ],
+            "ci95": [
+              0.219806,
+              0.319427
+            ],
+            "ci_decision": null,
+            "k": 80,
+            "n": 300,
+            "share": 0.266667
+          }
+        }
+      }
+    ],
+    "other_ratings": [
+      {
+        "arm": "elo/10",
+        "cells": [
+          {
+            "games": 60,
+            "memory-before": {
+              "falling": {
+                "ci80": [
+                  0.076948,
+                  0.120778
+                ],
+                "ci95": [
+                  0.06815,
+                  0.135382
+                ],
+                "ci_decision": null,
+                "k": 29,
+                "n": 300,
+                "share": 0.096667
+              },
+              "rising": {
+                "ci80": [
+                  0.101035,
+                  0.149734
+                ],
+                "ci95": [
+                  0.090817,
+                  0.165374
+                ],
+                "ci_decision": null,
+                "k": 37,
+                "n": 300,
+                "share": 0.123333
+              }
+            },
+            "memory-halves": {
+              "falling": {
+                "ci80": [
+                  0.076948,
+                  0.120778
+                ],
+                "ci95": [
+                  0.06815,
+                  0.135382
+                ],
+                "ci_decision": null,
+                "k": 29,
+                "n": 300,
+                "share": 0.096667
+              },
+              "rising": {
+                "ci80": [
+                  0.101035,
+                  0.149734
+                ],
+                "ci95": [
+                  0.090817,
+                  0.165374
+                ],
+                "ci_decision": null,
+                "k": 37,
+                "n": 300,
+                "share": 0.123333
+              }
+            },
+            "peak-bootstrap": {
+              "falling": {
+                "ci80": [
+                  0.361127,
+                  0.433332
+                ],
+                "ci95": [
+                  0.342951,
+                  0.452995
+                ],
+                "ci_decision": null,
+                "k": 119,
+                "n": 300,
+                "share": 0.396667
+              },
+              "rising": {
+                "ci80": [
+                  0.449858,
+                  0.523621
+                ],
+                "ci95": [
+                  0.430634,
+                  0.543036
+                ],
+                "ci_decision": null,
+                "k": 146,
+                "n": 300,
+                "share": 0.486667
+              }
+            }
+          },
+          {
+            "games": 120,
+            "memory-before": {
+              "falling": {
+                "ci80": [
+                  0.059204,
+                  0.098739
+                ],
+                "ci95": [
+                  0.051628,
+                  0.11241
+                ],
+                "ci_decision": null,
+                "k": 23,
+                "n": 300,
+                "share": 0.076667
+              },
+              "rising": {
+                "ci80": [
+                  0.110167,
+                  0.160492
+                ],
+                "ci95": [
+                  0.099466,
+                  0.176472
+                ],
+                "ci_decision": null,
+                "k": 40,
+                "n": 300,
+                "share": 0.133333
+              }
+            },
+            "memory-halves": {
+              "falling": {
+                "ci80": [
+                  0.065082,
+                  0.106122
+                ],
+                "ci95": [
+                  0.057081,
+                  0.120122
+                ],
+                "ci_decision": null,
+                "k": 25,
+                "n": 300,
+                "share": 0.083333
+              },
+              "rising": {
+                "ci80": [
+                  0.116281,
+                  0.167639
+                ],
+                "ci95": [
+                  0.105271,
+                  0.183832
+                ],
+                "ci_decision": null,
+                "k": 42,
+                "n": 300,
+                "share": 0.14
+              }
+            },
+            "peak-bootstrap": {
+              "falling": {
+                "ci80": [
+                  0.533086,
+                  0.606152
+                ],
+                "ci95": [
+                  0.513441,
+                  0.624789
+                ],
+                "ci_decision": null,
+                "k": 171,
+                "n": 300,
+                "share": 0.57
+              },
+              "rising": {
+                "ci80": [
+                  0.312375,
+                  0.382628
+                ],
+                "ci95": [
+                  0.295059,
+                  0.402152
+                ],
+                "ci_decision": null,
+                "k": 104,
+                "n": 300,
+                "share": 0.346667
+              }
+            }
+          },
+          {
+            "games": 250,
+            "memory-before": {
+              "falling": {
+                "ci80": [
+                  0.076948,
+                  0.120778
+                ],
+                "ci95": [
+                  0.06815,
+                  0.135382
+                ],
+                "ci_decision": null,
+                "k": 29,
+                "n": 300,
+                "share": 0.096667
+              },
+              "rising": {
+                "ci80": [
+                  0.070998,
+                  0.113467
+                ],
+                "ci95": [
+                  0.06259,
+                  0.127777
+                ],
+                "ci_decision": null,
+                "k": 27,
+                "n": 300,
+                "share": 0.09
+              }
+            },
+            "memory-halves": {
+              "falling": {
+                "ci80": [
+                  0.050469,
+                  0.087583
+                ],
+                "ci95": [
+                  0.043568,
+                  0.100723
+                ],
+                "ci_decision": null,
+                "k": 20,
+                "n": 300,
+                "share": 0.066667
+              },
+              "rising": {
+                "ci80": [
+                  0.08593,
+                  0.131686
+                ],
+                "ci95": [
+                  0.076576,
+                  0.146703
+                ],
+                "ci_decision": null,
+                "k": 32,
+                "n": 300,
+                "share": 0.106667
+              }
+            },
+            "peak-bootstrap": {
+              "falling": {
+                "ci80": [
+                  0.761815,
+                  0.821657
+                ],
+                "ci95": [
+                  0.743945,
+                  0.835304
+                ],
+                "ci_decision": null,
+                "k": 238,
+                "n": 300,
+                "share": 0.793333
+              },
+              "rising": {
+                "ci80": [
+                  0.128567,
+                  0.181874
+                ],
+                "ci95": [
+                  0.116966,
+                  0.198466
+                ],
+                "ci_decision": null,
+                "k": 46,
+                "n": 300,
+                "share": 0.153333
+              }
+            }
+          }
+        ],
+        "settle": {
+          "abs_error_at_start": 23.389831,
+          "mean_error_at_start": -2.046564,
+          "unsettled": false
+        },
+        "steps": {
+          "sign_lag1": 0.015719,
+          "step_lag1": 0.006176,
+          "step_rms_median": 4.753946
+        }
+      },
+      {
+        "arm": "elo/32",
+        "cells": [
+          {
+            "games": 60,
+            "memory-before": {
+              "falling": {
+                "ci80": [
+                  0.073969,
+                  0.117127
+                ],
+                "ci95": [
+                  0.065364,
+                  0.131585
+                ],
+                "ci_decision": null,
+                "k": 28,
+                "n": 300,
+                "share": 0.093333
+              },
+              "rising": {
+                "ci80": [
+                  0.073969,
+                  0.117127
+                ],
+                "ci95": [
+                  0.065364,
+                  0.131585
+                ],
+                "ci_decision": null,
+                "k": 28,
+                "n": 300,
+                "share": 0.093333
+              }
+            },
+            "memory-halves": {
+              "falling": {
+                "ci80": [
+                  0.073969,
+                  0.117127
+                ],
+                "ci95": [
+                  0.065364,
+                  0.131585
+                ],
+                "ci_decision": null,
+                "k": 28,
+                "n": 300,
+                "share": 0.093333
+              },
+              "rising": {
+                "ci80": [
+                  0.073969,
+                  0.117127
+                ],
+                "ci95": [
+                  0.065364,
+                  0.131585
+                ],
+                "ci_decision": null,
+                "k": 28,
+                "n": 300,
+                "share": 0.093333
+              }
+            },
+            "peak-bootstrap": {
+              "falling": {
+                "ci80": [
+                  0.374195,
+                  0.446785
+                ],
+                "ci95": [
+                  0.355824,
+                  0.466452
+                ],
+                "ci_decision": null,
+                "k": 123,
+                "n": 300,
+                "share": 0.41
+              },
+              "rising": {
+                "ci80": [
+                  0.341578,
+                  0.413099
+                ],
+                "ci95": [
+                  0.32372,
+                  0.432732
+                ],
+                "ci_decision": null,
+                "k": 113,
+                "n": 300,
+                "share": 0.376667
+              }
+            }
+          },
+          {
+            "games": 120,
+            "memory-before": {
+              "falling": {
+                "ci80": [
+                  0.08593,
+                  0.131686
+                ],
+                "ci95": [
+                  0.076576,
+                  0.146703
+                ],
+                "ci_decision": null,
+                "k": 32,
+                "n": 300,
+                "share": 0.106667
+              },
+              "rising": {
+                "ci80": [
+                  0.065082,
+                  0.106122
+                ],
+                "ci95": [
+                  0.057081,
+                  0.120122
+                ],
+                "ci_decision": null,
+                "k": 25,
+                "n": 300,
+                "share": 0.083333
+              }
+            },
+            "memory-halves": {
+              "falling": {
+                "ci80": [
+                  0.091953,
+                  0.138924
+                ],
+                "ci95": [
+                  0.082245,
+                  0.154199
+                ],
+                "ci_decision": null,
+                "k": 34,
+                "n": 300,
+                "share": 0.113333
+              },
+              "rising": {
+                "ci80": [
+                  0.073969,
+                  0.117127
+                ],
+                "ci95": [
+                  0.065364,
+                  0.131585
+                ],
+                "ci_decision": null,
+                "k": 28,
+                "n": 300,
+                "share": 0.093333
+              }
+            },
+            "peak-bootstrap": {
+              "falling": {
+                "ci80": [
+                  0.59366,
+                  0.664925
+                ],
+                "ci95": [
+                  0.574045,
+                  0.682668
+                ],
+                "ci_decision": null,
+                "k": 189,
+                "n": 300,
+                "share": 0.63
+              },
+              "rising": {
+                "ci80": [
+                  0.238469,
+                  0.304035
+                ],
+                "ci95": [
+                  0.222904,
+                  0.322912
+                ],
+                "ci_decision": null,
+                "k": 81,
+                "n": 300,
+                "share": 0.27
+              }
+            }
+          },
+          {
+            "games": 250,
+            "memory-before": {
+              "falling": {
+                "ci80": [
+                  0.08593,
+                  0.131686
+                ],
+                "ci95": [
+                  0.076576,
+                  0.146703
+                ],
+                "ci_decision": null,
+                "k": 32,
+                "n": 300,
+                "share": 0.106667
+              },
+              "rising": {
+                "ci80": [
+                  0.065082,
+                  0.106122
+                ],
+                "ci95": [
+                  0.057081,
+                  0.120122
+                ],
+                "ci_decision": null,
+                "k": 25,
+                "n": 300,
+                "share": 0.083333
+              }
+            },
+            "memory-halves": {
+              "falling": {
+                "ci80": [
+                  0.116281,
+                  0.167639
+                ],
+                "ci95": [
+                  0.105271,
+                  0.183832
+                ],
+                "ci_decision": null,
+                "k": 42,
+                "n": 300,
+                "share": 0.14
+              },
+              "rising": {
+                "ci80": [
+                  0.065082,
+                  0.106122
+                ],
+                "ci95": [
+                  0.057081,
+                  0.120122
+                ],
+                "ci_decision": null,
+                "k": 25,
+                "n": 300,
+                "share": 0.083333
+              }
+            },
+            "peak-bootstrap": {
+              "falling": {
+                "ci80": [
+                  0.772306,
+                  0.831058
+                ],
+                "ci95": [
+                  0.754641,
+                  0.844355
+                ],
+                "ci_decision": null,
+                "k": 241,
+                "n": 300,
+                "share": 0.803333
+              },
+              "rising": {
+                "ci80": [
+                  0.101035,
+                  0.149734
+                ],
+                "ci95": [
+                  0.090817,
+                  0.165374
+                ],
+                "ci_decision": null,
+                "k": 37,
+                "n": 300,
+                "share": 0.123333
+              }
+            }
+          }
+        ],
+        "settle": {
+          "abs_error_at_start": 40.650095,
+          "mean_error_at_start": 1.478041,
+          "unsettled": false
+        },
+        "steps": {
+          "sign_lag1": -0.026617,
+          "step_lag1": -0.031814,
+          "step_rms_median": 15.259423
+        }
+      }
+    ],
+    "rough_decline": {
+      "memory-before": {
+        "ci80": [
+          0.754837,
+          0.815374
+        ],
+        "ci95": [
+          0.736837,
+          0.829247
+        ],
+        "ci_decision": null,
+        "k": 236,
+        "n": 300,
+        "share": 0.786667
+      },
+      "memory-halves": {
+        "ci80": [
+          0.775809,
+          0.834185
+        ],
+        "ci95": [
+          0.758216,
+          0.847363
+        ],
+        "ci_decision": null,
+        "k": 242,
+        "n": 300,
+        "share": 0.806667
+      },
+      "peak-bootstrap": {
+        "ci80": [
+          0.962634,
+          0.985509
+        ],
+        "ci95": [
+          0.952628,
+          0.988652
+        ],
+        "ci_decision": null,
+        "k": 293,
+        "n": 300,
+        "share": 0.976667
+      }
+    },
+    "rough_form": [
+      {
+        "cells": [
+          {
+            "games": 60,
+            "memory-before": {
+              "falling": {
+                "ci80": [
+                  0.084094,
+                  0.118525
+                ],
+                "ci95": [
+                  0.076678,
+                  0.129422
+                ],
+                "ci_decision": null,
+                "k": 50,
+                "n": 500,
+                "share": 0.1
+              },
+              "rising": {
+                "ci80": [
+                  0.074912,
+                  0.107772
+                ],
+                "ci95": [
+                  0.067943,
+                  0.118309
+                ],
+                "ci_decision": null,
+                "k": 45,
+                "n": 500,
+                "share": 0.09
+              }
+            },
+            "memory-halves": {
+              "falling": {
+                "ci80": [
+                  0.084094,
+                  0.118525
+                ],
+                "ci95": [
+                  0.076678,
+                  0.129422
+                ],
+                "ci_decision": null,
+                "k": 50,
+                "n": 500,
+                "share": 0.1
+              },
+              "rising": {
+                "ci80": [
+                  0.074912,
+                  0.107772
+                ],
+                "ci95": [
+                  0.067943,
+                  0.118309
+                ],
+                "ci_decision": null,
+                "k": 45,
+                "n": 500,
+                "share": 0.09
+              }
+            },
+            "peak-bootstrap": {
+              "falling": {
+                "ci80": [
+                  0.401901,
+                  0.458558
+                ],
+                "ci95": [
+                  0.387302,
+                  0.473766
+                ],
+                "ci_decision": null,
+                "k": 215,
+                "n": 500,
+                "share": 0.43
+              },
+              "rising": {
+                "ci80": [
+                  0.409814,
+                  0.466592
+                ],
+                "ci95": [
+                  0.395148,
+                  0.481797
+                ],
+                "ci_decision": null,
+                "k": 219,
+                "n": 500,
+                "share": 0.438
+              }
+            }
+          },
+          {
+            "games": 120,
+            "memory-before": {
+              "falling": {
+                "ci80": [
+                  0.080415,
+                  0.114231
+                ],
+                "ci95": [
+                  0.073174,
+                  0.124987
+                ],
+                "ci_decision": null,
+                "k": 48,
+                "n": 500,
+                "share": 0.096
+              },
+              "rising": {
+                "ci80": [
+                  0.078578,
+                  0.11208
+                ],
+                "ci95": [
+                  0.071426,
+                  0.122765
+                ],
+                "ci_decision": null,
+                "k": 47,
+                "n": 500,
+                "share": 0.094
+              }
+            },
+            "memory-halves": {
+              "falling": {
+                "ci80": [
+                  0.089629,
+                  0.124951
+                ],
+                "ci95": [
+                  0.081957,
+                  0.136051
+                ],
+                "ci_decision": null,
+                "k": 53,
+                "n": 500,
+                "share": 0.106
+              },
+              "rising": {
+                "ci80": [
+                  0.084094,
+                  0.118525
+                ],
+                "ci95": [
+                  0.076678,
+                  0.129422
+                ],
+                "ci_decision": null,
+                "k": 50,
+                "n": 500,
+                "share": 0.1
+              }
+            },
+            "peak-bootstrap": {
+              "falling": {
+                "ci80": [
+                  0.587789,
+                  0.643452
+                ],
+                "ci95": [
+                  0.572639,
+                  0.657592
+                ],
+                "ci_decision": null,
+                "k": 308,
+                "n": 500,
+                "share": 0.616
+              },
+              "rising": {
+                "ci80": [
+                  0.274426,
+                  0.326884
+                ],
+                "ci95": [
+                  0.261482,
+                  0.341568
+                ],
+                "ci_decision": null,
+                "k": 150,
+                "n": 500,
+                "share": 0.3
+              }
+            }
+          },
+          {
+            "games": 250,
+            "memory-before": {
+              "falling": {
+                "ci80": [
+                  0.087782,
+                  0.122811
+                ],
+                "ci95": [
+                  0.080194,
+                  0.133844
+                ],
+                "ci_decision": null,
+                "k": 52,
+                "n": 500,
+                "share": 0.104
+              },
+              "rising": {
+                "ci80": [
+                  0.089629,
+                  0.124951
+                ],
+                "ci95": [
+                  0.081957,
+                  0.136051
+                ],
+                "ci_decision": null,
+                "k": 53,
+                "n": 500,
+                "share": 0.106
+              }
+            },
+            "memory-halves": {
+              "falling": {
+                "ci80": [
+                  0.084094,
+                  0.118525
+                ],
+                "ci95": [
+                  0.076678,
+                  0.129422
+                ],
+                "ci_decision": null,
+                "k": 50,
+                "n": 500,
+                "share": 0.1
+              },
+              "rising": {
+                "ci80": [
+                  0.084094,
+                  0.118525
+                ],
+                "ci95": [
+                  0.076678,
+                  0.129422
+                ],
+                "ci_decision": null,
+                "k": 50,
+                "n": 500,
+                "share": 0.1
+              }
+            },
+            "peak-bootstrap": {
+              "falling": {
+                "ci80": [
+                  0.759505,
+                  0.806635
+                ],
+                "ci95": [
+                  0.745837,
+                  0.817832
+                ],
+                "ci_decision": null,
+                "k": 392,
+                "n": 500,
+                "share": 0.784
+              },
+              "rising": {
+                "ci80": [
+                  0.145775,
+                  0.188412
+                ],
+                "ci95": [
+                  0.135958,
+                  0.201135
+                ],
+                "ci_decision": null,
+                "k": 83,
+                "n": 500,
+                "share": 0.166
+              }
+            }
+          }
+        ],
+        "form_sd": 0.0,
+        "steps": {
+          "sign_lag1": 0.030738,
+          "step_lag1": 0.03989,
+          "step_rms_median": 6.363956
+        }
+      },
+      {
+        "cells": [
+          {
+            "games": 60,
+            "memory-before": {
+              "falling": {
+                "ci80": [
+                  0.085937,
+                  0.120669
+                ],
+                "ci95": [
+                  0.078434,
+                  0.131635
+                ],
+                "ci_decision": null,
+                "k": 51,
+                "n": 500,
+                "share": 0.102
+              },
+              "rising": {
+                "ci80": [
+                  0.095181,
+                  0.13136
+                ],
+                "ci95": [
+                  0.087263,
+                  0.142654
+                ],
+                "ci_decision": null,
+                "k": 56,
+                "n": 500,
+                "share": 0.112
+              }
+            },
+            "memory-halves": {
+              "falling": {
+                "ci80": [
+                  0.085937,
+                  0.120669
+                ],
+                "ci95": [
+                  0.078434,
+                  0.131635
+                ],
+                "ci_decision": null,
+                "k": 51,
+                "n": 500,
+                "share": 0.102
+              },
+              "rising": {
+                "ci80": [
+                  0.095181,
+                  0.13136
+                ],
+                "ci95": [
+                  0.087263,
+                  0.142654
+                ],
+                "ci_decision": null,
+                "k": 56,
+                "n": 500,
+                "share": 0.112
+              }
+            },
+            "peak-bootstrap": {
+              "falling": {
+                "ci80": [
+                  0.413773,
+                  0.470607
+                ],
+                "ci95": [
+                  0.399076,
+                  0.485808
+                ],
+                "ci_decision": null,
+                "k": 221,
+                "n": 500,
+                "share": 0.442
+              },
+              "rising": {
+                "ci80": [
+                  0.407835,
+                  0.464584
+                ],
+                "ci95": [
+                  0.393186,
+                  0.47979
+                ],
+                "ci_decision": null,
+                "k": 218,
+                "n": 500,
+                "share": 0.436
+              }
+            }
+          },
+          {
+            "games": 120,
+            "memory-before": {
+              "falling": {
+                "ci80": [
+                  0.110063,
+                  0.148373
+                ],
+                "ci95": [
+                  0.101527,
+                  0.160146
+                ],
+                "ci_decision": null,
+                "k": 64,
+                "n": 500,
+                "share": 0.128
+              },
+              "rising": {
+                "ci80": [
+                  0.089629,
+                  0.124951
+                ],
+                "ci95": [
+                  0.081957,
+                  0.136051
+                ],
+                "ci_decision": null,
+                "k": 53,
+                "n": 500,
+                "share": 0.106
+              }
+            },
+            "memory-halves": {
+              "falling": {
+                "ci80": [
+                  0.106333,
+                  0.144129
+                ],
+                "ci95": [
+                  0.097946,
+                  0.155787
+                ],
+                "ci_decision": null,
+                "k": 62,
+                "n": 500,
+                "share": 0.124
+              },
+              "rising": {
+                "ci80": [
+                  0.085937,
+                  0.120669
+                ],
+                "ci95": [
+                  0.078434,
+                  0.131635
+                ],
+                "ci_decision": null,
+                "k": 51,
+                "n": 500,
+                "share": 0.102
+              }
+            },
+            "peak-bootstrap": {
+              "falling": {
+                "ci80": [
+                  0.595875,
+                  0.651313
+                ],
+                "ci95": [
+                  0.580749,
+                  0.66536
+                ],
+                "ci_decision": null,
+                "k": 312,
+                "n": 500,
+                "share": 0.624
+              },
+              "rising": {
+                "ci80": [
+                  0.266656,
+                  0.318706
+                ],
+                "ci95": [
+                  0.253852,
+                  0.333319
+                ],
+                "ci_decision": null,
+                "k": 146,
+                "n": 500,
+                "share": 0.292
+              }
+            }
+          },
+          {
+            "games": 250,
+            "memory-before": {
+              "falling": {
+                "ci80": [
+                  0.106333,
+                  0.144129
+                ],
+                "ci95": [
+                  0.097946,
+                  0.155787
+                ],
+                "ci_decision": null,
+                "k": 62,
+                "n": 500,
+                "share": 0.124
+              },
+              "rising": {
+                "ci80": [
+                  0.074912,
+                  0.107772
+                ],
+                "ci95": [
+                  0.067943,
+                  0.118309
+                ],
+                "ci_decision": null,
+                "k": 45,
+                "n": 500,
+                "share": 0.09
+              }
+            },
+            "memory-halves": {
+              "falling": {
+                "ci80": [
+                  0.106333,
+                  0.144129
+                ],
+                "ci95": [
+                  0.097946,
+                  0.155787
+                ],
+                "ci_decision": null,
+                "k": 62,
+                "n": 500,
+                "share": 0.124
+              },
+              "rising": {
+                "ci80": [
+                  0.080415,
+                  0.114231
+                ],
+                "ci95": [
+                  0.073174,
+                  0.124987
+                ],
+                "ci_decision": null,
+                "k": 48,
+                "n": 500,
+                "share": 0.096
+              }
+            },
+            "peak-bootstrap": {
+              "falling": {
+                "ci80": [
+                  0.751223,
+                  0.798969
+                ],
+                "ci95": [
+                  0.73743,
+                  0.810361
+                ],
+                "ci_decision": null,
+                "k": 388,
+                "n": 500,
+                "share": 0.776
+              },
+              "rising": {
+                "ci80": [
+                  0.132565,
+                  0.173714
+                ],
+                "ci95": [
+                  0.123192,
+                  0.186114
+                ],
+                "ci_decision": null,
+                "k": 76,
+                "n": 500,
+                "share": 0.152
+              }
+            }
+          }
+        ],
+        "form_sd": 20.0,
+        "steps": {
+          "sign_lag1": 0.014708,
+          "step_lag1": 0.000568,
+          "step_rms_median": 6.344288
+        }
+      }
+    ],
+    "then_now_rows": {
+      "memory-before": [
+        {
+          "ci80": [
+            0.098462,
+            0.116183
+          ],
+          "ci95": [
+            0.094198,
+            0.121309
+          ],
+          "ci_decision": null,
+          "games": 60,
+          "k": 214,
+          "measure": "accuracy",
+          "n": 2000,
+          "share": 0.107
+        },
+        {
+          "ci80": [
+            0.086927,
+            0.103738
+          ],
+          "ci95": [
+            0.082915,
+            0.108638
+          ],
+          "ci_decision": null,
+          "games": 120,
+          "k": 190,
+          "measure": "accuracy",
+          "n": 2000,
+          "share": 0.095
+        },
+        {
+          "ci80": [
+            0.087887,
+            0.104776
+          ],
+          "ci95": [
+            0.083853,
+            0.109696
+          ],
+          "ci_decision": null,
+          "games": 250,
+          "k": 192,
+          "measure": "accuracy",
+          "n": 2000,
+          "share": 0.096
+        },
+        {
+          "ci80": [
+            0.088847,
+            0.105815
+          ],
+          "ci95": [
+            0.084791,
+            0.110754
+          ],
+          "ci_decision": null,
+          "games": 60,
+          "k": 194,
+          "measure": "blunders",
+          "n": 2000,
+          "share": 0.097
+        },
+        {
+          "ci80": [
+            0.081174,
+            0.097501
+          ],
+          "ci95": [
+            0.077296,
+            0.10228
+          ],
+          "ci_decision": null,
+          "games": 120,
+          "k": 178,
+          "measure": "blunders",
+          "n": 2000,
+          "share": 0.089
+        },
+        {
+          "ci80": [
+            0.088847,
+            0.105815
+          ],
+          "ci95": [
+            0.084791,
+            0.110754
+          ],
+          "ci_decision": null,
+          "games": 250,
+          "k": 194,
+          "measure": "blunders",
+          "n": 2000,
+          "share": 0.097
+        }
+      ],
+      "memory-halves": [
+        {
+          "ci80": [
+            0.098462,
+            0.116183
+          ],
+          "ci95": [
+            0.094198,
+            0.121309
+          ],
+          "ci_decision": null,
+          "games": 60,
+          "k": 214,
+          "measure": "accuracy",
+          "n": 2000,
+          "share": 0.107
+        },
+        {
+          "ci80": [
+            0.089807,
+            0.106853
+          ],
+          "ci95": [
+            0.08573,
+            0.111811
+          ],
+          "ci_decision": null,
+          "games": 120,
+          "k": 196,
+          "measure": "accuracy",
+          "n": 2000,
+          "share": 0.098
+        },
+        {
+          "ci80": [
+            0.079259,
+            0.095419
+          ],
+          "ci95": [
+            0.075426,
+            0.100157
+          ],
+          "ci_decision": null,
+          "games": 250,
+          "k": 174,
+          "measure": "accuracy",
+          "n": 2000,
+          "share": 0.087
+        },
+        {
+          "ci80": [
+            0.088847,
+            0.105815
+          ],
+          "ci95": [
+            0.084791,
+            0.110754
+          ],
+          "ci_decision": null,
+          "games": 60,
+          "k": 194,
+          "measure": "blunders",
+          "n": 2000,
+          "share": 0.097
+        },
+        {
+          "ci80": [
+            0.088847,
+            0.105815
+          ],
+          "ci95": [
+            0.084791,
+            0.110754
+          ],
+          "ci_decision": null,
+          "games": 120,
+          "k": 194,
+          "measure": "blunders",
+          "n": 2000,
+          "share": 0.097
+        },
+        {
+          "ci80": [
+            0.091729,
+            0.108928
+          ],
+          "ci95": [
+            0.087609,
+            0.113924
+          ],
+          "ci_decision": null,
+          "games": 250,
+          "k": 200,
+          "measure": "blunders",
+          "n": 2000,
+          "share": 0.1
+        }
+      ],
+      "peak-bootstrap": [
+        {
+          "ci80": [
+            0.098462,
+            0.116183
+          ],
+          "ci95": [
+            0.094198,
+            0.121309
+          ],
+          "ci_decision": null,
+          "games": 60,
+          "k": 214,
+          "measure": "accuracy",
+          "n": 2000,
+          "share": 0.107
+        },
+        {
+          "ci80": [
+            0.079737,
+            0.09594
+          ],
+          "ci95": [
+            0.075894,
+            0.100688
+          ],
+          "ci_decision": null,
+          "games": 120,
+          "k": 175,
+          "measure": "accuracy",
+          "n": 2000,
+          "share": 0.0875
+        },
+        {
+          "ci80": [
+            0.085488,
+            0.10218
+          ],
+          "ci95": [
+            0.081509,
+            0.10705
+          ],
+          "ci_decision": null,
+          "games": 250,
+          "k": 187,
+          "measure": "accuracy",
+          "n": 2000,
+          "share": 0.0935
+        },
+        {
+          "ci80": [
+            0.088847,
+            0.105815
+          ],
+          "ci95": [
+            0.084791,
+            0.110754
+          ],
+          "ci_decision": null,
+          "games": 60,
+          "k": 194,
+          "measure": "blunders",
+          "n": 2000,
+          "share": 0.097
+        },
+        {
+          "ci80": [
+            0.090287,
+            0.107372
+          ],
+          "ci95": [
+            0.0862,
+            0.11234
+          ],
+          "ci_decision": null,
+          "games": 120,
+          "k": 197,
+          "measure": "blunders",
+          "n": 2000,
+          "share": 0.0985
+        },
+        {
+          "ci80": [
+            0.091248,
+            0.108409
+          ],
+          "ci95": [
+            0.087139,
+            0.113396
+          ],
+          "ci_decision": null,
+          "games": 250,
+          "k": 199,
+          "measure": "blunders",
+          "n": 2000,
+          "share": 0.0995
+        }
+      ]
+    }
+  },
+  "flags": {
+    "memory-before": {
+      "chesscom_falling": {
+        "120": "0001000000000000000000000000100000100110000000010000000000100011000000000000001000000000000000000000000000000000100000001000000000010000000000000001000000100010000000000000000000000000000100000000000000000010000000000010000000100010000001000000000100000000000010010000000000100110100100011010000010100000000001000000100000000000000000000000010000000000000000101000000000000000000000000000000011000000001000000000100000010010000000100000000000000000000000000000011010000000000100000000000000000000000000000000000000000001000000000000000000000000010000000000000010010000000000000000100000010001010000000000000000000000000001000000010100000000000000000000010000000001001001000000000100000000000010000000000000001000010000000000000000000010000000101000000000000000000100000000010000000001000000000000000000000101000001100000000000000101000000100000000010000000000010010010000000000001000000000000100000100000000000000000000000000000101000000100000000000000110000000000000000101010000000001000000000000000",
+        "250": "0000000000100000000000010000000010000001000000000000000000000000000000000000000001000000010010100000000010000000000100000010000100000000000000000100000000000000001100000000000000000000000000000001001000001000000000010010001000000000000000000000000000000001001000000000000000000100000000000000000001000000001000000110000000000000100000100010000000001000001000000000000000000100100000010100000100001000100000000000100000000000000000000101000000000000100000000010000000000100010100000000000000000000000000100000000000000000010000000000000000000001000000000000000010000100010000000000000010000100010001000000010000110000100000100100000000101000100000000000010010000000001100100000000000110001000000000000000000000000000001000000000000001000010000100000000000001000000000000000000000000000000000000000100001010000010000100000100000000001000000000000000100010000010000000000000000000100000010100000100000001000000000000000000001000000000100000000000101001000000000000000001000000001000001000000000000000000",
+        "60": "1000100001000000000000000000000000000100000000001000000000000000000000000010000000100000000000001000000100000000100000000010000000100000000000000110000100010000000000000100100000000100010000000000000000001000000000000000000000000000010000000000000000000000010000001110000000000000000000000000000000000100000000000000000000000000000000000000010100000000000000010100000000000000000000000000010010000100101000000000000100000000000000000000000000000001000000000000001000000000000000000100000000000100000000000000000010100000000010100000000000100000010000000000000000000100010000000000000000010000000000000000000100000000000100001001000000000000100000000100000000000000000000000000000100000000100000000010000000000100000000001000000000000000010100000000000000101100001000000000010001000000010001000000000100000000000000000100000000000000000000000001000000100000000000000000000000000000000000000100000100000010000000100100000000000000000000000101000000000000000000000000010010001000001000000000000000000000"
+      },
+      "chesscom_rising": {
+        "120": "0000000010000000000010111000010000000001000000000000000000000000011000000100000000000001010100001010001000000100001000000100000000000000100000010000000000000001000010000000010000000000101000000000000000010000000000000000000001000100000000110000000000000000000000000000000000010000001000000000000100000000000000000000010000000000000000000000000000000000000100000000100000010000000001000000001000000000000000001000000100000001000000000000000000000000000000001000000000010000000010100000000100000000100000001000000000000000000000000000000000100000000001100000001000000000000010011100000100000000000000000000000010001000000000000000000000000000010000010000000100000000000000000000000000001100000000100000000000000001000000000001100010000000010000000000001010100000000000000010000000000000000000000000000011000000000010010010001100000010000000000000000001000100000000100000100000000000000000100110000010000000011100000000100000000000000000000001000000100100001000000000000000000000001000000000000000001000",
+        "250": "0100000100000000000000001000010000000000000000000000100000010010000000010000000100000000000000000000000100010010000000000000100000101000000000000000100100000000000000010000000000000000000000000100000100100000001000000000000000000000000001110000000001001000000000001000000000000000001000000001000000001001000000000000000000000000010010000000000000000001000000000000000000000000001000000000001000000001000010000000000000000000001010010000000000000100000100000000000000000001000000000011001000001001100010010000001001000000000000000000010110001000000000000100000000000000000010100000000000000001000100000001000000000001000000000000100000000000001000010100000000000001000000000000000011001000010000000000000000000000000000000000000000010000000000010000000000110001000000000000000000000100000000100000010100000000000000000000001000000000000000000000001000000000000000000000000000000000000000000000000000100000000000000000010000000000000000000000000010010100000000000011100000000000000000000000100010000000",
+        "60": "0110000000000000000000000000100100000000000100100000000100000000000000010000000000001000010000000000000000100000000000001000010100001000000001000000000000000010000000000000000000000000000000010000000000000000000010100000000000000010000000000100000000001000000000010000010000010000010000000000010001000000001000001000000000100000000010000001000000000000000000100000000000000000010010001000000001000000000000100000000000000000000000000000000001000000000010000000000010001000010000000000000000001000000000101010000100000010000001000001100000000000000100000000000100000000000000000000000000000100010000000010010000000000010001000000000000100000000000001000000000000000001000000000000000001000000000000100000000000000100000100000000010001000000000000100000000000000000000000000001100010000000100000000000000000000001000000000010000000100000010000110000000010000000000000001000000000000000000000000000000000000000010000000000010000000000110010000000001010000000000100000001100000110000000100000000000000000"
+      },
+      "detection": {
+        "100/120": "001101101011011100101010001110010101011010010000001001001111100001010100101111000101111010110100100101000010110000010111010111010111010110000111101110111111010101011110111100110110100111110100011101010100010101100001011011100011000100000101010000001111011000101101100111011001100110100000101111011010",
+        "100/250": "000100110010110111010101111111111011111011010010111001101011110111100001010111110100111101001011011110100110101110001100110111110010111001101111100101000101001101111110111111101011111111111101111100100110011001111001110111111110001010001011110111110101000111111111111010111100011110110111001101111011",
+        "100/60": "111001000111110001110100000100000010000011010000000111101100000000101110000000001011101001100011000101110100010101101010001101000110100110001010001000011100110010010001010000100010001100111010000001100010000001110010000000011000101010000010100100110000100001001011010000110100001110010100000100000100",
+        "200/120": "111110111101111111111111111111111111111111111111111111111111110101111110111111111011000111111111111010110111101101110111011111111110010111111111111111111001111111111111111111111111111111111110111011110111111011111111101111110111100111111111111110111111111011011111111101111011111111111110111011111110",
+        "200/250": "111111111111111111111111111110111111111111111111111011111101111111111101101110111110111111110111111111110111111111111111111111111111101111111111111111011110111111111111111011111111111111111111111111111111111100111111111111111111110111111111111011111111111111111111111111111111111111111101111111111111",
+        "200/60": "111110101101011100110110110011111100110111111111100101110110101110111001111111101110110011111110111100101011010001110010110001101110111111110111101111011001111110110111111100111111111111110110111111101111010001111110111111000100111110110110111111111110011111110100101101011110110100111111001011110011"
+      },
+      "falling": {
+        "120": "00000000000000001110010100000100000010010000000001000000000001000000000000000000000100000000000010000000000000010000000000001000001100000001000000000000000000000100000000000010000000010000000100010000000100000000000000000000001000000000000101000100000000000000000000000010000000000000000100000000000000010100000000100000001000100000000100000000000001000000010000010000000000100000000001000000000000000000000000000000010000001000001000000000000001010000100000000000000000000000000000000010010000001000000000001000000000000000000001100010000000000000000001010000000000000000100000001000000100000010000000000010000000000010100100000000000000000100000001000100000000000010000000000001000100100010000010111001000000000000010000000000000110000000000000000000010000100000000000000000100000000000000001000000000001000100000000000000100000000000000000000100000000110000000000010010010000000000001000100100001000001000000000010000000100000000000000000100010000100000000000000011000000001011000000001010000000000000001000000000000000010010000000001000010000000000000010000000100000001000111000000000010100000000000000000000000000000000000000000000000001000000100001000000000000000010000000100000000000000000000000000000001000000000000000000000000000000010000000000000000000000000001000000000000000000100100000100000001000001001000000000000000000000000000000000000001000000010010000000000000000000000001000000000000000000011000000000000000010000000000000000100001000000000000000000001100000000000000000010100011001000000100000000100011000000100000100001010000000000000000010000000000000000000000101000000010000100000000001000100000000000010000000000000000100000010100001000000000000000000001000000000100001010010100010000000010110000100000010000000000000000000000001000000000001000000000000000000000100000000010000000001000000010000100000000100000010100001000000000000000000011000000000000010000001010000000100000100010100000001000000000000000001000000001010010000000000000110000000011010000000001010000000010000",
+        "250": "00000000100000000010100001000100000000001100000000100000000000000000000010000100000010000001100001000001000010001100000000100000000000001000000000000000000000000000000000000000000000000101000000000000000000000000000000001000000000000000000000000000000001000000000000000000000000000000000010010001000011000000000000000000000001000000001000010000000000110000010000100000010000010000000000000000010100101000000000000100000000000000000000010000000000100000000000000011100010000000000000000000000010000010000000111000000010000000100000000000000000000000100000000000100010000000000000000001010000000000010000000100100100000000000000010000000001000000000000000000000010000001000000010000000000000000100000000000000000000000000000000000000000010000000000000100000100000000000000000000000000000000000000000000001000000000001000000000000000000000000000010000000110000110000001000000000000001010100000001000001010000001000000000000000000000100100000001000000000100000000000100010001000000000010100000000001001001100000000000000000000000000000000000000000000000000000100000010010000110000000000000100100000000000001000000000010110000110000000000000000000000000000000000000100001100000001000000000001100000000000010000001000000010100000000000000001000000000000010000000000000000000000010100110001000000000000110000010000000011000000000000000000010001000000000000000000001000001000000000000000000000000000000000000000000000100000000000000001000010000001001001000100000000000000000000001000000000000001100000100000000000000000010000000000001001000000100010000001000001000000001100001000000000000000000000000000000001000000000100001100000000001000000000000000000000000000000000000000000000001100000000010100000000000000000000000000000000000100000100000000000000000000000000010000000000100000110000000000000000000000110000001001000100100000000100000010000000000000000000000000001000000010100000010010000010000000000000100000000000000001001000000000010000000000001000100000000000010000000000100000100000000000100000001",
+        "60": "00000000001000001000000000000000000100010000000000110000000000000000000000010000000000010101000000001001000000000000100000000000001100100000000000000000000100010000000000000000000001010000000100010000000001010000000011010010000000000000000000000000101000000000000000000100000000001000101000000000100000000000001000000000000000000000000000001000000000000010000001000000000001000000000000000000100000000000000000000100000001001001000000000000100010001000000000000000000000000000010100000001000000000000000000011000000000010000001000000000101000000000000001000000000010000000000000100101000000100000000000000000000010010001000000000000000000000000000000000100000100000100101100000000000000000000001000000000000000000001100001000000000100100000001000000000000000010000000000000000100100000000000110000000000001000100000100000100000001000000000000001001000000100001000000000000000000000000000000010000000000000000000000000000000000000000000100000000000000000000000001001000000000001000100000001000110000000010110000000000011010000000000000000001010000100000010000000000000001000000100000000001000000001100001000000000000100000000000000000010000001001000000000000100000110010010000000000001000000000000000010000000000000000000000100001000000000100000000100000100000000010000000000000000000000100000001000000000000000000000100000010100100000000000001000000000000000000000010000000000000100000000000010000000010000000000000000000000000100000000100000010100000000100000000000000001000000011000000000010000000000000010000000000000000000100000000000000000000000000000000100000000000011001000000000000000000000100001010001000000000000000000000101000100000100000000000010001000010000000001000000000000100000000010101000000000000000000000000000000000000100000000000000000000001000000000000000000000001000000101000000000100000000000000000000000100000000100000000100001000000001001000000001100010000000100000000000000000100000000010000010001000000000000000000010001001001000000100000001000000000000000000000010000101"
+      },
+      "rising": {
+        "120": "00000100000000000000000000010000011000000000000000000001000010000000000010000000100000000100000000010000001000000000010000000000000000010000000000100010000011000000010000000001000000000000000000000011000000000101000000000000000000000100000000000000010000000000000000000000000001000000000000000001000000000000000101000100000000000100000000000000000000100000000000100000100010000010000000000100000000000000000001001000000001010100100000010000010000000000000011000100000110000000000000000000000000000000000000000001010000001000000000000000000010000000000000000000011100001000000000000000000000000000000000000000010000000000000000000000000101000000010000000000000000000000000000000000000000000000010000000000000000000000000000110000000000011100100000100000100000000000000000100000000000001001000010000001000000000000010001000001000100000100101000000010010000000000110000001000000000000000000000000000000000000001001000000010000000000100000001000000000000000000000100000000001000000000000000000000000000000000000000000000000100000000000010000000000000000110001000000010001000000000000100000000000001000000000000000001000000010000000101110000000000000000000000000010100000100000000001000000010000000001000000110000000000000000000000001000010000001000000001000000000000000000000000000000000000000000010000000000100000000000000000000000000000000000000000000000000000000000000000000000000010000000010010000001000000001000000000001001000001000000000000000000000000000001000000000000000000000000000000000001100000000010000000000010000000000001000000010001000000000000000000001000000000010000000000000000000000000000000100000000000010000000000000000000000000000000000000100000000000000000000100000100000000000000000100000000000001000010000000000000000000000000000110000001000000000000000000000000000000010100001000000000000100100000000000001010001000000010110000101010000010000000000000000000010010000001000000000000000000000000100000000000000100000010000000000000000010010000000000000000000000000000000000000000",
+        "250": "00000000000000001000000000001000100001010000000000000000000100011000010000001000000000000100000000000000001000010010000010000000010000010000000000000000000000000000000100000001000000000000000000000000001000000000000000010000000000000000000000001100000000010000000100001000000000000000000000100000000000010000101000101000000000000000000000000000100100000100100000000000000000000000000000000000000000000000010010001000000000000000000000100000000000000000000000000000010000100000000000000100000000000000000000000000001000000100000000100000000000000000011001010000000000000000001000000000000000000000000000000000000000010001000000000000000110000000000000100000000001000000000000000000000010000000000000000010000000000000000000001100000000000001100001110000000000001000000000100000000000000001000000000000000000010000000000010000000001000000000000000000000000000000010000010000100000000000000001010000000001010000000000100000000010000000001001000010000000000000000000000000000000000001100000011011010000010000001110000000000000000000000001001000001000000000000000000000001001000000000100001000010000010010000000000011101000100000010000000000000000000011000000000000001000000000000001000000000000010000000000010010000000100000000000000000000000100000000000100000000100001000000000000000000010100000000000000000000000000000000000010000000000000000001000000000000010000000000010001000000000000000000000001000000000000000000000000000000000000010000000000000010100000100000001000000000000000000000000000000000010000000010000000001000010000000000000101100000000000000000000000000000001001000011000000001010000000010100010000000000100000000000000010000000010000000000000000000100001000000001000000001010000000001001000000000000000100000010000000100010000000001001000000000000000001000010000000000010000000000000000001000100000000001000000001000100010001100010100001000001010000001000000000000001000100100000001000010000000000010000000000000000100000000011000100000010000000100100000000000000000100000100000000100",
+        "60": "00000000010010010001000000000000000000000000010000000000100100000000000000000000000010000000100010000000000010000000000000000000000000000000101001000000000000000000001000010000000000000000000000000000000000000000000000001100000000000000000000000000000000000000000010000000000000000000000000000000000000000000010000000000010000000100000000000010000000010000010000000000000010001000000000100000010000000000001000000000001100010000000000101000000000100000000010000000010011010000000000010000000000000000000000000000000000000000100000000000000010000010000000100000001100000000000000000000000000000001110000000000000000001000000000000000000000000100001010000010000000010000000001000000100000000000000001000000000000000000010000100000000001000000000010000000101000000000000010000110000010000000000000000001000000000000000000000000000000000000000000000000000110000000000000000000001100010000000000000001010000000000000000000000000000000000000010000000000000100000000100110000001001000000000000000000000100000000000000000000000000000100000000000000000000000000100010000000010000010000000000010000000000000000000001000000100000000000000001000000000000100101000100000000100000000000010000000010000000000000000000000000000000000010000000000000000000001000001000000000100010000000100000000100000000000000000000000000000000000000000000000000000000010000010000000000000000000000000000001000000000010000000000000000000000010010000000001000000010101000000000000000000000001010000000001000000101000000010010001100000000000101001000000000000000000100000010010000100000000001000000000010000000100000000000000000000000000000000000000001000001011000101000100000000000001000010000000100000000000000000000100010000000000000000000000000001001001000000000000100000000000001000000100000000001000000000000001001000000110000000100100000000000000000000000000000100000000100000000000000000000000000000000010000010000000000000000001100000000010000000000100000001000000010000000000000000000000000000000000100000010100000001000000000"
+      },
+      "rough_falling": {
+        "120": "0000000000000000000010000100000000001001000001000011001000001001000100001000000000000100000100000010100000000000110000001000000000101000000000100001001000100000000000101000000010000000000000010100000000000010000000000001000100000000000000000000000010100000000000100001000000000100000100001000000011000000000000001000000000000000000000000000000100000000000000100010010001010001000010000011000000101000100000001000000100100000100000000100000000110000000001000000000111010010000010001000010010000100100000010000000000000011000000000000000000001000010000001000000100000010001000000001000000000001001110000000001000000000000000011010010000000000001110001000000000000100000000000000000000000000000000010000100010010000000000010000000000000000101001000000001000000001000000100100000000000000000000000000011100000000000000000100100100000000100000000000000000100000000010001001000000010000000000000100100001000010000000010011100000000000000000000000000010110000000000010000000000000010000001000110101000000000",
+        "250": "0000010010001000000000000000000000000000010000100000100000000001110000001000000000000000010000000000000000000000000010000000000000000101000000010000001000000001010000110000000001000000001010010000000000000000000000110101000010000100000000100000000000001010000000000001000100000100001000000000000000000000000000011001000000100000000000000100000001000000100000010001010001000000000000010000000000010000000000000000000000000100000010000000000000000001010000000100000001000000000000000001000110000010010000011000010000000100000000000000001000000000010000000100000001000000000000100000010000000000000000000000011000001000010000000000001000010010000100010010010000000000000000000000000000000000000100000000000001101000000000000000000000000000000000000000000000001100000000000001000001000010000010000000000001100000001000000000000000000000100000000000110000000000000001100000000010000100000000000011000000000010010000000010000000000000010000001000000000000010010000000000000000100000000000000000110000011000",
+        "60": "0001000100100000000100000000000000000010011001000000000000100010000000000010000000000000000000000000000010100000100000000010100000000000001000100000000000000000000000000000000000000100010000000010000000010000010010001000000010000000000100000000000001000110000000000100100000001111010000111000000000000000000100000001000000100100000010000000010100001000000010000000000000000000000001000001100000001000001100000000100001000000000000010000000000100001100010000000000000000000000000101000000000010000000001000000000000000000001000100000000100000000011000000000000000000000000010010010000001001101000011000000000001000010000000000000000000000000001000000000001100001100001000011000100000010000000001111000000000000111000000000000100001000000100010000000000000000000000000000000000000000001000000000000000000000000001000000000000000000000000011000100000000100000001000000000000000010000000000000000000000000100000000000001010000001000000100000000000100000000000001000000010000000010000010000100100001000010"
+      },
+      "rough_rising": {
+        "120": "0110000000000000000000000000000010000000000000001000000000000100100011010000010001000000000001001001000000000000000000000010000000000000000010000100100001000000000000000100000101001000000110000000000000000100000110000000001001000000000000000000010000010000000000000000010010000000001000000000010000010100000000000100001000000000001000000000000001000010100000001001001100000000000001001000001001000000000100000000000001000000000010100001010000000000011000100100000000001001001001010000000000000000000000000000100000000000000000000001001010000010000100110100100001000000000001000000000010100000000000001000000000000101000010000000000000000000000001010100000000001010010010011010000100001000000101001010000000000000000000000000010000110000010000000100000100000000100010000000000000000000010010000000000000000000000010000000000000000010000000010100000001000000010000000010010000100000000000000010000000001000001010000000001000100000000000000000001000000100010001000000100000000001010110001000000000000000",
+        "250": "0100000000010000100000000100010000100000000000000000000000000000000010000000000000001000000100000011101100000101010000010011100000010000010000000110000100000000100100000000000000000000010000000000010010001100000001000000000000000000001010000000000000000000001000000000000000000000000000100000000000010101001000000000000000010000100010000000001000000000000000000000000000000000000000000001000000000001000000001000100000000010000000000100001010010000000000010000000000000000011001000000000000011000000001100110000000000000010000000010000010000100000000010000001000001100000001000000000000000100000000000000100001000001001000001010010000000000000001000000000001010110000001001000100000010000100001000000010000000100000000000000000000110000000010000010100001000000000000001000010000000000001000010101010000000000000000000010000000000000000000110000000010010000110000000000100000010000000100101000010000000000000001000001010000101001100000100000100011000000000000000000010000000010000100100000000001000100",
+        "60": "0000101000010100000000000000010100000000000000000000100000000000001100000000100001000011010000010000000100000010000000000000001000010000000000000000000000000000000000010001000001010000001000001100000000000000000000100001000000001100000001000101010000001000000000000000000001000000000100000010010000000000000001001110010000000000010000000001000000100000010000000000010000101000000000010010001010000000010001000000000100000000000000000001010000000000000100000001001001001000100000000100000110000000000000000100000000110100000000000000000001000000000100000000000000000000000000000100010100100000000000100000010010000000000000000101000000000100000000010000000010000011010011000000000110000000001100000000001000000000001000010001000000000000000000000011100100000000000001000000000010001000110001000000100010001000000000000000000000000000000000000010010000000000000001000110010000100011010000000010100100000000001000000000000000000000000000000000000001110000000010001000000001001001000000000000010000100000"
+      }
+    },
+    "memory-halves": {
+      "chesscom_falling": {
+        "120": "0001000001000000000100000000000000100110000000000000000000100011000000000000001000010000000000000000000000001000100000000010000000010000000000000001000100100000000000000100000000000000000100000000000000000010000000000000000000100000000001000000000100000000000010000000000000000100100000011000001010000000000001000000000000000000000000000000010000000000000000001000000000000000000000000000000010000100001100000000100000000010000000000000000000000000000000000000011010000000000100000000000000000000000000000000100000100001000000000000000000000000010000010000000000010000010000000000100000010001000000000000000000000000000000000000000100000100000000000000010000000001000001000000000100000000000010000000000000001000000000001000000100000010000000000000000000001000000100000000010000000000010000000000000000000101000000000100000000000001000000100001000010000000000000010000000000000001000000000000100000000000000000000000000000000000001000000100000000000000010000000000000010001000000010001000000000000000",
+        "250": "0000100000000000000000000000000010000100000000000000000000100000000000000000000000000000100000100000000000000000100100000010000000010000000000000101000000100000000101000000000000000000000100000001000000001010000000010010010000100000000000000000010000000001000010000000000000100100000000000000001000000010001000000010000000000000100000100000100000000000001000000000000000000100000000110000000010011000100000000000100000000000000000000001000000000000000000000000000000000000000100000000000000000000000001000000110000100001000010010000000000000000010000000000000010000100010000000000000010010000000000000000000000110000100100101000000000100000100000000000010000000000000100000000000100100001000000000000000000000000000001000000000100001000010000100000000000001000000000000000010000000000000000000000100000010000000000100000100000000001000000000000000000000000000001000000000001000100000010000000100000000000000000000100000001000001000000000000000100001000000000000000000000001001000001001000000000000000",
+        "60": "1000100001000000000000000000000000000100000000001000000000000000000000000010000000100000000000001000000100000000100000000010000000100000000000000110000100010000000000000100100000000100010000000000000000001000000000000000000000000000010000000000000000000000010000001110000000000000000000000000000000000100000000000000000000000000000000000000010100000000000000010100000000000000000000000000010010000100101000000000000100000000000000000000000000000001000000000000001000000000000000000100000000000100000000000000000010100000000010100000000000100000010000000000000000000100010000000000000000010000000000000000000100000000000100001001000000000000100000000100000000000000000000000000000100000000100000000010000000000100000000001000000000000000010100000000000000101100001000000000010001000000010001000000000100000000000000000100000000000000000000000001000000100000000000000000000000000000000000000100000100000010000000100100000000000000000000000101000000000000000000000000010010001000001000000000000000000000"
+      },
+      "chesscom_rising": {
+        "120": "0000000000000000000000011000010000000001000000000000010100000000011000000100000000000000010100000000001010000100001000000100010000000000100000010000000000000001000000000000000000000000101000010000000000000000000000000000000001000100000010100000000000001000001000000000000000010000001000000000000101000000000000000000010000000000000000000000000000000000000100000000000100010000000000000000100000000000000000001000000000000001000000000000000000000000000000001000000000000000000000100000000100001000100000001000000000000010000000000001000000000000000101000000001100000000000010010100000000000010000000000010010000001000000000000100000000000000010000011000000100000000000000000000000000001100000000000100000000000001000000000001100010000000000000000100001110000000010000000000001000000000001000000000000011000000000010010010001100000010000000000000000001000100000000100001100000000000000000100010000010000000011010000000100000000000000100000001000000000000001001010000000100000100001000000000000000001000",
+        "250": "0100000100000000000000001000010000000000000100000000000000000000000000010000100000000000000000000000000000010010000000000000010000001000000000000000000000000000000000000001000000000000001000010100000000000000000000000000000000000100000000110000000000001000000000001000000010010000001000000000000000001001000000000000000000000000010010000000000000000001000000000000000100000000001000000000101000000001000000001000000000000000000000010000000001000100000100001000000000000000000000000011000000001001100000010000001001000000000000000000000100000000000100100100000000000000000010100000000000000000000100000001000000000000000000000000100000000000001010010100000000000000000000000000000000001100000001000100000000000000000000000001000010000000000000010000000001010001000000000100000000000000000000000000010000000000000000000010001000100000000000000000000001000000000000000001000000000000000000000010000010100000000000000000010000000000000000000000110010010100000000000011100000000000000000000000000000000000",
+        "60": "0110000000000000000000000000100100000000000100100000000100000000000000010000000000001000010000000000000000100000000000001000010100001000000001000000000000000010000000000000000000000000000000010000000000000000000010100000000000000010000000000100000000001000000000010000010000010000010000000000010001000000001000001000000000100000000010000001000000000000000000100000000000000000010010001000000001000000000000100000000000000000000000000000000001000000000010000000000010001000010000000000000000001000000000101010000100000010000001000001100000000000000100000000000100000000000000000000000000000100010000000010010000000000010001000000000000100000000000001000000000000000001000000000000000001000000000000100000000000000100000100000000010001000000000000100000000000000000000000000001100010000000100000000000000000000001000000000010000000100000010000110000000010000000000000001000000000000000000000000000000000000000010000000000010000000000110010000000001010000000000100000001100000110000000100000000000000000"
+      },
+      "detection": {
+        "100/120": "001101011111010100111110001110011101011010010000001001001111100001010100101011000101111010110100000101000010110000000111010011010110010000000111110110111011010101001111111100110110100111011101011111010100010101100001011010011001000100000011000000011111011000101101111111010001100010100000100111011010",
+        "100/250": "010100110010110111010111111111111111111111010110101011111111110111110011010111111111111101000111001111110110101111111000110111110110111001110111100001101101011101111100111101111011110111111101111110101110011001111011110111110110101110111011110111111101011101001111111010101101011110010110101101111011",
+        "100/60": "111001000111110001110100000100000010000011010000000111101100000000101110000000001011101001100011000101110100010101101010001101000110100110001010001000011100110010010001010000100010001100111010000001100010000001110010000000011000101010000010100100110000100001001011010000110100001110010100000100000100",
+        "200/120": "111110011111110111111111111110111111111111111111111111111011110101111111111111111111011111011111111000110111101101110011011111111110010111011111111110011001111101101111111111110111111111111000111011100111111011111111111111111111100111111111111110101111111011111110111101111011111111111110111011111100",
+        "200/250": "111111111111111111111111111111111111111111111111111011111111111111111111101111111111111111111111111111111111111111111111111111111111101111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
+        "200/60": "111110101101011100110110110011111100110111111111100101110110101110111001111111101110110011111110111100101011010001110010110001101110111111110111101111011001111110110111111100111111111111110110111111101111010001111110111111000100111110110110111111111110011111110100101101011110110100111111001011110011"
+      },
+      "falling": {
+        "120": "00000000000000001100010000000000000010010000000100000000000000000100000000000000000100000000000000000001000000000000100000001000001100000001000000000000000000000101000000000010000001010000000101010100010000000000000000000000001000000000000101000100000000000100100000000110000000000000100100000000000000010100000000000000001000100000000100000000000001000000000000000000000000100000000001000000000000000000100000000100110000001000001000000000001001011100100000000000000000000000010000000011000000001000000000001000000000000000000001000010001000000000000001010000000000000000000000001101000000000010000000000010000001010010100100000000000000000000000000100100000000000000000000000001000000100000000000111000000000000001000000000000000100000000001000000000010000110000000000000000100100000000001101000000000001000100000000000000100000000000000000000100000000100000000000000010010000000000000000100100001000000000000000010000000100000000000000000101010000000000000000000011000000001010000000001010100000000010011000000100010010010010000000001000010000010000000000000000100001001000111000000000010100000000001000000000000000000000000000000000000001001000100001000100000000010010000000000001000000000000000000000000001000000000000000000000000000010010000000000100000000010000000000010000000000000100100000100000001000001000000000000000000000000000000000000000001000000100010000100000000000000000000000000000010000000001000000000000000100000000100000000100001000100000000000000001100000000000000000010100001001000000000000000100011000000000000100101010001000000000000100000000000000000000000101000000010000100000000001000000010000000100000000000000000100000000100001000000000000000000001001000000100001010010100010000000000110000100000010000000000000000000000001000000000000000000000000000000000100000000010000000101010000010000100000000100000010100001001000000000001000011000000000000010000001000000000100000000000000000001000000010000000001001000000010010001001000000100000000010010010000001000000010000000",
+        "250": "00000000000000000010100001000110000000001100000001100000000000000000000000000100000000000001000000000001000000001100100000000010001000001001000000000000000000000000000000000010100001010101000000000000000000001000000000000000000000001000000010000000000000000000000000000000000000000000000010010000000010000000000000000000000001000000000000010000000001000000000000000000010000110000000000000000000000000000100000000100010000001000000000010000001001001000000000000011000000000000000000000001000000001010000000111000000010000000001000000000001000000000100000000000100010000000010000000101000000000000000000000110000101000010000001010000000000000010000000000100000000000001000100000000000000000000100000011000000100000000000000000000000000000000000000000000000100010010000000000000000000000000001000000000000100000100001000000000000000000000000000000000000000100000000001000000000000001000000000001100001010000000000000010000000100000000100100000000000000100000000000100010000000000000010000000000000000000000000000000100000000000010001000000000000010000000000000000000010000000000100000000000100100000000001000000000010100000110000000000000000001001000000001000000000001000010000000100001001100000000000010000000000000010100000000000000000000000000100000000100000000010000000010100000001100000000000101000000000000001010000000000000000010100000000000000000001001000001000000100000000000000001001000000000000000000100000000000000001000000000001001000100100000000000000100000001000000000000001000000100000101000000000000000000010000001000000100000010001000000000000001100001000000000000000000000000000000001000000001000000100000000000000000000000000000000000100001000000010000000001100001000000100001010000100000000000000100000001000000100001000000000000000000000000000000000000001110000000000000000000000011000001000000000000100000100000010000100000001000010000000001000000010100000010000000010000000000000100000000000000000000000000000010001000000000000100000000000010001000010000000100000010000110000001",
+        "60": "00000000001000001000000000000000000100010000000000110000000000000000000000010000000000010101000000001001000000000000100000000000001100100000000000000000000100010000000000000000000001010000000100010000000001010000000011010010000000000000000000000000101000000000000000000100000000001000101000000000100000000000001000000000000000000000000000001000000000000010000001000000000001000000000000000000100000000000000000000100000001001001000000000000100010001000000000000000000000000000010100000001000000000000000000011000000000010000001000000000101000000000000001000000000010000000000000100101000000100000000000000000000010010001000000000000000000000000000000000100000100000100101100000000000000000000001000000000000000000001100001000000000100100000001000000000000000010000000000000000100100000000000110000000000001000100000100000100000001000000000000001001000000100001000000000000000000000000000000010000000000000000000000000000000000000000000100000000000000000000000001001000000000001000100000001000110000000010110000000000011010000000000000000001010000100000010000000000000001000000100000000001000000001100001000000000000100000000000000000010000001001000000000000100000110010010000000000001000000000000000010000000000000000000000100001000000000100000000100000100000000010000000000000000000000100000001000000000000000000000100000010100100000000000001000000000000000000000010000000000000100000000000010000000010000000000000000000000000100000000100000010100000000100000000000000001000000011000000000010000000000000010000000000000000000100000000000000000000000000000000100000000000011001000000000000000000000100001010001000000000000000000000101000100000100000000000010001000010000000001000000000000100000000010101000000000000000000000000000000000000100000000000000000000001000000000000000000000001000000101000000000100000000000000000000000100000000100000000100001000000001001000000001100010000000100000000000000000100000000010000010001000000000000000000010001001001000000100000001000000000000000000000010000101"
+      },
+      "rising": {
+        "120": "00000000000010010001000000010000011000000000000000000001100010000000000010000000000000000000000000010000000000000000000000000000000000010000001000100010000001000000000000000001000000000000000000000011000000000100000000000000000000000100000000000000010000000000000000100000000000000000000000000001000000000000000100000100000000000100000000000000000000000000000010000000100010000010000000000000000000000000000001001000000000010100100000001000000000000000010011000100000110000000000000010000000000000000000000000001000000000000000000000000000010000000000000000010001100001000000000000000000000000001100000000000000000001000000000000000000100000000110000000000000000000000000000000000000000000000010000000000000000001000000000100000000000010100100000000000100000000000000000000000000000001000000010000001000000000000010001000001000000000100100000000010010100000000010000001000100000000000000000000001000000000001001000000010000000000100000000000000000000000000000100000000001000000000000000000000000100000000000000000000000100000000000000010000000000000000001000000010001000000000000000000010000000000000000000000001000000000000000001010000000000000000000000000010100000000001010001000000010000000001000000110000000000000000000000000000010000001000001000000000100000000000000000000010000000000000010000000000100000000000000000000000000000000000010100000000000000001000000000001000000000000000010000000001000000001000000000001001000001001000000000000000000000000001000000000000000101000000000000000011100000000010000000000010000000000000000000010001000000000000000000001000000000100000000000001000000000000000000100001001000010000000000000000000000000000000000000100000000000000000000100100100000000000000000000000000000001000000000000000000000000000000000110000001000000000000000000000000000000010100000000000000000000000000000000001010010100000110010000100010000110000000000000000000010010000000000000000001000000000000100000000000001100000010000000000000000010010000000000000000000000000000000000000000",
+        "250": "00000000000000000000000000001000000001000000000000000000100110010000000000000000000000000100000000000010010000010010000000000000000000010000000000100000000010000000000000000001000000000000000000000001000000000100000000000000000000000100000000001000000000010000000100000000000000000000000000000000000000000000000000000000000010000100000000000000000100000100000000000000100010000000000000000001000000000100010011001000000000000000000000100000000000000000000010000100010100010000001000000100100000000000001000000000001000000000000000000000000010000000010000100000000100000001001000000000000000000000100000000000000000101001000000100000000110000000000010000000000001000000000000000000100000000000000000000110000000000000000000001100000000000001100000100000100000000000000000100000000000000001000000000000000000010000000000110000000001000000000000000000000000000000010000000000100000000000000000000000000001010000001000000000000010000000001001000010000000000000000000000000000001000001000000010001000000010000000110000000000000000000000000000000000000000000000000000000001000000000000000000000000000000001000000001001101000100000010001100000000000000010010000000010001000000001000001000000010000010000000000110000000000100000000001000000000000000000001000100010100100001000000000000000000000000000010000000000000000000000000000000000000000000000000000001000000100001000000000001000010000000100010000001001000000001000000000000000000000001010000000000000000000000010000000000000000000000000000000000000100010000000010000000000000000000000000000000100000000000000000000001000000000001000011000000000000000000000100110000000000010000000000000000000010010000000000000100000000001000000000000000001000000000001000100000000000000100000010000000100010000000001001000000001000000000000010000000000010000000000000000000000000000000001000000001010100000001110110000001010000110000001000000010100000000000100000001000001000001000010000000000000000100000010010000100000000011000000000000000000000000100000100000000000",
+        "60": "00000000010010010001000000000000000000000000010000000000100100000000000000000000000010000000100010000000000010000000000000000000000000000000101001000000000000000000001000010000000000000000000000000000000000000000000000001100000000000000000000000000000000000000000010000000000000000000000000000000000000000000010000000000010000000100000000000010000000010000010000000000000010001000000000100000010000000000001000000000001100010000000000101000000000100000000010000000010011010000000000010000000000000000000000000000000000000000100000000000000010000010000000100000001100000000000000000000000000000001110000000000000000001000000000000000000000000100001010000010000000010000000001000000100000000000000001000000000000000000010000100000000001000000000010000000101000000000000010000110000010000000000000000001000000000000000000000000000000000000000000000000000110000000000000000000001100010000000000000001010000000000000000000000000000000000000010000000000000100000000100110000001001000000000000000000000100000000000000000000000000000100000000000000000000000000100010000000010000010000000000010000000000000000000001000000100000000000000001000000000000100101000100000000100000000000010000000010000000000000000000000000000000000010000000000000000000001000001000000000100010000000100000000100000000000000000000000000000000000000000000000000000000010000010000000000000000000000000000001000000000010000000000000000000000010010000000001000000010101000000000000000000000001010000000001000000101000000010010001100000000000101001000000000000000000100000010010000100000000001000000000010000000100000000000000000000000000000000000000001000001011000101000100000000000001000010000000100000000000000000000100010000000000000000000000000001001001000000000000100000000000001000000100000000001000000000000001001000000110000000100100000000000000000000000000000100000000100000000000000000000000000000000010000010000000000000000001100000000010000000000100000001000000010000000000000000000000000000000000100000010100000001000000000"
+      },
+      "rough_falling": {
+        "120": "0000000000000000000110000100001000000001000001000011001000001001000000000000000000000000000100000000100000000000110000001000000000100000000000100001001000100000000000001000000010000000000000000000000000000010000000000001000000000000000000000000000010100100000000100000000000000101000000011000000011000000000000000000000000010100000000000000010100001000000000100010000001010001000010000001000000101000101010001000000000100000100000010100000000100001000000000000000100010110000010001000000000100100100000010000010000000010000000100000000000001000011000001000001000000010001000000001000000000001000111000000000000000000000000010010010000000000001110000000000000000100000000000000000000000000000000010000100010000000000000000000000001000000101011000000001000000001000000100100000000000000000000000000011000000000000000000100000100000000101000000000000000100000001010001001000000010100000000000100000001000000000000010001100100000000000000000000000010000000000000010000010000000010000000000110101000000001",
+        "250": "0000000010000000000011000000000000000000010001100000001000000001010000001000000000000000000000000000000000100000100010000000000000001100000000010000001000000001010000100000000000000000000000010000000000000000000000000000000010000000000000100000000000000000000000100001000000001101000000011000000000000000000000001001100010100000000000000100000100000000000000110000010001010001000000000000000000001000100010000000000000100100100010010000000000000001000000000000000011010000000000001000000010100011100000011000010000000010000000110000001100000000010000000000000001000000001000100001010000000001000011000000001000000000010000000000001000110000001100000010010100000000000000000000000000000001000000010001000101101000000000000000000001000100000000000000001000000101000000000001000001000010000000000000001100000000001100000000001000000000101000000000100000000001000001000000000010000100000000000001000001000110000000000000000000000000010000001000000000000010010000010000000000000000000000000110111000011000",
+        "60": "0001000100100000000100000000000000000010011001000000000000100010000000000010000000000000000000000000000010100000100000000010100000000000001000100000000000000000000000000000000000000100010000000010000000010000010010001000000010000000000100000000000001000110000000000100100000001111010000111000000000000000000100000001000000100100000010000000010100001000000010000000000000000000000001000001100000001000001100000000100001000000000000010000000000100001100010000000000000000000000000101000000000010000000001000000000000000000001000100000000100000000011000000000000000000000000010010010000001001101000011000000000001000010000000000000000000000000001000000000001100001100001000011000100000010000000001111000000000000111000000000000100001000000100010000000000000000000000000000000000000000001000000000000000000000000001000000000000000000000000011000100000000100000001000000000000000010000000000000000000000000100000000000001010000001000000100000000000100000000000001000000010000000010000010000100100001000010"
+      },
+      "rough_rising": {
+        "120": "0110010000010000000000000000000010000000000000000000000000000000000011110000000001000000010001010001000000001000000000000000000100000000000010000100100001000000000000010100000101011000000010000000000000000100000110000000101001000100000000000100010000011000000000000000000010000000001010000000010000010100000000000110001000000000001000000000000001000010100000000001001100000000000000011000001000000000000000000000000000000000000000100001010000000000011100100100001000001001101001010000000000000000000000000000100000000000000001000000000011000000000100110100100001000000000001000100000010100000000000001000000010000101000000000101000000000000000000010100000000000011010010000010000110001000000100001000001000000000000000000001000000000000000000000111000100001000100011000000000000000000010000000000000010000000100010000000000000000010000000010000000000000000010000100010010000100000010000000010000100001000001000000000001000110000000000000000000001000000010010000000100000000001010100001000000000000000",
+        "250": "0100000001010000000000000000010100000000000000000000000001000000000010100000000111001000000000000001000100000101000000010010100100010000010000000110100101000000100000000100000000011000010100000000000010001100000000000000100000000001000010000100000000000000000000000000000010000000000000000000010000010100001000000100000000001000100000000000000000000000000000000000001000000010000000001000001000000001000000001000100000000000000000000000010010000000000000011000000000001001011001000000000000001000000000100100000000000000010000000010000010000000000100010000100000000000010001000000000000000000000000000000100011010101001000000100010000000000000001000100000001010010010011001000100000110000100001000000010000000000000000000000000000110000000000000010100101000000000000001000000000010000001000000100000000011000100000000010000000000100000000110010000010010000110000000010011000000010010100101000010000000000000000001000000000101001100000000000000001001000000000000000010001000000000101000000000101000100",
+        "60": "0000101000010100000000000000010100000000000000000000100000000000001100000000100001000011010000010000000100000010000000000000001000010000000000000000000000000000000000010001000001010000001000001100000000000000000000100001000000001100000001000101010000001000000000000000000001000000000100000010010000000000000001001110010000000000010000000001000000100000010000000000010000101000000000010010001010000000010001000000000100000000000000000001010000000000000100000001001001001000100000000100000110000000000000000100000000110100000000000000000001000000000100000000000000000000000000000100010100100000000000100000010010000000000000000101000000000100000000010000000010000011010011000000000110000000001100000000001000000000001000010001000000000000000000000011100100000000000001000000000010001000110001000000100010001000000000000000000000000000000000000010010000000000000001000110010000100011010000000010100100000000001000000000000000000000000000000000000001110000000010001000000001001001000000000000010000100000"
+      }
+    },
+    "peak-bootstrap": {
+      "chesscom_falling": {
+        "120": "1111100101001000101101001111100101101110111111111000101110101011100101011001001110111000100011110101110001111011100101101011110111111100011111100111111111101110101001111111001011111110010110101101010101101111111011110111110110111010110001001100110111010011110011111111011111101111110111011011001010101110011101101011101110111100111110101000110011000111101011111010011011101001111110111101110111011110111111110111101001110010101111100010111011111000000111100011011110001101011101011011101011110111001001110110110110111111100111010110101010000111010000011010100010111111010001100001111010010101111110010100101101110111111111011011111101111111101101001010110001100011101101111101010111100011111010011000111110111110111011101100001100011111100100101101100001001000001101110100011101101111010110110101111100110101111101100101110011011101110111100111011110100010111111010111111011111011110110001001111001101111100001010101000100111101101011111100111111010001110011101010011011101111110110101100111101110111",
+        "250": "1011111011111011011111110111101111111111111011111111011111100110111110101101000111111111110111111111101011101101111111110111001111011110111111011111011011111111111111101100111111111111110111101011111011011111110111111111111111111111100110101111111110010101001110111110111101110101110111111110111111110110011101111111111111110100101101111111111111101100101111101111111001110111110111111111110111011110110101100111111111111111010011000111001010101011111011010011001101111100111110111100100100111010011101101010110110111111110111111111101000110111111111011011111111111111111100011101111111111110111011111110111111111110111101111110011100111011110110101011110111101010111100111011111100110011101110011100000011011111111101111100111111101101111110101110111111001110111111101010111111111011011111011111111011111111111111110111110111111111011011111111100111110111111111101011110111111111011111111111111111011111111111101111101101111011111111011111100101001011111101111100011110101111111101111011001101111111",
+        "60": "1000110001001001001111101010000011010110110000001100101010101110000000001010111101110110100001101111110100001000100000010011001010110011010010001111111111010100000011100100111010000100011100101011100100111011010101011101101011110100111100011000110111010110010010101111100100000101100001111101001010010110110100100010100011001000000000101100111111111100100000011110110000100000100001010000010010010100101110010110001101000011101011001011100000110001101000100101111100000001000110010101011000000110001010000100111011101100000010100000011001111000110010111111010001001110011100010101000100010001001010010100001110000101001100011011110111001101101001000111001000010101000001001000010110000000111000110011101110000110001001011101001100010011010100000001000000101111101111010000010001000111010001100000100110101101000100100101000000001001100000110001011011101101010001101010011101000111000101010100110100010110001101100100100000110001001001001111000100101010011000000000010010001001011011011110100110000010"
+      },
+      "chesscom_rising": {
+        "120": "0000011010110110000010110000011000010001000000000101010001000100011010100100100000000101011100000010001110000100001010010100001000000011100000011000000000000001000110000000010000000000101000000000000010010000000100001000000001000101000010010011000000000000001100000000100000010000001000000000110101000001000010010100010000000010000000010110000000010000010100000101100100010010000001000010001000000000000000001000000110001001010000010101000100000010100000010100000000110010000010100100000100001000110100001001001001000000001000101001000101110000101011100001001000000000100010011110000101101010000001101010010010001000000000100100000000000000010010110001001110001000000010000000101000011100000101100111000001000001000100010011110011100000011010010010011110110011010010001011100010010000101000001010000011000010000010011010001100100010000000000000100001000101000000101000000000000100001001100110000010000000011110101010111011000010010100000011000000100110001000010101000100010000001001000000000000001000",
+        "250": "0100000100000000100000001000000000000000000100000000100000000000000000010000011000000000000000000000000100010000000000001000110000100001000000000000100100000000000000010011000000000000001000010100000100100000001000000000000000000000001001010000000001001010110001000000000000001000000000000000000000001001000010000000000000000011010000000000000000000001010000000000000000001000001000000000001000000001000010011000000000000000101000100000100001000100000100101000110000000001000001000011000011000101100000010101001001000000001000000000010011000000000000100100000000000000000011100010000000000000000100000001000000000001000010000001100010000000001001010100001000000001000010000100000011001000010000100001010100000000000000000010000000000000000001010001000000110001000000000101000000000100100000100000000100000000000000001000001000000000000100000000001000001000000000000100001000000000000000000000000000100000000000010000000000000100000000100000011010010100000010000011100001010000000000000100110010000000",
+        "60": "0111001100110010110000000101111100101001001111110001010101000001101000010000000000001000010110000000000010100111001011001100110101001100101001010000000000101010001100011011000101111011000001010100011011000000100010100010000100000010000010100101001000101000101101010000011010110010011110000010110101100001001011001101001100110000110110000001000000000011001011100001001111011111010110001001101001101010010000101001000000111000010100100100011111001100010111011010000011001100010001001010000100011001110101101011000100000011110001011011100010000101000101000000001110110001100010000010011010001110010100100010110000100000010001000100000000100010010110001000110111101010011010110001100001011001000100001100010001110000110110100010010011001100001011101100111100010000010000101100101110011000101110011110001001000000111011010010110101110110011011000110000100010010001010000101100000111000100000100011000011101001110010011001011011001110010110110000111011010101100011110100101101100110100100100001011001111100"
+      },
+      "detection": {
+        "100/120": "011111111111111110111111001110111111111111111111011111111111111011111111111111011111111111111111111111101111111011111111111111111111111111101111111111111111111111111111111110111111101111111101111111111111111111111011111111111111110110011111111111111111011111101111111111111111111111111101101111111011",
+        "100/250": "111111111111111111111111111111111111111111010111111111111111110111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
+        "100/60": "111101111111111101110111111111111111110111111101111111111110011101111111011100101011111011101111011101110111110111111110001111111111101111111111101101011111111111010111111111100111111111111011001111100011101001111111010110111111101110111110111101110010101111111011111110111101001110011100111110110110",
+        "200/120": "111111111111111111111111111111111111111111111111111111111111111101111111111111111111111111111111111111111111111111111111111111111111011111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
+        "200/250": "111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
+        "200/60": "111111111111111111110111110111111111110111111111111111111111111111111111111111101110111011111111111101111111110011111111111111111111111111110111101111111111111111110111111111111111111111111111111111111111011111111111111111111110111111111111111111111111111111111111111111111111111110111111011111111111"
+      },
+      "falling": {
+        "120": "00111000011011111110111101100111100011111111101111111100111101101101010101110101000111001011100111101111100010111101101011011111111101101011010001011101101100001101101110011010100011111110110111111100111111111000011011111100101101001011010111101101101001100100111111011111101000011101111110110100001000111100111000111001011101110010010101001010101111011111011100010001011000111100101111101000111111010111111110110110111100101001001001000111101101011101100100011010011011110111011111101011010100111110110110111110000110110111111111110111001001001111101111010111100010110000110100101111011110110011011111101111100111010110110111001100111000111110001111100111101110110110000101101011111110100011000111111111110110100011111110001100110111100001001111011001010100111111101110011100110111000110101101111010110101110111000110001110100001000001010011111101100011111011001111110111011100011100011011111111011111101010110110010101101111001011111110111101011111111011011011101011110011111111110101111110111101111011111001111100011011111010111101111010111011011001100010011101110001111101111001111001111110110110101011110110110001101101100010001110011011011101111101110100010011011110100110100111101110001010111011000000011001010110010001110101100010110111111000110111011111111001101011110100101111110111101111101111001101011011100101011001101110100001111001101110011010100110010110100101101100011011101001110010111010010111110101110110011110100101101010010111111110100110101111111111111100011000010011111100011101001101101000011100111010011110110110101110111100110010111110110111110000001101111101110111111011111111111011111100110101011111100111110010100111111111111111011111101110111011111011000011111001110110111011010111010110110101010011011111111100111111100001100110111011110011101110101111110110111000010011101111110001010010111110100100100011111101001101010001101001011110010110010111001001110010010111111110110111111111000011110101111011001101101111110111111100101110111111111011011110111010011110010101",
+        "250": "11001111111011111111111111110111011110111111111101111111110011000111111111100111111111101011101111111111100111101100111101111111101101101011111111111111011111101111011011110010100111111111110111011111110111011111110111101111111111111111111111110010111001101011111010010111100101101111111110010111111011101110010111010111111101001111101111111111010011111011011111110111011111111011101111111111111111111011101101110110111101111111101011011111111101111111111111011111101111011010111111111011111111111111111111111011111011100111111101000011011101011011100110000011111111101110110111101101111111111111110111111111110111111110111111111111101101111111111010011111011110111111111110111111110101111011111111111001111111111111011111110011111110111100011100000111101111110111111010011111111111111111011111101101101101001111111011101101110110111111111101111111111111111111101001111111011111111111111110001111111010101111111111010111101101100111100110101110111101111111111111111111111000101010011111101100101101011101110011101111111111011111111110110111010111111111111111001111110010111111110011100111101111100100101111100000010111110111101111111110111111111100100111111111110111111111111010110111101110101011111010111101111111011111011111111111011011001110111111011111011010110111111011111110111111011111111111111111111110111111111111101001101011111111110111110100011101110111111101110111111011111111111111110101111011111111111111111111101111111100111111001111111011101011111110001011110111110111111111111111111101111111101111111110111101111111011111010011101111111111011111111101100110110111000111111110000110101101101101111111111001111111111111101111110101111101111011111011011110111011110111111110101111011010110111111101110111011111111111111011110101111110100111100111111111000111101111011101000011110111111111110101011110111111111111110111011111110011001011110111110001111110111111011011110111010011111110111100111111011101011111110111111111111100000111111111111111010011011100110111111110011111011111111011",
+        "60": "00100101001101101010011010101001001111010010100100110011011000001001010100111100100101010101001000111001101101100000110000000001011101101101010000010100110110111001010111100100110001110111111101010110110011011101000111010010100111100011101111111110101100101101100000001111000010011100101111100100101011101000101101011010001101001000010111011000111001100011001101001100000001100000100110000110101111001000100000100100110011101001001011010010111111001101001100000001001000100010010100001011000010001000101011111000010010011000001101001110101101111101111011010100110011001000010100100101000010101100001001010110011011110011101010000110001100010010010001101101100100101100101100001000001010110000101000101000000110100001100001010001100100101011001001001101010100111111101001000000111100101101011111000100101101001100001110001111101101000010011100101101011000100001101011100001010010101011100101111100000000000010110000000001000100100100010101100001100010010000001001001011000000101110100001101111111010110011111100000101011011000011101011001001111011110110010101001101100101001001101110100001001110011110111000000010010101110110000010001010011011001000101001011100001110111010000010010001001001100010001110001010001100000001010110011100100111110111010100111100010000111001010101011001001100110111111001100000010111001010111100111100100111000000001001000000001011000101110110100000011110000011101010001110110101000000100101010000101100000010100000111110010100100100011000000111101000011100100000010000001101100010000101001111100010101001011101100110001111101000010111100000010011001010100111010110011010110001110001000000101000000100010111011101000100100001100010001001110111111001000011010000101001111010111001100011000110000011010010101011000101010110001011001000111010101100100110000010101100001101110011010111110010010101100101010110000010100001101111011010001001011000110111101010001101101011001100010000101110001110001010011110010000000001110110101111011010101100001111011011111100011001000110001111"
+      },
+      "rising": {
+        "120": "11000110100100000001000000010000011000000000000000000011000010000010101010000010101000010100011000010000011101000010010100100000000010010000101110100010010011100010010001100001011100000001001000000011000000000011100000000011010010110100101000000010010000011001000000100000010101100000000001001010110110000010000101000110100010001101001010000101010000100000100011101100100110000011000000000111000000101000000001001001000001010110100110011000010010100000011011100101100100001000100000010000101011000000001001000001011001001000000000001000110110110000010000101000011101001111001011000000100001001100100000010000011000101001001000100011000111000001110000011000010001001001111010010100000001011000010000000000001000011000000000110010001000011100110000100000101011000000010001100010000000101001000010000101001010001000010001000001011100011110001000000010011100000100110000001000100011100010100100000000100000000101001001101010000000110100000001000010100000000100100100010100001000000000001000000000000010000100000110000010000100000000000010000000000100100110001101100010001100000010000110000110000001001001010100001001001010010010011101110001100000100010000010000011101100100000011001001000010001110001000000111101100110101001100110001000011000001000000011001000100000000110010100001011010000001000010000010000110010100100000010100000010001011110000110010001100000011001000001000010010011100100010110001101000101101000000010001001100001011010010101101000000001011001010000000000000011100011101100000011100010000010010111100011000101000001001001010001000011001101000000001000001110110000000010001000000100000000000100000010001010100000011000001001001000000000000000100000000000000100000100111100000110000001000100100000100001001010101100100000000010000000011110011001000100001100010001010000001001000111101100000000000110101101000001011010011100000010110010100110000110100001101000001000110110000001101000000001000000000000111100000010000100000010010000001000000010010001000000000000100000000101100001100010",
+        "250": "00000000000100000000000000001000100001000000000010000000001100111000000000011000000000000100000000000000011000010010000010000000010010000000000000000000000000000000100100000101010000000000001000100000001000100000000000000000000000000000000000001101000110010000000101001000001010010000000001101000000100010001101000100000000010110000000000000000100100000100100000001000100000000100010000000000000000000100010010001001000000000000010100100000000010000000000000000000010000100101000000000100000000000000000000000100000000010000000010111000100010000000011001010100000000000001000000010000000000000000000000000000001000000001000000000000010010000000000000100000000001000000000001000000001010000100000000000110000000000000000000001100000001000011100011111000010000001000000100100000000000000000100000010000010000110000000100010010001001000000000010000000000000000000010110000000100000000000000001110000000001010000000000101000010010011000001001000000000010000000000000000000000101010001100000010011010010000010001100010000000000100000000001001000001000000000000000010000001101000000001100001000010000011011010000011111101000001000010000000001000000000010010000000000001000000000000001001000010001010100000101000010000000100000100000000000000000110001000000100000100100001000000100000001000000100000000000000000000001000000000000010010010000000000001000001011100010001000000000001000000000000000000000001000000100000000000000000000010000000010000000010000000100010100000001110100000000000000000000000000000010000000010000000001000010000000100000001100010000000000100000000010000001001000101000000001111000010010010010000000000100000000000000010000000010000000000100000000100001000100001000000001000000100101001000000000000000100000000000000100000010000001011000011000000000111000010000100010011100001000000000001010100000000000000000000000100000001100110100001000001110000001000000100000001000101100000001000011000000100010100000001000000000000001111000000000000000101100100010001000000001100000100000000100",
+        "60": "11001000110010010001000100010110110000000100011010001100100111110010001010000011010010000010100111000000010010011100001111111100000010010010101111001011001001000110001000011010001110001000000010001001001100000010110000001101010000011100000000000001010001010010010111110000110001100011010000011011010100010110010010100101010010100101001000100011000100011100110010110011111110011011010001110001010000110111011101011001001100010110010100101101000000100010010011111100110111011001000011010000011101000100010100000011101100000111110010010001010010000010000100101010001100000110101010000010111000010001110110100000100000001100010000110000000000101101101110010010001011010010010011110101110101001111010111010111110001011000011100101010011001000100010010110010101010000000010110011110000010000010000000011011000000110010110001000000010000100101100001000010100111001110010100001110101100010100010010000001110010000101001110111110111010001011101010011110011101101111000110110100001011010001000100010000000101001000000011110010100100111100010100110110000100001000101010100010011010110010010000010110100000100000000011011101101010001001111001010001100000100101000110100011110000000100111001001110110010011001100000110001010011111110000000100001010000001000001010000010101111000100101000100110100001001000000110011010101000010101000010000011001000011110110110111111010100111010001001011110100001110100010101110001001000111111011010101111010010101100011111000001000011011011000100001000010111100010011011001111110010011101101000110000011101010110100010010000110000010111101000000111000100110101010000101001100101001110000100111111000111011010101000100010111011011110010100010100001000000110111100101011000110000101000110010100011001111000101100000100010000101001110100110010000001010010001001111101010011110010001100100000001001101010010000101001110101001110010000100100110110000010001000010101110010010100000000101111000001110000110000100001101100010110001001010000000101000010010000100100000010100100111001110000"
+      },
+      "rough_falling": {
+        "120": "1001011110111010101111110101101001101111010101110111101110101011011100001111101110110111111110100110111111110010111111101101011110111100101101111001011110111110100101111001010010110111011001111110001001001011110001101001010110011011110101100101100011111111111100101101100101111101110111111010101011101011011101011001100111010110110111110111111110111100011100110110010011111001011010110111000110101010111011101110101100111101110101010100101110111001100101010011111111010110100110101111110110110111110001011110011011111111001101111110010100011100111011001011011110111010101100111001111101101001111111010101011001110010111000011011111010011001101110001010011100111100101001000101110010000101001010110101100111110100111111110010101111000000101011101010111011010111011000111111110101101110101001010011111101101111001101000111110100111101111111000011111010100111001111011101000010011110110010000100110011010111110001011111100111001101011110111000110011110000100100110111010011101010101001110111111101111011",
+        "250": "1011111111101100011111111011101011011011111011111111111101111111111101111111111111110111111001111110100001110010101011101110001111101111101111111001111110101111011011111111110111111111111110111111101101110011101110111111111111111111110111111101011110111111100111110111101111111111111111011111111111101100110110111111111111110100011101111111110111111110111111111111110111111111101111111111111111111110111111110111011111111100111011111001110100001101111101111111001111111101100010111111111111100111110110011011111111111111101111110001011101111011111111101111100111110011011110101111110111111011111111111110011110011110110110110011111111111111101111011011111100101100111110010111011110001101011101110111101111111011111111111011111111001101110101011101011110111111111011100111101111111111110111101010111111111111111111011101111110110111111000001011110101111111001111111101011111111111111011011111100011111111111100011010101111010110011010011011011100111111011111011110101111111111011011001111111100111110",
+        "60": "1001000110100001100101010111001000010111111111011000011111111110100001010011010000000000100011001001101010110000101111101010110000000011001010111001000011000001100001100100101000001100010001100011000111010110111010001000000010000000101110010000000001100110001011110110110000101111010000111001100011010001000100000001000101110100100011111000011100001100000010110110000011010011110001001101100001111000001110101101110001110001100000010000100001100101100010000000000000010100000100101010100000110011010011000001010111001010011000110101011100000011011001111010001010000010011010110011000001001101110111010011000101100010000000100010110011010000111110000010011100101100001000011010111001011110010011111100110011100111000100000000110011001000111011010000001010010101010000110010010000100001000110001111001000010010011100000111001000001001111011000100100001100010011100001001100110011100001111101101000001011100000010011101110110101001111100111000101110001110111001110110010010010010101110110110101001000011"
+      },
+      "rough_rising": {
+        "120": "0110100001000001010000000000010110010000000010001000010001010100100011110000010001001000000001011001000000001001000000000010100001000011010010000110100001000001001010000100100101001000100110000000100110000100000110010100101001000100000000010010011100000000000010010010011010000000001000000100010000010100100010000110011000100001001000000000000001000011100010001001101100000110000101001000101001010100000100010000000011000000001010101001010001000110011010101100000000100001011001010000001001001000001110100001100100000000110010000001101011100011000100110100100000000101010001000010000010010010000000101000100110000101000111100100000101000110000001110101100011000010010110011010001101111010010101001010001000000000000000001101010000111101010100000101000100100000100010000000001010000000010110101000000010010000010010111000000010000010000000111100000101011000110000100010111101100001001100111011000000101000001110100000001000000010100001000111001000001111011011001000101100000001010110001000000010000100",
+        "250": "0100000000010000100000000100010100100000000000000000000010000000000010000000000000001000000100000001011110001101010100000001100000010000010000000110000001010000100100000000000000000000000000000000010010001000000001000000000000000000001000000010000000000000011000000000000000000000000000100000000000010011001000000000000000001011100000000000001000000001000000000000001000000000010000000000000000000001000000001000100000000010000100000100001011110010000010000000110000000000011001000000000000011000001001100100000000000000010000001010000000000100000000010000001000001100100001010000001000000100000000000000100001100001001000001100000000000000010000100000000011010010000001001000100001110000100010000000000000000000000000000100000000110010000010100010100001000000000000011000010000000000001000010101000000000000000000000010000001000000000100110000000010000000110000000010100000000000000100100000010000000000000011000001010000001001100101100100100010000000000000100001010000000000100000110000000001000000",
+        "60": "0110111001011110001010001000110101101000000000000101100000000001001110101100101011000111011000110110010101001111010000000101001110010100000101000110111100010110011110011011010011110010101010011100111000000000000100110011101001011111010001000111011110011001110100001001001101000000101111000110011000101110100001101110111000001011011100000011100010110010111101000001111100101000001100010010011110000110110001010000001100000100010001001011010000011010011101111111011111001011100011010101010111001000100000111100101000110101000111000010000001010000100110000001110001011000100001001100111110110010001000100100110010011101101011001101001000101110000000111100100011000011010111100001000110000001101100000000001000010000111010010111001100110101000100100111110101001010101001001001001011011100111001100000110110001101100010111000100101110110000100100011011110010101000011110110011001100011110000000010111110100011111101100010000001010000000011000111000001110000000110001000101101101101010000001001010110110000"
+      }
+    }
+  }
+}

@@ -8,6 +8,13 @@ The site builds this file into /docs/progress/ and shows the newest entry on the
 
 See also the [experiments](/rematch/docs/experiments/) and the [roadmap](/rematch/docs/roadmap/).
 
+## 2026-11-27: algo-6.0.0 calls the rating's direction again, with a range that counts its memory
+
+- The trajectory compares your first 30 rated games with your last 30 and says whether your rating moved by more than its own wander, from a rule that counts how a rating carries its error from one game to the next ([ADR 0117](decisions/0117-a-trajectory-verdict-that-counts-the-ratings-memory.md), [EXP-0030](https://github.com/Terkea/rematch/blob/main/lab/experiments/EXP-0030/decision.md)). The headline compares the two averages and states the peak as a plain fact: "Your rapid rating averaged 1,492 over your last 30 games, down from 1,560 over your first 30 (−68). It is 1,488 now. Your highest was 1,610, in April 2026."
+- On 2,000 fresh simulated players whose strength never changed it said "falling" to 10% to 12% and "rising" to 8% to 10% at 60, 120 and 250 rated games, against the old rule's 46% to 79% "falling", and it caught a 200-point fall 72% to 99% of the time. With breaks, streaks and tilt it ran at 13% to 14%.
+- On real Lichess players over a month, 36% were flagged either way against the model's 20%: real ratings wander, or really change, more than the model allows, so the rate on real players is not yet known. EXP-0031 (long histories and new accounts) and EXP-0032 (real series at the product's windows) are next.
+- An input the coach stored before this version keeps its verdict withheld: the trajectory now names the rule that computed it, and only the cleared rule's verdict is stated.
+
 ## 2026-11-26: algo-5.0.0 stops calling the rating rising or falling
 
 - The trajectory no longer tells a player or the coach that their rating is falling, rising, clearly worse or clearly better than at their peak. The headline states the peak, the current rating and the change as numbers ("Your rapid rating peaked at 1,080 in February 2026 and is 816 now (−264)."), and the then | now table shows both windows' average ratings and the difference, marked "Not called" ([ADR 0116](decisions/0116-hide-the-trajectory-rating-verdict.md), #136).

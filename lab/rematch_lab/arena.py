@@ -93,6 +93,20 @@ class Live:
     rerun: str
     cpu_hours: float
     minutes: float
+    # The registered seed namespace: the experiment id, or the one its `namespace.txt` names
+    # when it was drawn after a freeze (EXP-0030, from a public beacon).
+    namespace: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.namespace:
+            object.__setattr__(self, "namespace", registered_namespace(self.exp))
+
+
+def registered_namespace(exp: Path) -> str:
+    """The experiment's registered seed namespace (`namespace.txt` when present, checked by its
+    `inputs.sha256`), or its id."""
+    path = exp / "namespace.txt"
+    return path.read_text(encoding="utf-8").strip() if path.is_file() else exp.name
 
 
 def live_experiments(scope: str, only: list[str] | None = None) -> list[Live]:
@@ -196,7 +210,7 @@ def committed_record(
         raw = path.read_bytes()
     results = json.loads(raw)
     namespace = record_namespace(load_rule(live.exp), results)
-    if results.get("algorithm_id") != algorithm_id or namespace != live.id:
+    if results.get("algorithm_id") != algorithm_id or namespace != live.namespace:
         return None
     return make_record(live, raw)
 
@@ -224,7 +238,7 @@ def find_record(board: dict[str, Any], live: Live, algorithm_id: str) -> dict[st
         for r in board["records"]
         if r["experiment"] == live.id
         and r["algorithm_id"] == algorithm_id
-        and r["seed_namespace"] == live.id
+        and r["seed_namespace"] == live.namespace
         and r["analysis_sha256"] == analysis
         and r["inputs_sha256"] == inputs
         and r.get("rule_sha256") == rule
@@ -346,7 +360,7 @@ def run_side(live: Live, algorithm_id: str, cli: str | None) -> dict[str, Any]:
             ) from e
         raw = (Path(out) / "results.json").read_bytes()
     record = make_record(live, raw)
-    if record["seed_namespace"] != live.id:
+    if record["seed_namespace"] != live.namespace:
         raise SystemExit(f"{live.id}: the run did not use the registered seeds")
     if record["algorithm_id"] != algorithm_id:
         raise SystemExit(f"{live.id}: the run was on {record['algorithm_id']}, not {algorithm_id}")

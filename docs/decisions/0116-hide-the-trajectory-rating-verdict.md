@@ -1,6 +1,6 @@
 # 0116. Hide the trajectory's rating verdict until a rule clears EXP-0015
 
-Date: 2026-11-26. Status: accepted (lane `hidetraj`, branch `feat/hide-trajectory-verdict`, issue #136). Builds on ADRs 0089, 0104, 0105, 0109, 0112 (the precedent: one versioned switch, still computed, cut at the edges) and 0115. Ships as `algo-5.0.0`.
+Date: 2026-11-26. Status: accepted, partly superseded by [ADR 0117](0117-a-trajectory-verdict-that-counts-the-ratings-memory.md) (the verdict is stated again from EXP-0030's rule; the cut stays for inputs built by any other) (lane `hidetraj`, branch `feat/hide-trajectory-verdict`, issue #136). Builds on ADRs 0089, 0104, 0105, 0109, 0112 (the precedent: one versioned switch, still computed, cut at the edges) and 0115. Ships as `algo-5.0.0`.
 
 ## Context
 

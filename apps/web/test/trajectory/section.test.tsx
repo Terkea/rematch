@@ -32,7 +32,7 @@ const START = Date.UTC(2026, 0, 1);
 
 function view() {
   const ratings = Array.from({ length: 100 }, (_, i) =>
-    i <= 40 ? 800 + i * 7 : 1080 - (i - 40) * 4,
+    i <= 40 ? 800 + i * 7 : 1080 - (i - 40) * 10,
   );
   const games = ratings.map((rating, i) => ({
     id: `g${i}`,
@@ -53,7 +53,7 @@ function view() {
   }));
   const t = computeTrajectory({
     games,
-    current: { rating: 816, at: new Date(START + 100 * DAY) },
+    current: { rating: 500, at: new Date(START + 100 * DAY) },
     stats,
     weaknesses: [],
     seed: "s",
@@ -66,26 +66,52 @@ describe("TrajectorySection", () => {
     const { container } = render(<TrajectorySection view={view()} />);
     const section = screen.getByRole("region", { name: "Rating trajectory" });
     expect(
-      within(section).getByText(/peaked at 1,080 in February 2026 and is 816 now/),
+      within(section).getByText(
+        /^Your rapid rating averaged \d+ over your last 30 games, down from 902 over your first 30\s\(−\d+\)\.$/,
+      ),
     ).toBeTruthy();
-    expect(within(section).getByText(/^Since then: accuracy/)).toBeTruthy();
+    expect(
+      within(section).getByText("It is 500 now. Your highest was 1,080, in February 2026."),
+    ).toBeTruthy();
+    expect(within(section).getByText(/^Since your first games: accuracy/)).toBeTruthy();
     const table = container.querySelector('[data-slot="then-now"]');
     expect(table).not.toBeNull();
     expect(
-      within(table as HTMLElement).getByText("Around your peak", { selector: "dt" }),
+      within(table as HTMLElement).getByText("Your first 30 games", { selector: "dt" }),
     ).toBeTruthy();
     expect(container.textContent).not.toMatch(BAD);
   });
 
-  it("shows the rating row with no verdict and the other rows with theirs (ADR 0116)", () => {
+  it("gives the rating row its verdict and range, like the other rows (EXP-0030, ADR 0117)", () => {
     const { container } = render(<TrajectorySection view={view()} />);
+    const rating = container.querySelector('[data-row="rating"] [data-verdict]');
+    expect(rating?.getAttribute("data-verdict")).toBe("worse");
+    expect(rating).toHaveTextContent("Worse");
+    expect(rating?.className).toContain("font-medium");
+    const accuracy = container.querySelector('[data-row="accuracy"] [data-verdict]');
+    expect(accuracy?.getAttribute("data-verdict")).toBe("worse");
+    expect(container.querySelector('[data-row="rating"]')?.textContent).toMatch(/80% range/);
+  });
+
+  it("shows a withheld rating row with no verdict (ADR 0116)", () => {
+    const t = computeTrajectory({
+      games: Array.from({ length: 60 }, (_, i) => ({
+        id: `h${i}`,
+        playedAt: new Date(START + i * DAY),
+        rating: 900 + (i % 2) * 10,
+      })),
+      current: null,
+      stats: [],
+      weaknesses: [],
+      seed: "s",
+    });
+    const { container } = render(
+      <TrajectorySection view={trajectoryView(t, "rapid", { ratingVerdict: false })} />,
+    );
     const rating = container.querySelector('[data-row="rating"] [data-verdict]');
     expect(rating?.getAttribute("data-verdict")).toBe("withheld");
     expect(rating).toHaveTextContent("Not called");
     expect(rating?.className).not.toContain("font-medium");
-    const accuracy = container.querySelector('[data-row="accuracy"] [data-verdict]');
-    expect(accuracy?.getAttribute("data-verdict")).toBe("worse");
-    expect(accuracy?.className).toContain("font-medium");
     expect(container.querySelector('[data-row="rating"]')?.textContent).not.toMatch(/80% range/);
   });
 
@@ -104,14 +130,15 @@ describe("TrajectorySection", () => {
 });
 
 describe("TrajectoryCard", () => {
-  // The overview opens on it (ADR 0092): where you are now, the peak against now, and Progress.
+  // The overview opens on it (ADR 0092): where you are now, the first games against the last, and
+  // Progress.
   it("leads the overview with the current rating, the headline and a link to Progress", () => {
     const { container } = render(<TrajectoryCard view={view()} href="/app/progress?tc=rapid" />);
     const card = screen.getByRole("region", { name: "Where you are" });
     const now = card.querySelector('[data-part="rating-now"]');
-    expect(now?.textContent).toBe("816");
+    expect(now?.textContent).toBe("500");
     expect(card).toHaveTextContent("Rapid rating now");
-    expect(within(card).getByText(/peaked at 1,080/)).toBeTruthy();
+    expect(within(card).getByText(/down from 902 over your first 30/)).toBeTruthy();
     expect(card).toHaveTextContent("Based on 100 rated rapid games.");
     const link = within(card).getByRole("link", { name: "See what changed" });
     expect(link.getAttribute("href")).toBe("/app/progress?tc=rapid");

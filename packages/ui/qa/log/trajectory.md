@@ -33,3 +33,11 @@ Issues found and fixed in code review of the render:
 
 Owed: screenshots at 390 and 1440, day and night, the horizontal-scroll check at 360, and the
 fresh critic's verdict.
+
+## 2026-11-27: algo-6.0.0, the verdict back (EXP-0030, ADR 0117)
+
+The rating row has its verdict and ranges again. The headline compares the windows' averages ("Your rapid rating averaged 663 over your last 30 games, down from 864 over your first 30 (−201).") and a plain line under it gives the current rating and the highest ("It is 540 now. Your highest was 1,111, in March 2026."). The shaded spans are the first and the last 30 games. Shots of the styleguide's trajectory section at 390 and 1440, day and night (`.shots/trajectory-*.png`, a section-only capture; no horizontal scroll at either width). `pnpm design:check`: 0 findings. A fresh critic saw only the screenshots, DESIGN.md and REFERENCES.md.
+
+- Round 1, revise. Major: the shown differences did not add up from the rounded numbers beside them (864 → 663 shown as −202; 27% → 43% as +17). Minors: the headline ran to three sentences; the subtitle still said "then"; and six that predate this change (the weakness row's change has no range; "clearly worse" in the summary against "Worse" in the table; a heavy day fill on the spans; the then | now captions off the table grid; a narrow Change column; crowded chart labels at 390). Fixed: every shown difference is now taken from the rounded values shown (headline, rating row, weakness row, with a test that they add up); the headline is the comparison only, with the facts on their own line; the subtitle reads "how your first games compare with your last".
+- Round 2, revise. Blocker: the 1440 night chart was empty, a capture taken before the chart measured its width. Minor: at 390, "(−201)." wrapped alone. Fixed: a no-break space keeps the difference with its numbers; the shots now settle for 3 seconds.
+- Round 3, pass. The six minors that predate this change remain, deferred to the then | now component and the chart, which other surfaces share.

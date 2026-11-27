@@ -25,12 +25,13 @@ import { TRAJECTORY_GLOSSARY } from "./glossary";
 // points. A change is "clearly better" or "clearly worse" only when its verdict says so (ADR 0083
 // §6); a window below the minimum says what it still needs. Never NaN, never an arrow.
 //
-// The rating's own verdict is computed and not stated while the manifest's
-// `profile.trajectory_rating_verdict.shown` is false (EXP-0015, ADR 0116): it told most players
-// whose strength had not changed that their rating was falling. The headline then states the
-// peak, the current rating and the change as numbers, and the table's rating row shows both
-// windows' averages and the difference, with no range and no "Worse" or "Better". Accuracy,
-// blunders, score and the weaknesses keep their verdicts.
+// The headline compares the two windows' average ratings, the same difference the verdict tests,
+// and states the current rating and the highest one as plain facts (EXP-0030, ADR 0117): a peak is
+// a maximum of the rating's own wander, so a difference against it is negative for a player whose
+// strength never moved. The rating's verdict is stated while the manifest's
+// `profile.trajectory_rating_verdict.shown` is true (EXP-0030 cleared it); with it false (EXP-0015,
+// ADR 0116) the same sentence carries no word for a direction, and the table's rating row shows
+// both windows' averages and the difference, with no range and no "Worse" or "Better".
 
 /** Whether the rating's verdict is stated (Rust `coaching_input::trajectory::RATING_VERDICT_SHOWN`). */
 export const RATING_VERDICT_SHOWN: boolean =
@@ -61,6 +62,8 @@ export type TrajectoryView =
       /** The section's "What is this?": it says the rating is not called while it is withheld. */
       explain: GlossaryEntry;
       headline: string;
+      /** "It is 540 now. Your highest was 1,111, in March 2026.": the plain facts under it. */
+      facts: string;
       since: string;
       /** "Based on 523 rated rapid games." */
       basis: string;
@@ -108,44 +111,34 @@ function verdictWords(v: string): string {
 
 type Ready = Extract<Trajectory, { kind: TrajectoryKind }>;
 
-/** The peak, the current rating and the change, with no word for a direction (ADR 0116). */
-function factHeadline(t: Ready, tc: TimeClass): string {
-  const now = rating(t.current.rating);
-  const delta = signed(t.change);
-  if (t.then.basis === "peak") {
-    return `Your ${tc} rating peaked at ${rating(t.peak.rating)} in ${monthOf(t.peak.at)} and is ${now} now (${delta}).`;
+/** The difference of two shown ratings, from the rounded numbers on the page, so it adds up. */
+const shownDiff = (a: number, b: number) => Math.round(b) - Math.round(a);
+
+/**
+ * "Your rapid rating averaged 1,492 over your last 30 games, down from 1,560 over your first 30
+ * (−68)." With the verdict withheld it names no direction.
+ */
+function headline(t: Ready, tc: TimeClass, shown: boolean): string {
+  const last = `${rating(t.now.meanRating)} over your last ${t.now.games} games`;
+  const first = `${rating(t.then.meanRating)} over your first ${t.then.games}`;
+  // A no-break space keeps the difference on the line of the numbers it belongs to.
+  const delta = `\u00a0(${signed(shownDiff(t.then.meanRating, t.now.meanRating))})`;
+  if (shown && t.kind === "rising") {
+    return `Your ${tc} rating averaged ${last}, up from ${first}${delta}.`;
   }
-  const peak =
-    t.peak.gameId !== null && t.peak.rating > t.current.rating
-      ? ` Your peak was ${rating(t.peak.rating)} in ${monthOf(t.peak.at)}.`
-      : "";
-  return `Your ${tc} rating is ${now} now; it averaged ${rating(t.then.meanRating)} over your first ${t.then.games} rated games (${delta}).${peak}`;
+  if (shown && t.kind === "falling") {
+    return `Your ${tc} rating averaged ${last}, down from ${first}${delta}.`;
+  }
+  return `Your ${tc} rating averaged ${last} and ${first}${delta}${shown ? ": no clear change" : ""}.`;
 }
 
-function headline(t: Ready, tc: TimeClass, shown: boolean): string {
-  if (!shown) return factHeadline(t, tc);
-  const now = rating(t.current.rating);
-  const delta = signed(t.change);
-  if (t.then.basis === "peak") {
-    const peak = `${rating(t.peak.rating)} in ${monthOf(t.peak.at)}`;
-    if (t.kind === "falling") {
-      return `Your ${tc} rating peaked at ${peak} and is ${now} now (${delta}).`;
-    }
-    return `Your ${tc} rating is ${now} now, ${delta} from its peak of ${peak}: ${verdictWords(t.rating.verdict)} since the games around it.`;
-  }
-  const first = `your first ${t.then.games} rated games`;
-  const mean = rating(t.then.meanRating);
-  if (t.kind === "rising") {
-    const peak =
-      t.peak.gameId !== null && t.peak.rating > t.current.rating
-        ? ` Your peak was ${rating(t.peak.rating)} in ${monthOf(t.peak.at)}.`
-        : "";
-    return `Your ${tc} rating is ${now} now, up from an average of ${mean} over ${first} (${delta}).${peak}`;
-  }
-  if (t.kind === "falling") {
-    return `Your ${tc} rating is ${now} now, down from an average of ${mean} over ${first} (${delta}).`;
-  }
-  return `Your ${tc} rating is ${now} now, about where it was over ${first} (an average of ${mean}): no clear change.`;
+/** "It is 1,488 now. Your highest was 1,610, in April 2026.": the peak as a plain fact. */
+function facts(t: Ready): string {
+  const peak =
+    t.peak.gameId !== null && t.peak.rating > t.current.rating
+      ? ` Your highest was ${rating(t.peak.rating)}, in ${monthOf(t.peak.at)}.`
+      : "";
+  return `It is ${rating(t.current.rating)} now.${peak}`;
 }
 
 const pct0 = (v: number) => `${Math.round(v * 100)}%`;
@@ -208,7 +201,12 @@ function change(r: { result: ThenNowRow["result"] }, detail: string | null): Com
 /** The rating row's change: its verdict, or "Not called" with the difference alone. */
 function ratingChange(t: Ready, shown: boolean): CompareChange {
   if (t.rating.verdict === "not_enough_games") return change({ result: t.rating }, null);
-  const diff = `Difference ${signed(Math.round(t.rating.diff.value))} points`;
+  const { a, b } = t.ratingSides;
+  const shown2 =
+    a.kind === "estimate" && b.kind === "estimate"
+      ? shownDiff(a.value, b.value)
+      : Math.round(t.rating.diff.value);
+  const diff = `Difference ${signed(shown2)} points`;
   const why = "A rating moves after every game, so this isn't judged on its own.";
   if (!shown) return { verdict: "withheld", text: "Not called", detail: `${diff}. ${why}` };
   return change(
@@ -241,7 +239,7 @@ function compareRows(t: Ready, shown: boolean): CompareViewRow[] {
       const detail =
         res.verdict === "not_enough_games" || r.a.kind !== "estimate" || r.b.kind !== "estimate"
           ? null
-          : `Difference ${signed(Math.round((r.b.value - r.a.value) * 100))} points of chances`;
+          : `Difference ${signed(Math.round(r.b.value * 100) - Math.round(r.a.value * 100))} points of chances`;
       rows.push({
         key: r.key,
         label: r.label,
@@ -301,6 +299,7 @@ export function trajectoryView(
       ? TRAJECTORY_GLOSSARY.trajectory
       : TRAJECTORY_GLOSSARY.trajectoryNotCalled,
     headline: headline(t, tc, ratingVerdict),
+    facts: facts(t),
     since: phrases.length > 0 ? `${lead}: ${phrases.join(", ")}.` : "",
     basis: `Based on ${count.format(t.games)} rated ${tc} ${t.games === 1 ? "game" : "games"}.`,
     chart: {

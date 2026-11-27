@@ -1350,16 +1350,22 @@ async fn trajectory_finds_the_peak_and_compares_it_with_the_latest_games(pool: P
     let peak = i32::try_from(1000 + (rated / 2) * 10).unwrap();
     assert_eq!(t.peak.as_ref().map(|p| i32::from(p.rating)), Some(peak));
     let v = t.then_vs_now.as_ref().unwrap();
-    assert_eq!(v.then.basis, coaching_input::WindowBasis::Peak);
+    // Since algo-6.0.0 (EXP-0030, ADR 0117): the first games against the last, under the rule
+    // that cleared EXP-0030, whose verdict the coach is told.
+    assert_eq!(v.then.basis, coaching_input::WindowBasis::Start);
     assert_eq!(v.now.basis, coaching_input::WindowBasis::Last);
-    // The rule calls this a fall; the coach is not told it (EXP-0015, ADR 0116).
-    const { assert!(!coaching_input::trajectory::RATING_VERDICT_SHOWN) };
-    assert_eq!(t.kind, None);
-    assert_eq!(v.rating.verdict, coaching_input::ChangeVerdict::Withheld);
-    assert_eq!((v.rating.diff_low, v.rating.diff_high), (None, None));
-    assert!(v.rating.diff.unwrap() < 0.0, "the difference stays");
+    const { assert!(coaching_input::trajectory::RATING_VERDICT_SHOWN) };
+    assert_eq!(
+        t.rating_rule.as_deref(),
+        Some(coaching_input::trajectory::CLEARED_RULE)
+    );
+    assert!(t.kind.is_some());
+    assert_ne!(v.rating.verdict, coaching_input::ChangeVerdict::Withheld);
+    assert!(v.rating.diff_low.is_some() && v.rating.diff_high.is_some());
     assert_eq!(v.rating.then.unit, coaching_input::MetricUnit::Elo);
-    assert!(t.change.unwrap() < 0);
+    // The change is the difference the verdict tests: the windows' averages.
+    let (a, b) = (v.rating.then.value.unwrap(), v.rating.now.value.unwrap());
+    assert_eq!(t.change, Some((b - a + 0.5).floor() as i32));
     assert_eq!(
         t.months.iter().map(|m| i64::from(m.games)).sum::<i64>(),
         rated

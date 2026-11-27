@@ -111,10 +111,10 @@ function build(
 }
 
 const CASES: [string, CaseInput][] = [
-  build("falling", 140, (i) => (i < 60 ? 850 + i * 4 : 1090 - (i - 60) * 3.4), {
+  build("falling", 140, (i) => (i < 60 ? 850 + i * 4 : 1090 - (i - 60) * 6), {
     accuracy: (i) => (i < 100 ? 79 : 66),
     weakness: true,
-    current: 816,
+    current: 612,
   }),
   build("rising", 90, (i) => 760 + i * 3.5, { weakness: true }),
   build("flat", 75, () => 1210, { current: null }),
