@@ -27,3 +27,10 @@ The critic found the conditions of EXP-0015's Next item met except the namespace
 
 Every run on the development namespace `EXP-0015-dev` and the cohort's `0` slice, through the cli built from this branch:
 
+1. 2026-11-27, `analysis.py` as committed in `49000613`, `--seed-namespace EXP-0015-dev`, cohort slice `0`, with the cli built from `2b8cbd29` (it reported `algo-5.0.0+3cabedf4c935`, being built before the version bump). 857 seconds in the lab container, capped at 3 GB; budget spent exactly as registered. A first attempt the same night was stopped by the host running out of memory and wrote nothing. What it showed, on development data only:
+   - the code runs end to end, the positive control holds (the champion told 0.78 of the settled players "falling" at 250 games), and every burn-in settled;
+   - both candidates' six plain-world cells are 0.10 to 0.11, with the interval's mean half-width within 1% to 2% of 1.28 SD of the difference at each length;
+   - the rough world gives 0.11 to 0.17 per cell (`memory-halves` 0.166 at 120 games falling, which fails its guard; `memory-before` 0.148 at most, which passes); with the slow form at SD 0 or 20 it is 0.10 to 0.14;
+   - the chess.com-like world gives 0.09 to 0.10 per cell;
+   - the cohort's development slice gives a two-sided share of 0.36 on 16,511 settled series (lower end 0.350, under the 0.40 line), falling 0.11 and rising 0.25, mean z² 2.4: real players wander, or change, more than the model allows within a month, and mostly upwards; the step lag-1 correlation is 0.037 (0.032 for the signs), against −0.004 in the plain world and 0.020 in the rough one.
+   Nothing was changed after it: the formula, the constants, the windows and the guards are as registered.

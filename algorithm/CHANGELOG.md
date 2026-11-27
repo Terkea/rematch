@@ -8,6 +8,15 @@ One entry per algorithm version, newest first. The id is `algo-<version>+<hash>`
 
 Each entry says what changed, why, the ADR, and the benchmark delta (the scorecard before and after; `cli bench compare` once it exists).
 
+## algo-5.0.1+d9c1f47013b6
+
+2026-11-27. EXP-0030's two candidate rules for the trajectory's rating verdict, selectable in the lab only, with no output change.
+
+- What changed: `profile::coaching::trajectory::RatingRule` names the rule of the rating row: `peak-bootstrap` (`RatingRule::PRODUCTION`, the rule of every version so far) and EXP-0030's frozen candidates `memory-halves` and `memory-before`, whose interval comes from the rating's own steps (`Memory`, `memory_compare`) instead of the bootstrap, against the first games or every game before the last ones, with no selected peak. `compute` runs the production rule and `compute_with` any of them; only `cli lab trajectory` selects another, through the request's `rule`. The worker and the web never do, so production computes exactly what it did. Only `profile.source_digest` moved.
+- Why: EXP-0030 measures the candidates on the same requests as the champion (`lab/experiments/EXP-0030/preregistration.md`), after EXP-0015 hid the verdict (ADR 0116).
+- ADRs: 0105 (the version policy), 0109 (the arena), 0116 (the hidden verdict).
+- Benchmark: no change. `backend/crates/profile/tests/trajectory.rs` replays the web's fixture unchanged, the replay goldens and the lab's golden responses are byte-identical, and no component other than a source digest moved, so the Tier 1 scorecard of 5.0.0 stands.
+
 ## algo-5.0.0+3cabedf4c935
 
 2026-11-26. The trajectory's rating verdict is computed and no longer stated to players or the coach, as EXP-0015 decided (#136).

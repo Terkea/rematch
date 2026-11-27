@@ -79,7 +79,7 @@
       },
       "source_digest": {
         "backend/crates/profile-core/src": "51836f302a3ca8f62575eb7d3333f894be499ef15a35ff05c8ff973bdb33733a",
-        "backend/crates/profile/src": "aa1234217f8f0a847caae7bf427fc9b727ee546e70ab78ea92e482b5a003fa9d"
+        "backend/crates/profile/src": "3fe4b3e259084c66d954edb663533756582239a73ae9d10faf6f9c16812980d4"
       },
       "t_win": 85,
       "trajectory_rating_verdict": {
@@ -105,6 +105,6 @@
       "weekly_input_version": "weekly-input-v1"
     }
   },
-  "id": "algo-5.0.0+3cabedf4c935",
-  "version": "5.0.0"
+  "id": "algo-5.0.1+d9c1f47013b6",
+  "version": "5.0.1"
 }
