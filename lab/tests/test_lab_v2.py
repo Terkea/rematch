@@ -245,6 +245,6 @@ def stand_in(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 def test_every_wrapper_returns_the_steps_answer_not_its_own(stand_in: Path) -> None:
     for step, (request_message, _, wrapper) in {**RUST, **WEB}.items():
         req = models.MESSAGES[request_message].model_validate_json(request_text(step))
-        got = json.loads(wrapper(req).model_dump_json(by_alias=True))
+        got = json.loads(wrapper(req).model_dump_json(by_alias=True, exclude_unset=True))
         assert got == CANNED[step], f"{step}: the wrapper did not return the step's answer"
     assert stand_in.read_text(encoding="utf-8").split() == [*RUST, *WEB]
