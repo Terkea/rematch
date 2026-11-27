@@ -1,0 +1,696 @@
+{
+  "control_sensitivity_at_w": {
+    "10": 0.994995,
+    "14": 0.999999,
+    "5": 0.460682,
+    "7": 0.834217
+  },
+  "experiment": "EXP-0029",
+  "games_per_player_window": 76.76555,
+  "inputs": "EXP-0009 results.json (development data)",
+  "memory": [
+    {
+      "exp0009": -0.456206,
+      "gap_end": -0.382988,
+      "left_after_gap": 0.543794,
+      "mean_after": -0.427951,
+      "mean_next": -0.262468,
+      "phi": 0.97,
+      "rapid_games_per_month": 20
+    },
+    {
+      "exp0009": -0.704288,
+      "gap_end": -0.269854,
+      "left_after_gap": 0.295712,
+      "mean_after": -0.460233,
+      "mean_next": -0.430701,
+      "phi": 0.97,
+      "rapid_games_per_month": 40
+    },
+    {
+      "exp0009": -0.839193,
+      "gap_end": -0.156648,
+      "left_after_gap": 0.160807,
+      "mean_after": -0.410024,
+      "mean_next": -0.547768,
+      "phi": 0.97,
+      "rapid_games_per_month": 60
+    },
+    {
+      "exp0009": -0.332392,
+      "gap_end": -0.370055,
+      "left_after_gap": 0.667608,
+      "mean_after": -0.361043,
+      "mean_next": -0.18564,
+      "phi": 0.98,
+      "rapid_games_per_month": 20
+    },
+    {
+      "exp0009": -0.5543,
+      "gap_end": -0.357163,
+      "left_after_gap": 0.4457,
+      "mean_after": -0.460255,
+      "mean_next": -0.320983,
+      "phi": 0.98,
+      "rapid_games_per_month": 40
+    },
+    {
+      "exp0009": -0.702447,
+      "gap_end": -0.271208,
+      "left_after_gap": 0.297553,
+      "mean_after": -0.462921,
+      "mean_next": -0.426335,
+      "phi": 0.98,
+      "rapid_games_per_month": 60
+    }
+  ],
+  "observe_cpu_hours_at_w": 2.368636,
+  "observe_games_at_w": 3069752.0,
+  "plan": {
+    "density": 0.7,
+    "k": 3.0,
+    "sd_ratio": 1.341455
+  },
+  "planning_inputs": {
+    "W4.allowed": {
+      "minimum_per_observed_sd": 3.496071,
+      "n_0009": 16204,
+      "reliability_0009": 0.051358,
+      "reliability_0009_lower95": 0.021688,
+      "reliability_planned": 0.06236,
+      "se_0009": 0.531921
+    },
+    "W4.missed": {
+      "minimum_per_observed_sd": 2.40098,
+      "n_0009": 9653,
+      "reliability_0009": 0.035485,
+      "reliability_0009_lower95": 0.01,
+      "reliability_planned": 0.029412,
+      "se_0009": 0.770352
+    },
+    "W5": {
+      "minimum_per_observed_sd": 5.223068,
+      "n_0009": 10416,
+      "reliability_0009": 0.086899,
+      "reliability_0009_lower95": 0.051141,
+      "reliability_planned": 0.139186,
+      "se_0009": 0.712667
+    },
+    "W6": {
+      "minimum_per_observed_sd": 3.51357,
+      "n_0009": 12099,
+      "reliability_0009": 0.056162,
+      "reliability_0009_lower95": 0.021915,
+      "reliability_planned": 0.062986,
+      "se_0009": 0.588311
+    },
+    "W7.prep": {
+      "minimum_per_observed_sd": 2.40098,
+      "n_0009": 16204,
+      "reliability_0009": 0.019324,
+      "reliability_0009_lower95": 0.01,
+      "reliability_planned": 0.029412,
+      "se_0009": 0.474253
+    },
+    "W7.traps": {
+      "minimum_per_observed_sd": 3.237549,
+      "n_0009": 16204,
+      "reliability_0009": 0.048252,
+      "reliability_0009_lower95": 0.018485,
+      "reliability_planned": 0.053478,
+      "se_0009": 0.486399
+    },
+    "W9a": {
+      "minimum_per_observed_sd": 7.116572,
+      "n_0009": 16204,
+      "reliability_0009": 0.131229,
+      "reliability_0009_lower95": 0.104057,
+      "reliability_planned": 0.258396,
+      "se_0009": 0.417426
+    },
+    "W9b": {
+      "minimum_per_observed_sd": 2.40098,
+      "n_0009": 2094,
+      "reliability_0009": 0.039575,
+      "reliability_0009_lower95": 0.01,
+      "reliability_planned": 0.029412,
+      "se_0009": 1.494092
+    },
+    "accuracy": {
+      "minimum_per_observed_sd": 4.569796,
+      "n_0009": 16204,
+      "reliability_0009": 0.067399,
+      "reliability_0009_lower95": 0.038231,
+      "reliability_planned": 0.106546,
+      "se_0009": 0.491407
+    }
+  },
+  "players_at_w": 19994.333333,
+  "players_with_outcome_at_w": 18906.873094,
+  "reaches_target": true,
+  "sd_ratio_from_exp0009": {
+    "median": 1.241258,
+    "per_quantity": {
+      "W4.allowed": 1.241258,
+      "W4.missed": 1.00577,
+      "W5": 1.0934,
+      "W6": 1.11455,
+      "W7.prep": 1.341455,
+      "W7.traps": 1.610289,
+      "W9a": 1.287495,
+      "W9b": 0.942083,
+      "accuracy": 1.707214
+    },
+    "planned": 1.341455
+  },
+  "sensitivity": {
+    "k=2,density=0.5,sd_ratio=1": {
+      "control_at_target_at_0.6": true,
+      "keys_at_target_at_0.6": 6,
+      "observe_games_at_w": 1754144.0,
+      "w": 0.6
+    },
+    "k=2,density=0.5,sd_ratio=1.25": {
+      "control_at_target_at_0.6": true,
+      "keys_at_target_at_0.6": 4,
+      "observe_games_at_w": null,
+      "w": null
+    },
+    "k=2,density=0.5,sd_ratio=1.5": {
+      "control_at_target_at_0.6": true,
+      "keys_at_target_at_0.6": 2,
+      "observe_games_at_w": null,
+      "w": null
+    },
+    "k=2,density=0.5,sd_ratio=2": {
+      "control_at_target_at_0.6": true,
+      "keys_at_target_at_0.6": 1,
+      "observe_games_at_w": null,
+      "w": null
+    },
+    "k=2,density=0.7,sd_ratio=1": {
+      "control_at_target_at_0.6": true,
+      "keys_at_target_at_0.6": 6,
+      "observe_games_at_w": 2046501.333333,
+      "w": 0.5
+    },
+    "k=2,density=0.7,sd_ratio=1.25": {
+      "control_at_target_at_0.6": true,
+      "keys_at_target_at_0.6": 5,
+      "observe_games_at_w": null,
+      "w": null
+    },
+    "k=2,density=0.7,sd_ratio=1.5": {
+      "control_at_target_at_0.6": true,
+      "keys_at_target_at_0.6": 4,
+      "observe_games_at_w": null,
+      "w": null
+    },
+    "k=2,density=0.7,sd_ratio=2": {
+      "control_at_target_at_0.6": true,
+      "keys_at_target_at_0.6": 1,
+      "observe_games_at_w": null,
+      "w": null
+    },
+    "k=2,density=1,sd_ratio=1": {
+      "control_at_target_at_0.6": true,
+      "keys_at_target_at_0.6": 6,
+      "observe_games_at_w": 1754144.0,
+      "w": 0.3
+    },
+    "k=2,density=1,sd_ratio=1.25": {
+      "control_at_target_at_0.6": true,
+      "keys_at_target_at_0.6": 6,
+      "observe_games_at_w": 2923573.333333,
+      "w": 0.5
+    },
+    "k=2,density=1,sd_ratio=1.5": {
+      "control_at_target_at_0.6": true,
+      "keys_at_target_at_0.6": 5,
+      "observe_games_at_w": null,
+      "w": null
+    },
+    "k=2,density=1,sd_ratio=2": {
+      "control_at_target_at_0.6": true,
+      "keys_at_target_at_0.6": 2,
+      "observe_games_at_w": null,
+      "w": null
+    },
+    "k=3,density=0.5,sd_ratio=1": {
+      "control_at_target_at_0.6": true,
+      "keys_at_target_at_0.6": 6,
+      "observe_games_at_w": 1754144.0,
+      "w": 0.4
+    },
+    "k=3,density=0.5,sd_ratio=1.25": {
+      "control_at_target_at_0.6": true,
+      "keys_at_target_at_0.6": 5,
+      "observe_games_at_w": null,
+      "w": null
+    },
+    "k=3,density=0.5,sd_ratio=1.5": {
+      "control_at_target_at_0.6": true,
+      "keys_at_target_at_0.6": 4,
+      "observe_games_at_w": null,
+      "w": null
+    },
+    "k=3,density=0.5,sd_ratio=2": {
+      "control_at_target_at_0.6": true,
+      "keys_at_target_at_0.6": 1,
+      "observe_games_at_w": null,
+      "w": null
+    },
+    "k=3,density=0.7,sd_ratio=1": {
+      "control_at_target_at_0.6": true,
+      "keys_at_target_at_0.6": 6,
+      "observe_games_at_w": 1841851.2,
+      "w": 0.3
+    },
+    "k=3,density=0.7,sd_ratio=1.25": {
+      "control_at_target_at_0.6": true,
+      "keys_at_target_at_0.6": 6,
+      "observe_games_at_w": 3069752.0,
+      "w": 0.5
+    },
+    "k=3,density=0.7,sd_ratio=1.5": {
+      "control_at_target_at_0.6": true,
+      "keys_at_target_at_0.6": 5,
+      "observe_games_at_w": null,
+      "w": null
+    },
+    "k=3,density=0.7,sd_ratio=2": {
+      "control_at_target_at_0.6": true,
+      "keys_at_target_at_0.6": 2,
+      "observe_games_at_w": null,
+      "w": null
+    },
+    "k=3,density=1,sd_ratio=1": {
+      "control_at_target_at_0.6": true,
+      "keys_at_target_at_0.6": 7,
+      "observe_games_at_w": 1754144.0,
+      "w": 0.2
+    },
+    "k=3,density=1,sd_ratio=1.25": {
+      "control_at_target_at_0.6": true,
+      "keys_at_target_at_0.6": 6,
+      "observe_games_at_w": 3508288.0,
+      "w": 0.4
+    },
+    "k=3,density=1,sd_ratio=1.5": {
+      "control_at_target_at_0.6": true,
+      "keys_at_target_at_0.6": 6,
+      "observe_games_at_w": 4385360.0,
+      "w": 0.5
+    },
+    "k=3,density=1,sd_ratio=2": {
+      "control_at_target_at_0.6": true,
+      "keys_at_target_at_0.6": 5,
+      "observe_games_at_w": null,
+      "w": null
+    }
+  },
+  "stage2": {
+    "cpu_hours_at_cap": 28563.192329,
+    "cpu_hours_at_mean": 18272.243131,
+    "games_per_player_cap": 240,
+    "games_per_player_mean": 153.5311,
+    "max_cpu_hours": 20.0,
+    "players_for_median_key": 10957.746418,
+    "runs": false
+  },
+  "w": 0.5,
+  "w_grid": {
+    "0.1": {
+      "control_at_target": false,
+      "keys_at_target": 1,
+      "observe_games": 613950.4,
+      "per_quantity": {
+        "W4.allowed": {
+          "n": 3780.933333,
+          "power_climbing": 0.342294,
+          "power_small": 0.0,
+          "se": 1.477185
+        },
+        "W4.missed": {
+          "n": 2252.366667,
+          "power_climbing": 0.049409,
+          "power_small": 0.0,
+          "se": 2.139326
+        },
+        "W5": {
+          "n": 2430.4,
+          "power_climbing": 0.446761,
+          "power_small": 0.0,
+          "se": 1.97913
+        },
+        "W6": {
+          "n": 2823.1,
+          "power_climbing": 0.266856,
+          "power_small": 0.0,
+          "se": 1.633784
+        },
+        "W7.prep": {
+          "n": 3780.933333,
+          "power_climbing": 0.171081,
+          "power_small": 0.0,
+          "se": 1.317036
+        },
+        "W7.traps": {
+          "n": 3780.933333,
+          "power_climbing": 0.353422,
+          "power_small": 0.0,
+          "se": 1.350767
+        },
+        "W9a": {
+          "n": 3780.933333,
+          "power_climbing": 0.999619,
+          "power_small": 0.999238,
+          "se": 1.159224
+        },
+        "W9b": {
+          "n": 488.6,
+          "power_climbing": 0.014108,
+          "power_small": 0.0,
+          "se": 4.149207
+        },
+        "accuracy": {
+          "n": 3780.933333,
+          "power_climbing": 0.717595,
+          "power_small": 0.435191,
+          "se": 1.364674
+        }
+      },
+      "reaches_target": false
+    },
+    "0.2": {
+      "control_at_target": true,
+      "keys_at_target": 1,
+      "observe_games": 1227900.8,
+      "per_quantity": {
+        "W4.allowed": {
+          "n": 7561.866667,
+          "power_climbing": 0.717055,
+          "power_small": 0.43411,
+          "se": 1.044527
+        },
+        "W4.missed": {
+          "n": 4504.733333,
+          "power_climbing": 0.117863,
+          "power_small": 0.0,
+          "se": 1.512732
+        },
+        "W5": {
+          "n": 4860.8,
+          "power_climbing": 0.831294,
+          "power_small": 0.662588,
+          "se": 1.399456
+        },
+        "W6": {
+          "n": 5646.2,
+          "power_climbing": 0.605822,
+          "power_small": 0.211644,
+          "se": 1.15526
+        },
+        "W7.prep": {
+          "n": 7561.866667,
+          "power_climbing": 0.42278,
+          "power_small": 0.0,
+          "se": 0.931285
+        },
+        "W7.traps": {
+          "n": 7561.866667,
+          "power_climbing": 0.731283,
+          "power_small": 0.462566,
+          "se": 0.955136
+        },
+        "W9a": {
+          "n": 7561.866667,
+          "power_climbing": 1.0,
+          "power_small": 1.0,
+          "se": 0.819695
+        },
+        "W9b": {
+          "n": 977.2,
+          "power_climbing": 0.025317,
+          "power_small": 0.0,
+          "se": 2.933932
+        },
+        "accuracy": {
+          "n": 7561.866667,
+          "power_climbing": 0.975163,
+          "power_small": 0.950326,
+          "se": 0.964971
+        }
+      },
+      "reaches_target": false
+    },
+    "0.3": {
+      "control_at_target": true,
+      "keys_at_target": 4,
+      "observe_games": 1841851.2,
+      "per_quantity": {
+        "W4.allowed": {
+          "n": 11342.8,
+          "power_climbing": 0.907637,
+          "power_small": 0.815274,
+          "se": 0.852853
+        },
+        "W4.missed": {
+          "n": 6757.1,
+          "power_climbing": 0.203544,
+          "power_small": 0.0,
+          "se": 1.23514
+        },
+        "W5": {
+          "n": 7291.2,
+          "power_climbing": 0.963918,
+          "power_small": 0.927837,
+          "se": 1.142651
+        },
+        "W6": {
+          "n": 8469.3,
+          "power_climbing": 0.829446,
+          "power_small": 0.658892,
+          "se": 0.943266
+        },
+        "W7.prep": {
+          "n": 11342.8,
+          "power_climbing": 0.649747,
+          "power_small": 0.299494,
+          "se": 0.760391
+        },
+        "W7.traps": {
+          "n": 11342.8,
+          "power_climbing": 0.915975,
+          "power_small": 0.83195,
+          "se": 0.779866
+        },
+        "W9a": {
+          "n": 11342.8,
+          "power_climbing": 1.0,
+          "power_small": 1.0,
+          "se": 0.669278
+        },
+        "W9b": {
+          "n": 1465.8,
+          "power_climbing": 0.038309,
+          "power_small": 0.0,
+          "se": 2.395546
+        },
+        "accuracy": {
+          "n": 11342.8,
+          "power_climbing": 0.998765,
+          "power_small": 0.997531,
+          "se": 0.787895
+        }
+      },
+      "reaches_target": false
+    },
+    "0.4": {
+      "control_at_target": true,
+      "keys_at_target": 5,
+      "observe_games": 2455801.6,
+      "per_quantity": {
+        "W4.allowed": {
+          "n": 15123.733333,
+          "power_climbing": 0.975031,
+          "power_small": 0.950063,
+          "se": 0.738592
+        },
+        "W4.missed": {
+          "n": 9009.466667,
+          "power_climbing": 0.298643,
+          "power_small": 0.0,
+          "se": 1.069663
+        },
+        "W5": {
+          "n": 9721.6,
+          "power_climbing": 0.993881,
+          "power_small": 0.987763,
+          "se": 0.989565
+        },
+        "W6": {
+          "n": 11292.4,
+          "power_climbing": 0.936771,
+          "power_small": 0.873542,
+          "se": 0.816892
+        },
+        "W7.prep": {
+          "n": 15123.733333,
+          "power_climbing": 0.808699,
+          "power_small": 0.617399,
+          "se": 0.658518
+        },
+        "W7.traps": {
+          "n": 15123.733333,
+          "power_climbing": 0.978346,
+          "power_small": 0.956692,
+          "se": 0.675383
+        },
+        "W9a": {
+          "n": 15123.733333,
+          "power_climbing": 1.0,
+          "power_small": 1.0,
+          "se": 0.579612
+        },
+        "W9b": {
+          "n": 1954.4,
+          "power_climbing": 0.05309,
+          "power_small": 0.0,
+          "se": 2.074603
+        },
+        "accuracy": {
+          "n": 15123.733333,
+          "power_climbing": 0.999957,
+          "power_small": 0.999913,
+          "se": 0.682337
+        }
+      },
+      "reaches_target": false
+    },
+    "0.5": {
+      "control_at_target": true,
+      "keys_at_target": 6,
+      "observe_games": 3069752.0,
+      "per_quantity": {
+        "W4.allowed": {
+          "n": 18904.666667,
+          "power_climbing": 0.994119,
+          "power_small": 0.988238,
+          "se": 0.660617
+        },
+        "W4.missed": {
+          "n": 11261.833333,
+          "power_climbing": 0.396134,
+          "power_small": 0.0,
+          "se": 0.956736
+        },
+        "W5": {
+          "n": 12152.0,
+          "power_climbing": 0.999121,
+          "power_small": 0.998241,
+          "se": 0.885094
+        },
+        "W6": {
+          "n": 14115.5,
+          "power_climbing": 0.97912,
+          "power_small": 0.95824,
+          "se": 0.73065
+        },
+        "W7.prep": {
+          "n": 18904.666667,
+          "power_climbing": 0.903793,
+          "power_small": 0.807585,
+          "se": 0.588997
+        },
+        "W7.traps": {
+          "n": 18904.666667,
+          "power_climbing": 0.995153,
+          "power_small": 0.990305,
+          "se": 0.604081
+        },
+        "W9a": {
+          "n": 18904.666667,
+          "power_climbing": 1.0,
+          "power_small": 1.0,
+          "se": 0.518421
+        },
+        "W9b": {
+          "n": 2443.0,
+          "power_climbing": 0.06957,
+          "power_small": 0.0,
+          "se": 1.855582
+        },
+        "accuracy": {
+          "n": 18904.666667,
+          "power_climbing": 0.999999,
+          "power_small": 0.999998,
+          "se": 0.610301
+        }
+      },
+      "reaches_target": true
+    },
+    "0.6": {
+      "control_at_target": true,
+      "keys_at_target": 6,
+      "observe_games": 3683702.4,
+      "per_quantity": {
+        "W4.allowed": {
+          "n": 22685.6,
+          "power_climbing": 0.998754,
+          "power_small": 0.997508,
+          "se": 0.603058
+        },
+        "W4.missed": {
+          "n": 13514.2,
+          "power_climbing": 0.490489,
+          "power_small": 0.0,
+          "se": 0.873376
+        },
+        "W5": {
+          "n": 14582.4,
+          "power_climbing": 0.999889,
+          "power_small": 0.999777,
+          "se": 0.807977
+        },
+        "W6": {
+          "n": 16938.6,
+          "power_climbing": 0.9937,
+          "power_small": 0.9874,
+          "se": 0.66699
+        },
+        "W7.prep": {
+          "n": 22685.6,
+          "power_climbing": 0.954729,
+          "power_small": 0.909457,
+          "se": 0.537678
+        },
+        "W7.traps": {
+          "n": 22685.6,
+          "power_climbing": 0.999026,
+          "power_small": 0.998052,
+          "se": 0.551448
+        },
+        "W9a": {
+          "n": 22685.6,
+          "power_climbing": 1.0,
+          "power_small": 1.0,
+          "se": 0.473251
+        },
+        "W9b": {
+          "n": 2931.6,
+          "power_climbing": 0.087629,
+          "power_small": 0.0,
+          "se": 1.693906
+        },
+        "accuracy": {
+          "n": 22685.6,
+          "power_climbing": 1.0,
+          "power_small": 1.0,
+          "se": 0.557126
+        }
+      },
+      "reaches_target": true
+    }
+  }
+}

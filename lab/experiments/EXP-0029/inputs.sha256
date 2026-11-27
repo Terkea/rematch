@@ -1,0 +1,8 @@
+# Development data: EXP-0009's committed results, read by power.py (section 6).
+82d941f1ca6db506667e25bcd90aad407256d139f2d07feb8d1d703ea0492186  ../EXP-0009/results.json
+da9c82843c38e60b27c2fd3a048b47dd585a50037127fe1ee001deec9783656f  power.py
+775472047ae36d4af0015acf8c4fb0eb5e95a76ccd7e484fb49e9bc8a8f456cb  power.json
+# The cohort (ADR 0114): external, in the data directory, git-ignored. Nothing is streamed in
+# stage 1; this placeholder stands for the cohort, so the lab check does not run the analysis.
+# Stage 2 replaces it with each verified file's checksum before the sizing step (section 7).
+0000000000000000000000000000000000000000000000000000000000000000  external:exp29-cohort/2025-10/meta.json
