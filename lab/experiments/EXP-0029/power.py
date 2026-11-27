@@ -1,11 +1,11 @@
 """EXP-0029, section 6: the power of the section 9 rule, simulated end to end, and the sizing
 decision, before any new month is read.
 
-Reads only EXP-0009's committed results (development data, never a new month) and writes
-`power.json` next to this file:
+Reads EXP-0009's committed results and `dev/exp09_activity.json` (activity measured on EXP-0009's
+own players files, development data; never a month of EXP-0029) and writes `power.json`:
 
-    python experiments/EXP-0029/power.py            # the plan (section 6)
-    python experiments/EXP-0029/power.py --sizing FILE   # stage 2: the sizing decision (B4)
+    python experiments/EXP-0029/power.py                  # the plan (section 6)
+    python experiments/EXP-0029/power.py --sizing FILE    # stage 2: the sizing decision
 
 The simulation draws, for each replicate, what the run would compute and applies section 9:
 
@@ -15,10 +15,11 @@ The simulation draws, for each replicate, what the run would compute and applies
 - the nine coefficients, correlated (equicorrelation rho_beta between every pair), each with a
   true effect, the expected residual luck bias of the design and the planned standard error;
 - Holm at 0.05 across the eight keys, the control's own z-test at 0.05, the simultaneous
-  interval at 1 - 0.05/8 for "below the minimum effect", and the three outcomes.
+  interval at 1 - 0.05/8 for "below the minimum effect", and the three outcomes, outcome 2
+  needing the five registered keys.
 
-The seed is `rematch_lab.experiments.seed("EXP-0029", "power")`, computed here the same way so
-the script needs only the standard library, numpy and scipy.
+The seeds are `rematch_lab.experiments.seed("EXP-0029", "power")` and `(..., "sizing")`,
+computed here the same way so the script needs only the standard library, numpy and scipy.
 """
 
 from __future__ import annotations
@@ -35,10 +36,13 @@ from scipy.stats import norm
 
 HERE = Path(__file__).resolve().parent
 EXP0009 = HERE.parent / "EXP-0009" / "results.json"
+ACTIVITY = HERE / "dev" / "exp09_activity.json"
 
 KEYS = ("W4.missed", "W4.allowed", "W5", "W6", "W7.traps", "W7.prep", "W9a", "W9b")
 QUANTITIES = (*KEYS, "accuracy")
 CONTROL = "accuracy"
+# Outcome 2's list, fixed at the round 2 commit (section 9) and never recomputed (N4).
+OUTCOME2_KEYS = ("W4.allowed", "W5", "W6", "W7.traps", "W9a")
 
 DELTA = 14.0  # Elo per true SD of the improvement over the outcome (section 5)
 ALPHA = 0.05
@@ -47,31 +51,28 @@ TARGET = 0.80
 FLOOR = 0.01
 Z_RELIABILITY = norm.ppf(0.975)  # r_L: the lower end of the 95% interval
 
-# EXP-0009: its confirmatory slice, its games and its runtime (decision.md).
+# EXP-0009: its confirmatory slice and its runtime (decision.md).
 SLICE_0009 = 0.3
 GAMES_READ_0009 = 877_072
 PLAYERS_OBSERVED_0009 = 17_138
-GAMES_PER_MONTH_0009 = GAMES_READ_0009 / PLAYERS_OBSERVED_0009 / 2  # 25.6 read a month
 CPU_HOURS_PER_MILLION = 1.5 / (GAMES_READ_0009 / 1e6)  # observe + Python, one run
 WALL_HOURS_PER_MILLION = (48 / 60) / (GAMES_READ_0009 / 1e6)  # one run, 8 workers
-WITH_OUTCOME_SHARE_0009 = 16_204 / 17_136
 
 # This design (section 7).
 W_GRID = (0.1, 0.2, 0.3, 0.4, 0.5, 0.6)  # [0.3, 0.3 + w) inside [0.3, 0.9)
-CAPS_PER_WINDOW = ((144, 120), (96, 80), (72, 60))  # (read, kept); the fallback order (B4)
+CAPS_PER_WINDOW = ((144, 120), (96, 80), (72, 60))  # (read, kept); the fallback order
 OBSERVE_GAMES_BUDGET = 3_700_000
 BUDGET_CAP = 1.5  # the test is at 150% of the budget: 5,550,000 games
 CPU_HOURS_CAP = 25.0
-WALL_HOURS_CAP = 24.0
-STREAMING_CPU_HOURS = 7.0  # nine dumps at about 0.75 CPU-hours each (EXP-0009)  # from the sizing commit to results.json (S2)
+WALL_HOURS_CAP = 24.0  # from the sizing commit to results.json (S2)
+STREAMING_CPU_HOURS = 7.0  # nine dumps at about 0.75 CPU-hours each (EXP-0009)
+PHI = (0.97, 0.98)  # the gate uses the worse of the two (N1)
 
-# The planned nuisance inputs (each replaced by the sizing step's measurement).
-PLAN = {"density": 0.7, "k": 3.0, "april_games": 20, "phi": 0.97, "rho_beta": 0.3,
-        "dilution": 1 / math.sqrt(3), "truth": "point"}
+PLAN = {"density": 0.7, "rho_beta": 0.3, "dilution": 1 / math.sqrt(3), "truth": "point"}
 SIMS = 20_000
 CONTROL_EFFECTS = (5.0, 7.0, 10.0)  # Elo per true SD over the outcome (section 4)
 CONTROL_PLAUSIBLE = 7.0
-OUTCOME2_MIN_POWER = 0.80  # a key enters outcome 2's list if it reads "below" this often at 0
+BIAS_MULTIPLIERS = (1.0, 1.5, 2.0)  # the bias model wrong by these factors (sensitivity)
 
 
 def seed(name: str) -> int:
@@ -93,25 +94,20 @@ def reliability_lower(r: float, n: float) -> float:
     return max(FLOOR, spearman_brown(math.tanh(z)))
 
 
-# ---- the designs -------------------------------------------------------------------------------
+# ---- the inputs --------------------------------------------------------------------------------
 
 
 def luck_share(design: str, games: int, phi: float) -> float:
-    """The share of the luck held at F2's end that the outcome carries (an AR(1) memory)."""
+    """The share of the luck held at F2's end that an outcome carries (an AR(1) memory) for a
+    player with `games` rapid games a month: EXP-0009's one-month outcome, this design (A: gap
+    April, outcome to June) or a two-month gap (B: the outcome June alone)."""
     if design == "exp0009":
         return phi ** games - 1
-    if design == "A":  # gap April, outcome R_end(June) - R_end(April)
+    if design == "A":
         return phi ** (3 * games) - phi ** games
-    if design == "B":  # gap April and May, outcome R_end(June) - R_end(May)
+    if design == "B":
         return phi ** (3 * games) - phi ** (2 * games)
     raise ValueError(design)
-
-
-DESIGNS = {
-    # outcome months, and the error ratio against EXP-0009's one-month outcome
-    "A": {"outcome_months": 2, "sd_ratio": None},  # the upper quartile, sd_ratio_of
-    "B": {"outcome_months": 1, "sd_ratio": 1.0},
-}
 
 
 def sd_ratio_of(results: dict[str, Any]) -> dict[str, Any]:
@@ -126,28 +122,41 @@ def sd_ratio_of(results: dict[str, Any]) -> dict[str, Any]:
 
 
 def luck_shift(results: dict[str, Any]) -> dict[str, float]:
-    """EXP-0009's primary minus its adjusted estimate per observed SD: what September's own
-    rating change took out, read as the luck bias of EXP-0009's baseline (it also takes out
-    September's catch-up, so it is an estimate of the bias net of that, development data)."""
+    """EXP-0009's primary minus its adjusted estimate per observed SD, read as the luck bias of
+    its baseline (it also removes September's catch-up: an estimate, development data)."""
     return {q: results["primary"][q]["estimate"] - results["adjusted"][q]["estimate"]
             for q in QUANTITIES}
 
 
-def biases(results: dict[str, Any], design: str, games: int, phi: float,
-           dilution: float) -> dict[str, float]:
-    """The expected residual luck bias per observed SD: EXP-0009's shift, scaled by the memory
-    ratio of the design against EXP-0009's and by the window's dilution (only about the last
-    month of a three-month window's games is still in F2's end rating, a third of the covariance
-    over 1/sqrt(3) of the SD: 1/sqrt(3))."""
-    ratio = luck_share(design, games, phi) / luck_share("exp0009", games, phi)
-    return {q: s * ratio * dilution for q, s in luck_shift(results).items()}
+def memory_ratio(activity: dict[str, Any], april_share: dict[str, float]) -> dict[str, float]:
+    """Per phi, the mean per-player luck share of this design's outcome (`april_share`, over
+    players with an outcome) over EXP-0009's, measured on its own players' October games (N1,
+    N5): a mean of per-player shares, so the low-games tail counts by its weight."""
+    return {f"{phi:g}": april_share[f"{phi:g}"] / activity["g0"][f"E_share_exp0009_phi{phi:g}"]
+            for phi in PHI}
 
 
-def inputs(results: dict[str, Any], design: str, w: float, density: float, k: float,
-           truth: str, sd_ratio: float | None = None) -> dict[str, dict[str, float]]:
+def worse_ratio(ratios: dict[str, float]) -> float:
+    return max(ratios.values())
+
+
+def biases(results: dict[str, Any], ratio: float, dilution: float,
+           mult: float = 1.0) -> dict[str, float]:
+    """The expected residual luck bias per observed SD: EXP-0009's shift x the memory ratio x
+    the window's dilution (1/sqrt(3): about the last month of a three-month window is still in
+    F2's end rating) x `mult`."""
+    return {q: s * ratio * dilution * mult for q, s in luck_shift(results).items()}
+
+
+def k_of(activity: dict[str, Any], e_inv_kept: float) -> float:
+    """Spearman-Brown's k: EXP-0009's E[1/m] at its 40 a month over this design's E[1/m] at
+    the kept cap, both measured (S4, N3)."""
+    return activity["window_proxy"]["E_inv_m_exp0009_cap40"] / e_inv_kept
+
+
+def inputs(results: dict[str, Any], w: float, density: float, k: float, truth: str,
+           sd_ratio: float) -> dict[str, dict[str, float]]:
     """Per quantity: n, the planned SE, and the true three-month reliability assumed."""
-    ratio = sd_ratio if sd_ratio is not None else (
-        DESIGNS[design]["sd_ratio"] or sd_ratio_of(results)["planned"])
     out = {}
     for q in QUANTITIES:
         f = results["primary"][q]
@@ -156,7 +165,7 @@ def inputs(results: dict[str, Any], design: str, w: float, density: float, k: fl
         n = n0 / SLICE_0009 * w * density
         out[q] = {
             "n": n,
-            "se": float(f["se"]) * math.sqrt(n0 / n) * ratio,
+            "se": float(f["se"]) * math.sqrt(n0 / n) * sd_ratio,
             "reliability_true": spearman_brown(base, k),
             "reliability_0009": r0,
         }
@@ -216,14 +225,6 @@ def simulate(inp: dict[str, dict[str, float]], effects: dict[str, float],
     }
 
 
-def outcome2_keys(inp: dict[str, dict[str, float]], bias: dict[str, float],
-                  rho_beta: float, rng: np.random.Generator) -> tuple[str, ...]:
-    """The keys the simulated rule reads "below the minimum effect" at least 80% of the time
-    when their true effect is 0 (with the design's bias): outcome 2's list (B1)."""
-    sim = simulate(inp, {}, bias, rho_beta, (), rng)
-    return tuple(k for k in KEYS if sim["per_key"][k]["below"] >= OUTCOME2_MIN_POWER)
-
-
 def single_key_power(inp: dict[str, dict[str, float]], bias: dict[str, float],
                      rho_beta: float, rng: np.random.Generator) -> dict[str, float]:
     """For each key alone at the minimum (14 per true SD), the chance of outcome 1 for it."""
@@ -234,135 +235,141 @@ def single_key_power(inp: dict[str, dict[str, float]], bias: dict[str, float],
     return out
 
 
-# ---- the sizing decision (B4) ------------------------------------------------------------------
-
-
-def games_at(w: float, density: float, k: float, cap: tuple[int, int]) -> float:
-    players = PLAYERS_OBSERVED_0009 / SLICE_0009 * w * density
-    return players * 2 * min(cap[0], k * GAMES_PER_MONTH_0009)
+# ---- the sizing decision -----------------------------------------------------------------------
 
 
 def costs(games: float, streaming_cpu_hours: float) -> dict[str, float]:
     return {
         "observe_games": games,
         "cpu_hours": streaming_cpu_hours + 2 * games / 1e6 * CPU_HOURS_PER_MILLION,
-        "wall_hours": 2 * games / 1e6 * WALL_HOURS_PER_MILLION + 8.0,  # + 8 h: code and checks
+        "wall_hours": 2 * games / 1e6 * WALL_HOURS_PER_MILLION + 8.0,  # + 8 h: checks, write-up
     }
 
 
-def decide_size(results: dict[str, Any], measured: dict[str, float], design: str = "A"
-                ) -> dict[str, Any]:
-    """The registered sizing decision: the smallest w (and the largest per-window cap, in the
-    fallback order) at which (a) the control holds with probability >= 0.80 at 7 Elo per true SD
-    after the expected bias, (b) outcome 2's list (from the simulation) has at least four keys,
-    each of which alone at 14 Elo per true SD reads "precedes climbing" with probability >= 0.80,
-    and (c) the games, CPU-hours and wall time stay within their caps. `measured` holds density,
-    k (the harmonic-mean ratio, S4), april_games (median rapid games in the gap month), sd_ratio
-    and streaming_cpu_hours. None found: the kill rule."""
+def players_at(w: float, density: float) -> float:
+    return PLAYERS_OBSERVED_0009 / SLICE_0009 * w * density
+
+
+def target(inp: dict[str, dict[str, float]], bias: dict[str, float],
+           rng: np.random.Generator) -> dict[str, Any]:
+    """The target at one size: each of the five registered keys reads "below" >= 0.80 at 0 and,
+    alone at the minimum, "precedes climbing" >= 0.80; the control holds >= 0.80 at 7 Elo per
+    true SD; all after the bias (N4)."""
+    null = simulate(inp, {}, bias, PLAN["rho_beta"], OUTCOME2_KEYS, rng)
+    below = {k: null["per_key"][k]["below"] for k in OUTCOME2_KEYS}
+    single = single_key_power(inp, bias, PLAN["rho_beta"], rng)
+    ctrl = simulate(inp, {CONTROL: CONTROL_PLAUSIBLE}, bias, PLAN["rho_beta"], (),
+                    rng)["control_holds"]
+    ok = (min(below.values()) >= TARGET and min(single[k] for k in OUTCOME2_KEYS) >= TARGET
+          and ctrl >= TARGET)
+    return {"ok": ok, "below": below, "single": single, "control_holds": ctrl}
+
+
+def decide_size(results: dict[str, Any], measured: dict[str, Any]) -> dict[str, Any]:
+    """The registered sizing decision (N2, N3, N4). `measured`, from the players files only:
+    `density` (eligible players per unit of hash over EXP-0009's 57,127), `caps` (for each
+    "read/kept" cap, E[min(m, read)] and E[1/min(m, kept)] per window over the eligible),
+    `april_share` (for phi 0.97 and 0.98, the mean over players with an outcome of
+    phi^g_A (phi^(2 g_J) - 1), g_A April's and g_J June's rapid games), `sd_ratio` (the SD of y
+    over EXP-0009's 53.8) and `streaming_cpu_hours` (from the logs).
+
+    For each cap in the fallback order, the largest w of the grid whose games, CPU-hours and
+    wall time fit the caps is the size, and the target is tested there, at the worse of the two
+    phi. It passes: that is the design. It fails: the kill rule. A smaller cap is tried only
+    when no w fits the caps, since it lowers the reliability."""
+    activity = json.loads(ACTIVITY.read_text(encoding="utf-8"))
     rng = np.random.default_rng(seed("sizing"))
-    bias = biases(results, design, int(measured["april_games"]), PLAN["phi"], PLAN["dilution"])
+    ratios = memory_ratio(activity, measured["april_share"])
+    bias = biases(results, worse_ratio(ratios), PLAN["dilution"])
     tried = []
-    for cap in CAPS_PER_WINDOW:
-        k = measured["k"] * cap[1] / CAPS_PER_WINDOW[0][1] if cap != CAPS_PER_WINDOW[0] \
-            else measured["k"]
-        for w in W_GRID:
-            inp = inputs(results, design, w, measured["density"], k, PLAN["truth"],
-                         measured.get("sd_ratio"))
-            keys2 = outcome2_keys(inp, bias, PLAN["rho_beta"], rng)
-            ctrl = simulate(inp, {CONTROL: CONTROL_PLAUSIBLE}, bias, PLAN["rho_beta"], (),
-                            rng)["control_holds"]
-            single = single_key_power(inp, bias, PLAN["rho_beta"], rng)
-            single_min = min((single[q] for q in keys2), default=0.0)
-            c = costs(games_at(w, measured["density"], k, cap), measured["streaming_cpu_hours"])
-            ok = (ctrl >= TARGET and len(keys2) >= 4 and single_min >= TARGET
-                  and c["observe_games"] <= OBSERVE_GAMES_BUDGET * BUDGET_CAP
-                  and c["cpu_hours"] <= CPU_HOURS_CAP and c["wall_hours"] <= WALL_HOURS_CAP)
-            tried.append({"cap": list(cap), "w": w, "control_holds": ctrl,
-                          "single_key_min_power": single_min,
-                          "outcome2_keys": list(keys2), **c, "ok": ok})
-            if ok:
-                return {"run": True, "w": w, "cap": list(cap), "outcome2_keys": list(keys2),
-                        "tried": tried}
-    return {"run": False, "reason": "no w and cap reach the target within the caps",
+    for read, kept in CAPS_PER_WINDOW:
+        cap = measured["caps"][f"{read}/{kept}"]
+        k = k_of(activity, cap["E_inv_min_kept"])
+        for w in sorted(W_GRID, reverse=True):
+            games = players_at(w, measured["density"]) * 2 * cap["E_min_read"]
+            c = costs(games, measured["streaming_cpu_hours"])
+            fits = (c["observe_games"] <= OBSERVE_GAMES_BUDGET * BUDGET_CAP
+                    and c["cpu_hours"] <= CPU_HOURS_CAP and c["wall_hours"] <= WALL_HOURS_CAP)
+            row = {"cap": [read, kept], "w": w, "k": k, **c, "fits": fits}
+            if not fits:
+                tried.append(row)
+                continue
+            inp = inputs(results, w, measured["density"], k, PLAN["truth"], measured["sd_ratio"])
+            t = target(inp, bias, rng)
+            tried.append({**row, **t})
+            out = {"run": t["ok"], "w": w, "cap": [read, kept], "k": k,
+                   "memory_ratio": ratios, "bias": bias, "tried": tried}
+            if not t["ok"]:
+                out["reason"] = "the target fails at the largest size within the caps"
+            return out
+    return {"run": False, "reason": "no size fits the caps", "memory_ratio": ratios,
             "tried": tried}
 
 
 # ---- the plan ----------------------------------------------------------------------------------
 
 
-def null_effects(results: dict[str, Any], control: float) -> dict[str, float]:
-    return {CONTROL: control}
-
-
 def dev_effects(results: dict[str, Any], control: float) -> dict[str, float]:
     """The keys at EXP-0009's adjusted estimate per true SD (development data, an optimistic
-    reading of a lasting link), the control at `control`."""
+    reading: it still holds part of the catch-up), the control at `control`."""
     eff = {k: results["adjusted"][k]["estimate"] / math.sqrt(results["primary"][k]["reliability"])
            for k in KEYS}
     eff[CONTROL] = control
     return eff
 
 
-def plan(results: dict[str, Any]) -> dict[str, Any]:
+def outcomes(inp: dict[str, dict[str, float]], effects: dict[str, float],
+             bias: dict[str, float], rng: np.random.Generator) -> dict[str, float]:
+    s = simulate(inp, effects, bias, PLAN["rho_beta"], OUTCOME2_KEYS, rng)
+    return {k: s[k] for k in ("outcome1", "outcome2", "outcome3", "control_holds")}
+
+
+def plan_measured(results: dict[str, Any], activity: dict[str, Any]) -> dict[str, Any]:
+    """The sizing inputs as EXP-0009's own cohort gives them (development data): its October
+    games standing in for April and for each of May and June, its August to October analysed
+    games for a window, and the planned density and error ratio."""
+    return {
+        "density": PLAN["density"],
+        "caps": activity["window_proxy"]["caps"],
+        "april_share": {f"{phi:g}": activity["g0"][f"E_share_A_proxy_phi{phi:g}"] for phi in PHI},
+        "sd_ratio": sd_ratio_of(results)["planned"],
+        "streaming_cpu_hours": STREAMING_CPU_HOURS,
+    }
+
+
+def plan(results: dict[str, Any], activity: dict[str, Any]) -> dict[str, Any]:
     rng = np.random.default_rng(seed("power"))
-    out: dict[str, Any] = {}
-    for design in ("A", "B"):
-        scale = DESIGNS[design]["outcome_months"] / DESIGNS["A"]["outcome_months"]
-        d: dict[str, Any] = {}
-        for games in (20, 40):
-            bias = biases(results, design, games, PLAN["phi"], PLAN["dilution"])
-            for w in (0.5, 0.6):
-                inp = inputs(results, design, w, PLAN["density"], PLAN["k"], PLAN["truth"])
-                keys2 = outcome2_keys(inp, bias, PLAN["rho_beta"], rng)
-                cell: dict[str, Any] = {"bias": bias, "outcome2_keys": list(keys2),
-                                        "inputs": inp}
-                for c in CONTROL_EFFECTS:
-                    ce = c * scale  # a lasting trend: Elo over the outcome scales with its length
-                    cell[f"null_control{c:g}"] = simulate(
-                        inp, null_effects(results, ce), bias, PLAN["rho_beta"], keys2, rng)
-                    cell[f"dev_control{c:g}"] = simulate(
-                        inp, {k: v * scale for k, v in dev_effects(results, c).items()},
-                        bias, PLAN["rho_beta"], keys2, rng)
-                cell["single_key_at_minimum"] = single_key_power(inp, bias, PLAN["rho_beta"], rng)
-                cell["costs"] = costs(games_at(w, PLAN["density"], PLAN["k"],
-                                               CAPS_PER_WINDOW[0]), STREAMING_CPU_HOURS)
-                d[f"april{games}_w{w:g}"] = cell
-        out[design] = d
-    # Sensitivity of design A at w = 0.6, 20 games: the truth at the lower bound; rho_beta.
-    sens = {}
-    bias = biases(results, "A", 20, PLAN["phi"], PLAN["dilution"])
+    measured = plan_measured(results, activity)
+    sizing = decide_size(results, measured)
+    w, (read, kept), k = sizing["w"], sizing["cap"], sizing["k"]
+    ratio = worse_ratio(sizing["memory_ratio"])
+    cells: dict[str, Any] = {}
     for truth in ("point", "lower"):
-        for rb in (0.0, 0.3, 0.6):
-            inp = inputs(results, "A", 0.6, PLAN["density"], PLAN["k"], truth)
-            keys2 = outcome2_keys(inp, bias, rb, rng)
-            s = simulate(inp, null_effects(results, CONTROL_PLAUSIBLE), bias, rb, keys2, rng)
-            sens[f"truth={truth},rho_beta={rb:g}"] = {"outcome2_keys": list(keys2), **s}
-    # The bias-free check: design A, w = 0.6, no residual bias (what stage 1 assumed).
-    inp = inputs(results, "A", 0.6, PLAN["density"], PLAN["k"], "point")
-    keys2 = outcome2_keys(inp, {}, PLAN["rho_beta"], rng)
-    no_bias = simulate(inp, null_effects(results, CONTROL_PLAUSIBLE), {}, PLAN["rho_beta"],
-                       keys2, rng)
-    # The gap month's activity decides the control (B3): design A at w = 0.5 and 0.6.
-    sweep = {}
-    for w in (0.3, 0.4, 0.5, 0.6):
-        inp = inputs(results, "A", w, PLAN["density"], PLAN["k"], "point")
-        for games in (20, 25, 30, 35, 40, 60):
-            bias = biases(results, "A", games, PLAN["phi"], PLAN["dilution"])
-            keys2 = outcome2_keys(inp, bias, PLAN["rho_beta"], rng)
-            row = {"bias_control": bias[CONTROL], "outcome2_keys": list(keys2)}
+        inp = inputs(results, w, measured["density"], k, truth, measured["sd_ratio"])
+        for mult in BIAS_MULTIPLIERS:
+            bias = biases(results, ratio, PLAN["dilution"], mult)
             for c in CONTROL_EFFECTS:
-                sim = simulate(inp, null_effects(results, c), bias, PLAN["rho_beta"], keys2, rng)
-                row[f"control{c:g}"] = {k: sim[k] for k in
-                                        ("outcome1", "outcome2", "outcome3", "control_holds")}
-            sweep[f"w{w:g}_april{games}"] = row
-    return {"designs": out, "sensitivity_A_w0.6_april20": sens, "april_sweep_A": sweep,
-            "no_bias_A_w0.6": {"outcome2_keys": list(keys2), **no_bias}}
+                cells[f"truth={truth},bias_x{mult:g},null_control{c:g}"] = outcomes(
+                    inp, {CONTROL: c}, bias, rng)
+            cells[f"truth={truth},bias_x{mult:g},dev_control7"] = outcomes(
+                inp, dev_effects(results, CONTROL_PLAUSIBLE), bias, rng)
+    # The memory ratio at which the gate closes, at this size.
+    inp = inputs(results, w, measured["density"], k, "point", measured["sd_ratio"])
+    gate_by_ratio = {}
+    for r in (0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.8, 1.0):
+        t = target(inp, biases(results, r, PLAN["dilution"]), rng)
+        gate_by_ratio[f"{r:g}"] = {"ok": t["ok"], "control_holds": t["control_holds"]}
+    games = players_at(w, measured["density"]) * 2 * measured["caps"][f"{read}/{kept}"]["E_min_read"]
+    return {"measured": measured, "sizing": sizing, "outcomes_at_w": cells,
+            "gate_by_memory_ratio": gate_by_ratio,
+            "costs_at_w": costs(games, STREAMING_CPU_HOURS),
+            "players_at_w": players_at(w, measured["density"])}
 
 
 def memory_table() -> list[dict[str, Any]]:
     rows = []
-    for phi in (0.97, 0.98):
-        for g in (20, 40, 60):
+    for phi in PHI:
+        for g in (20, 40, 60, 120):
             def mean_share(start: int, games: int) -> float:
                 return sum(phi ** t for t in range(start + 1, start + games + 1)) / games
 
@@ -378,10 +385,10 @@ def memory_table() -> list[dict[str, Any]]:
     return rows
 
 
-def stage2(results: dict[str, Any]) -> dict[str, Any]:
-    """The players the median eval-only key needs for 0.80 in both closed-form powers (at the
-    point reliability, k = 3, design A), times our own analysis at 1 million nodes."""
-    inp = inputs(results, "A", 1.0, PLAN["density"], PLAN["k"], "point")
+def stage2(results: dict[str, Any], k: float) -> dict[str, Any]:
+    """The players the median eval-only key needs for 0.80 in both closed-form powers (point
+    reliability, the planned k), times our own analysis at 1 million nodes."""
+    inp = inputs(results, 1.0, PLAN["density"], k, "point", sd_ratio_of(results)["planned"])
     z = norm.ppf(1 - (1 - SIMULTANEOUS) / 2) + norm.ppf(1 - (1 - TARGET) / 2)
     need = sorted((z * f["se"] * math.sqrt(f["n"]) / (DELTA * math.sqrt(f["reliability_true"])))
                   ** 2 for q, f in inp.items() if q in KEYS)
@@ -409,19 +416,19 @@ def main() -> None:
         measured = json.loads(args.sizing.read_text(encoding="utf-8"))
         print(json.dumps(round_floats(decide_size(results, measured)), indent=2, sort_keys=True))
         return
+    activity = json.loads(ACTIVITY.read_text(encoding="utf-8"))
+    p = plan(results, activity)
     out = {
         "experiment": "EXP-0029",
-        "inputs": "EXP-0009 results.json (development data)",
+        "inputs": "EXP-0009 results.json and dev/exp09_activity.json (development data)",
         "plan": PLAN,
+        "outcome2_keys": list(OUTCOME2_KEYS),
         "seeds": ["power", "sizing"],
         "sd_ratio_from_exp0009": sd_ratio_of(results),
         "luck_shift_0009": luck_shift(results),
         "memory": memory_table(),
-        "simulation": plan(results),
-        "sizing_at_plan": decide_size(results, {
-            "density": PLAN["density"], "k": PLAN["k"], "april_games": PLAN["april_games"],
-            "streaming_cpu_hours": STREAMING_CPU_HOURS}),
-        "stage2": stage2(results),
+        "simulation": p,
+        "stage2": stage2(results, p["sizing"]["k"]),
     }
     (HERE / "power.json").write_text(
         json.dumps(round_floats(out), indent=2, sort_keys=True, allow_nan=False) + "\n",

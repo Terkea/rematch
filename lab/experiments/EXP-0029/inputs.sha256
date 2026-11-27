@@ -1,8 +1,10 @@
-# Development data: EXP-0009's committed results, read by power.py (section 6).
+# Development data: EXP-0009's committed results, and activity measured on EXP-0009's own
+# players files (dev/exp09_activity.py), read by power.py (section 6).
 82d941f1ca6db506667e25bcd90aad407256d139f2d07feb8d1d703ea0492186  ../EXP-0009/results.json
-9847e57de4012b7d9ca0341abd037ae68928a62a2af61162f331699fa9986330  power.py
-5af61700ac2a06f5b86bc7bc6d24d625e65d7986e06955be73990a7fca2d85ce  power.json
-56227acc3f74dc07bf56cd835d6ce78d3027cc56eb1e5b71b984e64049d06d7b  sizing-fixture.json
+4a58393749d8cca37f09cf0b7056511a99615546d55ea8003daaca5b3083346f  dev/exp09_activity.json
+8efade9cc53127fa060cf87135e3b983957125a61699939ceb16f1e3fe610ff1  power.py
+36f1c50ddbce578e2da932d6db8b53a0e586caebd707e0fc6c428ca6f6a7f998  power.json
+4ef103d6b07ffe40f65bab9267f47a648ac19ae0ef9479fbdeebdc20b70608a5  sizing-fixture.json
 # The cohort (ADR 0114): external, in the data directory, git-ignored. Nothing is streamed in
 # stage 1; this placeholder stands for the cohort, so the lab check does not run the analysis.
 # Stage 2 replaces it with each verified file's checksum before the sizing step (section 7).
