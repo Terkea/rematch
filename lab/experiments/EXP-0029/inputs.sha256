@@ -4,7 +4,7 @@
 4a58393749d8cca37f09cf0b7056511a99615546d55ea8003daaca5b3083346f  dev/exp09_activity.json
 8efade9cc53127fa060cf87135e3b983957125a61699939ceb16f1e3fe610ff1  power.py
 36f1c50ddbce578e2da932d6db8b53a0e586caebd707e0fc6c428ca6f6a7f998  power.json
-4ef103d6b07ffe40f65bab9267f47a648ac19ae0ef9479fbdeebdc20b70608a5  sizing-fixture.json
+0428fe8152268aea90ee0d3561ad62aa7faf18c9f471400c3558bbd649650de7  sizing-fixture.json
 # The cohort (ADR 0114): external, in the data directory, git-ignored. Nothing is streamed in
 # stage 1; this placeholder stands for the cohort, so the lab check does not run the analysis.
 # Stage 2 replaces it with each verified file's checksum before the sizing step (section 7).
