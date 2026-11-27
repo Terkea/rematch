@@ -34,3 +34,9 @@ Every run on the development namespace `EXP-0015-dev` and the cohort's `0` slice
    - the chess.com-like world gives 0.09 to 0.10 per cell;
    - the cohort's development slice gives a two-sided share of 0.36 on 16,511 settled series (lower end 0.350, under the 0.40 line), falling 0.11 and rising 0.25, mean z² 2.4: real players wander, or change, more than the model allows within a month, and mostly upwards; the step lag-1 correlation is 0.037 (0.032 for the signs), against −0.004 in the plain world and 0.020 in the rough one.
    Nothing was changed after it: the formula, the constants, the windows and the guards are as registered.
+
+## The freeze and the confirmatory namespace
+
+- Freeze: commit `09b265b1398e4b42763edfa06801633662974267`, tagged `exp-0030-freeze`, committer time 1795739570 (2026-11-27 00:32:50 UTC); the cli built from it is `algo-5.0.1+d9c1f47013b6`.
+- Beacon: drand quicknet (chain `52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971`, genesis 1692803367, a round every 3 seconds). The first round at least 10 minutes after the freeze is 34312269 (time 1795740171); its randomness is `fb2f150c7574e48ca31070e87962c48ecdc3d3f68440f63f52871a6ff0bbb064`.
+- Namespace: `EXP-0030-fb2f150c7574`, in `namespace.txt`, listed in `inputs.sha256`. No run used it before the confirmatory run.
