@@ -94,6 +94,7 @@ Z_RELIABILITY = norm.ppf(0.975)
 MIN_PLAYERS = 30
 RELIABILITY_FLOOR = 0.01
 RATING_CHANGE_SD_0009 = 53.789254
+WITH_OUTCOME_0009 = 16_204  # EXP-0009's confirmatory players with an outcome
 
 # Section 0: the registered run's budget, in counted units.
 BUDGET: dict[str, float] = {"observe_games": 3_700_000, "engine_nodes": 1_000_000}
@@ -202,7 +203,11 @@ def sizing_measures(streaming_cpu_hours: float) -> dict[str, Any]:
     cohort, info = eligible(*RANGE)
     f2 = info["f2"]
     width = RANGE[1] - RANGE[0]
-    density = len(f2) / width / (POWER.PLAYERS_OBSERVED_0009 / POWER.SLICE_0009)
+    with_outcome = [h for h in f2 if has_outcome(cohort[h])]
+    # power.py scales EXP-0009's players with an outcome, so the density counts those (S2a-4);
+    # the games are projected from the players observed, before the outcome rule.
+    density = len(with_outcome) / width / (WITH_OUTCOME_0009 / POWER.SLICE_0009)
+    density_observed = len(f2) / width / (POWER.PLAYERS_OBSERVED_0009 / POWER.SLICE_0009)
     ms = [total([cohort[h][m] for m in WINDOWS[w]], "eval_games") for h in f2 for w in WINDOWS]
     caps = {f"{r}/{k}": {"E_min_read": statistics.fmean(min(m, r) for m in ms),
                          "E_inv_min_kept": statistics.fmean(1 / min(m, k) for m in ms)}
@@ -216,6 +221,7 @@ def sizing_measures(streaming_cpu_hours: float) -> dict[str, Any]:
     ys = [r_end(cohort[h][J_MONTH]) - r_end(cohort[h][G_MONTH]) for h in out]
     return {
         "density": density,
+        "density_observed": density_observed,
         "caps": caps,
         "april_share": share,
         "sd_ratio": statistics.stdev(ys) / RATING_CHANGE_SD_0009,
@@ -531,7 +537,8 @@ def fit(rows: list[dict[str, Any]], q: str, family: str,
     else:
         res = sm.WLS(y, X, weights=[weights[r["h"]] for r in used]).fit(cov_type="HC3")
     est, se = float(res.params[1]), float(res.bse[1])
-    out: dict[str, Any] = {"n": n, "estimate": est, "se": se, "p": float(res.pvalues[1])}
+    out: dict[str, Any] = {"n": n, "estimate": est, "se": se, "p": float(res.pvalues[1]),
+                           "rank_deficient": bool(np.linalg.matrix_rank(X) < X.shape[1])}
     for level in (*LEVELS, SIMULTANEOUS):
         z = norm.ppf(1 - (1 - level) / 2)
         out[f"ci{level * 100:g}"] = [est - z * se, est + z * se]
@@ -549,14 +556,18 @@ def fit(rows: list[dict[str, Any]], q: str, family: str,
 def family(rows: list[dict[str, Any]], name: str,
            weights: dict[str, float] | None = None) -> dict[str, Any]:
     """One family: Holm across the eight keys; the control tested on its own (section 8)."""
-    fits = {q: fit(rows, q, name, weights) for q in QUANTITIES}
-    tested = [q for q in KEYS if fits[q]["estimate"] is not None]
-    if tested:
-        reject, adj, _, _ = multipletests([fits[q]["p"] for q in tested], alpha=ALPHA,
-                                          method="holm")
-        for q, rj, a in zip(tested, reject, adj, strict=True):
-            fits[q]["p_holm"] = float(a)
-            fits[q]["holm_reject"] = bool(rj)
+    return read_family({q: fit(rows, q, name, weights) for q in QUANTITIES})
+
+
+def read_family(fits: dict[str, Any]) -> dict[str, Any]:
+    """Section 8's reads on one family's fits. Holm runs over all eight keys, a key that cannot
+    be estimated counting as p = 1 (S2a-2), so the family is always eight. Holm caps the chance
+    that any null key reads "precedes climbing" at 5%; it is not zero (S2a-5)."""
+    ps = [fits[q]["p"] if fits[q]["estimate"] is not None else 1.0 for q in KEYS]
+    reject, adj, _, _ = multipletests(ps, alpha=ALPHA, method="holm")
+    for q, rj, a in zip(KEYS, reject, adj, strict=True):
+        fits[q]["p_holm"] = float(a)
+        fits[q]["holm_reject"] = bool(rj) and fits[q]["estimate"] is not None
     for q in KEYS:
         f = fits[q]
         if f["estimate"] is None:
@@ -593,8 +604,16 @@ def decide(primary: dict[str, Any], f1level: dict[str, Any]) -> dict[str, Any]:
         name = "need more data"
     artefacts = [q for q in KEYS if f1level[q].get("reads") == "precedes climbing"
                  and q not in climbing]
-    return {"outcome": outcome, "name": name, "climbing": climbing, "below_minimum": below,
-            "positive_control_holds": control, "f1level_only_climbing": artefacts}
+    # Each candidate with its raw and Holm p: under no link a key reads "precedes climbing"
+    # with a family-wise chance of up to 5%, so a candidate is replicated on new months by the
+    # follow-up experiment of section 9 before it can change anything (S2a-5).
+    candidates = [{"key": q, "estimate": primary[q]["estimate"], "p": primary[q]["p"],
+                   "p_holm": primary[q]["p_holm"]} for q in climbing]
+    return {"outcome": outcome, "name": name, "climbing": climbing, "candidates": candidates,
+            "below_minimum": below, "positive_control_holds": control,
+            "f1level_only_climbing": artefacts,
+            "follow_up": ("replicate the candidates on new months, per band (section 9)"
+                          if climbing else None)}
 
 
 def by_band(rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -744,7 +763,9 @@ def cmd_run(out: Path, algorithm: str | None) -> None:
     if not sizing or not sizing["decision"]["run"]:
         raise SystemExit("no sizing decision to run (section 6); the kill rule applies")
     d = sizing["decision"]
-    run(out, float(d["w"]), tuple(d["cap"]), algorithm, power["stage2"])  # type: ignore[arg-type]
+    # The id the sizing commit pinned (section 3) is the one the run must be on (S2a-1).
+    pinned = algorithm if algorithm is not None else sizing["algorithm_id"]
+    run(out, float(d["w"]), tuple(d["cap"]), pinned, power["stage2"])  # type: ignore[arg-type]
 
 
 def main(argv: list[str] | None = None) -> int:

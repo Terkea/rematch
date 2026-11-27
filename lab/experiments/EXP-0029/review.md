@@ -72,7 +72,7 @@ Written by the lane with no EXP-0029 month read. A critic reviews it before the 
 - `analysis.py` implements sections 6 to 9 as registered. It imports EXP-0009's frozen `analysis.py` for the definitions that are the same: the evaluations, the game key, a month's measures and the split halves, the orientation, the bands and the start search. Its sha256 (EXP-0009's own section 10) is in `inputs.sha256`. The sizing step (`analysis.py sizing`) reads the players files only and calls `power.py`'s `decide_size`. The run reads the size it chose.
 - Tests: `lab/tests/test_exp0029_analysis.py` runs on a synthetic cohort in the cohort command's file format (`lab/tests/exp0029_synthetic.py`), with `cli lab observe` replaced by a generator of known rates. The tests cover these cases:
   - an injected W7.traps effect reads outcome 1 on W7.traps alone;
-  - a null reads outcome 2 or 3 and never 1;
+  - a null at the fixed seed reads outcome 2 (see stage 2b: a null key reads "precedes climbing" up to 5% of the time, family-wise);
   - the control holds when accuracy is linked and fails when it is not, which gives outcome 3;
   - two runs give byte-identical output, and EXP-0009's range is excluded;
   - the budget cap stops the run;
@@ -81,3 +81,28 @@ Written by the lane with no EXP-0029 month read. A critic reviews it before the 
   The synthetic seed is 1. At seed 29 a null key (W5) read "precedes climbing" by chance (p 0.002 before Holm), and over seeds 1 to 6 no null key did.
 - Clarifications made before any data, none a change of design. The registration said the flow into F2 is reported "by F1 level", and that staying into F2 is modelled "on the F1 terms". Players who leave before F2 are never observed, so their F1 level does not exist. The flow is therefore reported by F1 rating band and F1 activity tercile, and the staying-into-F2 model uses the players-file F1 terms (sections 2, 7 and 8). The inverse-probability weight is the product of the two staying probabilities, each floored at 0.05. The analysis writes no figure.
 - `lichess-db cohort`: no Rust change. The history month and the outcome months are players files only, which the command writes without `--games`. `--hash-range` is not built. `--player-rate 0.9` with [0, 0.3) dropped on reading needs about 59 GB, inside the 70 GB cap. No image on this host has the `cohort` subcommand yet (the stack's `rust-worker` image predates it), so the streaming needs a `rust-worker` image built from this branch.
+
+## Stage 2b: the critic's review of stage 2a (f1eaec51), and the fixes
+
+The verdict was "fix first", with nothing blocking. All of the following are fixed before the sha is frozen. No EXP-0029 month has been read and nothing has been streamed.
+
+- **S2a-1 (should-fix). The pinned id was not enforced.** Fixed: `cmd_run` defaults the required id to the one the sizing step recorded (`sizing.algorithm_id`), and `run` refuses a cli that reports another, with a test. Section 3 pins `algo-6.0.0+f40a2b27677a`, because `exp/0030-memory` (algo-6.0.0) is being merged to main today and the lab image is rebuilt from main after that. The difference from algo-5.0.0 is the trajectory only (`coaching-input/trajectory.rs`, `profile/coaching/trajectory.rs`), not any function section 3 lists. `summary.md` names the same id.
+- **S2a-2. Holm's m depended on which keys could be estimated.** Fixed: `read_family` gives a key that cannot be estimated p = 1, so Holm always runs over eight. Tested.
+- **S2a-3. Rank deficiency was not flagged.** Fixed: each fit records `rank_deficient`. The synthetic opponents now have ratings that vary (SD 100), so the opponent-gap families are tested on a full-rank design, which a test asserts.
+- **S2a-4. The sizing's density counted players before attrition.** Fixed: `density` now counts players with an outcome against EXP-0009's 16,204 / 0.3, because `power.py` scales EXP-0009's n with an outcome. `density_observed` (before the outcome rule, against 17,138 / 0.3) projects the games. The plan in `power.json` is unchanged.
+- **S2a-5 (should-fix). "A null never reads outcome 1" is not a property of the rule.** Fixed in the wording: Holm caps at 5% the family-wise chance that a key with no link reads "precedes climbing". The test docstrings, `read_family`, `review.md` (stage 2a) and section 9 now say so. `decide` reports each candidate with its raw and Holm p, and names the follow-up as replication on new months. A new test runs 20 null cohorts of 400 players and asserts that the number with any false candidate stays within the binomial 99.9% bound for a 5% rate (at most 4 of 20). It costs about a minute in CI.
+- **S2a-6 (should-fix). The exclusion test was too weak.** Fixed: the test asserts `flow.history == 900` exactly (100 of 1,000 synthetic players are in [0, 0.3)) and checks every analysed and F1-eligible pseudonym's hash fraction directly.
+- **S2a-7. There were no direct tests of the rule.** Fixed: the null at the fixed seed asserts outcome 2 with the five keys below the minimum. Hand-built tests of `read_family` and `decide` cover the following cases:
+  - Holm rejects p 0.002 among eight (Holm p 0.016) and does not reject 0.01;
+  - a key that cannot be estimated still counts in the eight;
+  - one of the five keys undetermined gives outcome 3;
+  - W4.missed "precedes falling", with the five below and the control holding, still gives outcome 2;
+  - a key that climbs only in the F1-level model is reported and never a candidate;
+  - no control gives outcome 3.
+- **The streaming plan.** Done: `stream.sh` (POSIX sh, shellcheck clean) makes the critic's four changes:
+  1. the CPU is read inside each container from `/sys/fs/cgroup/cpu.stat` (`usage_usec`) into `stream-cpu.tsv`, and the sum is the streaming CPU-hours;
+  2. the months stream one at a time; a 60 s watcher stops the container if E: falls below 50 GB free; the df guard must parse to a number or the script exits 2;
+  3. every exit status is checked: on failure the month's `*.part` files are deleted, logged, and the stream stops; a month whose folder exists is never resumed;
+  4. the image digest and the image cli's algorithm id are logged.
+
+  `--dry-run` runs the guards and prints the nine commands. `lab/tests/test_exp0029_stream.py` tests it with a stand-in for docker: the dry run, an unparsable df, the CPU sum, a failed month and a refused resume. The `ci-exp29-rust-worker` image is not built yet.

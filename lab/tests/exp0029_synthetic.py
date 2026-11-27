@@ -100,9 +100,11 @@ def build(root: Path, *, players: int = 1000, seed: int = 1, key: str = "W7.trap
                 counter += 1
                 white = bool(rng.integers(0, 2))
                 opp = pseudonym(rng, 0.95, 1.0)
+                own, other = int(r1), int(r1 + rng.normal(0, 100))  # a varying opponent gap
                 g = {"id": gid, "utc": mi * 10_000_000 + counter, "base_seconds": 600,
                      "increment_seconds": 0, "white": h if white else opp,
-                     "black": opp if white else h, "white_elo": int(r1), "black_elo": int(r1),
+                     "black": opp if white else h, "white_elo": own if white else other,
+                     "black_elo": other if white else own,
                      "white_rating_diff": 0, "black_rating_diff": 0, "result": "1-0",
                      "termination": "Normal", "pgn": PGN}
                 games[m].append(json.dumps(g, sort_keys=True))

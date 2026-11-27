@@ -2,7 +2,7 @@
 # players files (dev/exp09_activity.py), read by power.py (section 6).
 82d941f1ca6db506667e25bcd90aad407256d139f2d07feb8d1d703ea0492186  ../EXP-0009/results.json
 4a58393749d8cca37f09cf0b7056511a99615546d55ea8003daaca5b3083346f  dev/exp09_activity.json
-2e970abf76bbe9367607056e1345264fd64adfee46c8243ef0ab470f70300d2d  power.py
+cda9158e3305f6a5e0d027e988bd4d2db43a79b96660669291544ffe8d9b3357  power.py
 36f1c50ddbce578e2da932d6db8b53a0e586caebd707e0fc6c428ca6f6a7f998  power.json
 0428fe8152268aea90ee0d3561ad62aa7faf18c9f471400c3558bbd649650de7  sizing-fixture.json
 # EXP-0009's frozen analysis, imported for the definitions that are the same.

@@ -267,7 +267,8 @@ def target(inp: dict[str, dict[str, float]], bias: dict[str, float],
 
 def decide_size(results: dict[str, Any], measured: dict[str, Any]) -> dict[str, Any]:
     """The registered sizing decision (N2, N3, N4). `measured`, from the players files only:
-    `density` (eligible players per unit of hash over EXP-0009's 57,127), `caps` (for each
+    `density` (eligible players with an outcome per unit of hash over EXP-0009's 54,013; the
+    games use `density_observed`, before the outcome rule, over its 57,127), `caps` (for each
     "read/kept" cap, E[min(m, read)] and E[1/min(m, kept)] per window over the eligible),
     `april_share` (for phi 0.97 and 0.98, the mean over players with an outcome of
     phi^g_A (phi^(2 g_J) - 1), g_A April's and g_J June's rapid games), `sd_ratio` (the SD of y
@@ -286,7 +287,8 @@ def decide_size(results: dict[str, Any], measured: dict[str, Any]) -> dict[str, 
         cap = measured["caps"][f"{read}/{kept}"]
         k = k_of(activity, cap["E_inv_min_kept"])
         for w in sorted(W_GRID, reverse=True):
-            games = players_at(w, measured["density"]) * 2 * cap["E_min_read"]
+            observed = measured.get("density_observed", measured["density"])
+            games = players_at(w, observed) * 2 * cap["E_min_read"]
             c = costs(games, measured["streaming_cpu_hours"])
             fits = (c["observe_games"] <= OBSERVE_GAMES_BUDGET * BUDGET_CAP
                     and c["cpu_hours"] <= CPU_HOURS_CAP and c["wall_hours"] <= WALL_HOURS_CAP)

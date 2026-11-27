@@ -2,7 +2,7 @@
 id: EXP-0029
 title: Does a fall in a weakness over three months come before further climbing?
 status: pre-registered
-algorithm: algo-5.0.0+3cabedf4c935
+algorithm: algo-6.0.0+f40a2b27677a
 issue: 131
 updated: 2026-11-27
 ---

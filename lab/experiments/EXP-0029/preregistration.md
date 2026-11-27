@@ -53,9 +53,9 @@ Rival explanations that would give the same numbers, and how each is handled:
 
 | Role | algorithm_id | What differs |
 |---|---|---|
-| Measured | pinned in the sizing commit: the production version on main when stage 2 builds `cli`; today `algo-5.0.0+3cabedf4c935` | – |
+| Measured | `algo-6.0.0+f40a2b27677a`: production on main once `exp/0030-memory` is merged; the lab image for the sizing and the run is rebuilt from main after that merge | – |
 
-`cli lab observe` calls the production `evaluate_game`, `build_move_records`, `game_accuracy`, `compute_game_features` and `observe_game`. The sizing commit names the id; a later change to any of these or to the eight detectors before the run is a deviation in section 11.
+`cli lab observe` calls the production `evaluate_game`, `build_move_records`, `game_accuracy`, `compute_game_features` and `observe_game`. `algo-6.0.0` differs from `algo-5.0.0` only in the trajectory, none of these functions. The sizing commit records the id of the `cli` it ran, and the run refuses any other (`analysis.py`, `cmd_run`; `review.md`, S2a-1); a later change to any of these or to the eight detectors before the run is a deviation in section 11.
 
 ## 4. Primary metric and ground truth
 
@@ -163,7 +163,7 @@ Rival explanations that would give the same numbers, and how each is handled:
 
 Measurement on one version, read on the primary family (section 8), in this order:
 
-1. **Candidates to teach:** at least one of the eight keys reads "precedes climbing". We publish them as candidates, never as causes ("players whose rate fell went on climbing after their rating had a month to catch up"), and register a per-band comparison experiment of re-ordered trainability rows on new months, with this result as its development data. `trainability` does not change here. The F1-level sensitivity is reported beside it; a key that reads "precedes climbing" only there is a level artefact and not a candidate.
+1. **Candidates to teach:** at least one of the eight keys reads "precedes climbing". We publish them as candidates, never as causes ("players whose rate fell went on climbing after their rating had a month to catch up"), and register a per-band comparison experiment of re-ordered trainability rows on new months, with this result as its development data. `trainability` does not change here. The F1-level sensitivity is reported beside it; a key that reads "precedes climbing" only there is a level artefact and not a candidate. Holm caps at 5% the chance that any key with no link reads "precedes climbing", so a candidate can be a false positive: each is reported with its raw and its Holm p, and the follow-up experiment on new months is its replication before anything changes (`review.md`, S2a-5).
 2. **No further climbing from these keys:** no key reads "precedes climbing"; every key of outcome 2's list (W4.allowed, W5, W6, W7.traps, W9a: section 6, before any data) reads "below the minimum effect"; and the control holds. `trainability` keeps its rows, and the site says: on Lichess's analysed rapid games, among players active for six months, a fall in these five weaknesses over three months did not come before further climbing of as much as 14 Elo per SD, once the rating had a month to catch up. It does not say these weaknesses don't matter: a one-off improvement the rating caught up with by the end of April is in the baseline and reads zero here, and W4.missed, W7.prep and W9b are not covered, because the design cannot read them below the minimum.
 3. **Need more data, for the second time:** anything else. `trainability` keeps its rows; there is no third follow-up under this rule (EXP-0009, section 9); the site keeps "no data-driven teaching order yet"; the question goes to the learning experiments (v0.6).
 
@@ -178,7 +178,7 @@ Stage 2 is out of scope at its price (section 6). This departs from ADR 0106's m
 ## 10. Analysis code
 
 - Entry point: `lab/experiments/EXP-0029/analysis.py` (`python analysis.py sizing --streaming-cpu-hours H` writes `power.json`'s `sizing`; `python analysis.py --out DIR` writes `DIR/results.json`, with the `algorithm_id` it ran on, at the size `sizing` chose). It was written in stage 2a and is tested on a synthetic cohort. A critic reviews it, and the sha below is frozen before the first byte is streamed (section 7). Its external inputs are not there yet, so the lab check does not run it.
-- Analysis code sha256: `9a5c270a82403c8611f3d0b3bf51407747f9b45e68ea064c606db8163ade78be`
+- Analysis code sha256: `0547be05707501009acb31624fbbc1a625c37319814d49a988d839fdbcb38644`
 - `power.py` (section 6) reads only `../EXP-0009/results.json` and `dev/exp09_activity.json` (and, with `--sizing`, the measured inputs) and writes `power.json`; `lab/tests/test_exp0029_sizing.py` tests `decide_size` on `sizing-fixture.json`. `dev/exp09_activity.py` and `dev/precheck.py` are the development measurements on EXP-0009's players files.
 - The only planned edits to this file after the critic's second review of stage 2 are section 10's sha256 and section 3's pinned id; the only planned edits to the folder are `inputs.sha256` (the cohort's checksums) and `power.json`'s `sizing`. Any other edit is a deviation in section 11.
 
