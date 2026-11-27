@@ -47,3 +47,19 @@ def test_a_streaming_overrun_closes_the_run():
     slow = {**FIXTURE, "streaming_cpu_hours": 24.0}
     d = P.decide_size(RESULTS, slow)
     assert d["run"] is False and d["reason"] == "no size fits the caps"
+
+
+def test_a_streaming_overrun_tries_every_cap_at_its_largest_fitting_size_before_the_kill():
+    # 18 streaming CPU-hours leave about 7 for the run: the first cap fits only a small w.
+    over = {**FIXTURE, "streaming_cpu_hours": 18.0}
+    d = P.decide_size(RESULTS, over)
+    tested = [t for t in d["tried"] if t["fits"]]
+    caps_tested = [tuple(t["cap"]) for t in tested]
+    if d["run"]:
+        assert d["tried"][-1]["fits"] and d["tried"][-1]["ok"]
+    else:
+        assert caps_tested == list(P.CAPS_PER_WINDOW)
+    # Every tested size is its cap's largest fitting w.
+    for t in tested:
+        bigger = [u for u in d["tried"] if u["cap"] == t["cap"] and u["w"] > t["w"]]
+        assert all(not u["fits"] for u in bigger)

@@ -2,10 +2,11 @@
 # players files (dev/exp09_activity.py), read by power.py (section 6).
 82d941f1ca6db506667e25bcd90aad407256d139f2d07feb8d1d703ea0492186  ../EXP-0009/results.json
 4a58393749d8cca37f09cf0b7056511a99615546d55ea8003daaca5b3083346f  dev/exp09_activity.json
-8efade9cc53127fa060cf87135e3b983957125a61699939ceb16f1e3fe610ff1  power.py
+2e970abf76bbe9367607056e1345264fd64adfee46c8243ef0ab470f70300d2d  power.py
 36f1c50ddbce578e2da932d6db8b53a0e586caebd707e0fc6c428ca6f6a7f998  power.json
 0428fe8152268aea90ee0d3561ad62aa7faf18c9f471400c3558bbd649650de7  sizing-fixture.json
-# The cohort (ADR 0114): external, in the data directory, git-ignored. Nothing is streamed in
-# stage 1; this placeholder stands for the cohort, so the lab check does not run the analysis.
-# Stage 2 replaces it with each verified file's checksum before the sizing step (section 7).
+# EXP-0009's frozen analysis, imported for the definitions that are the same.
+b7c6f6e50da02955c5066d0b8ecdcd83f5cb3aca8bb4a3acf2333bf90c8856e8  ../EXP-0009/analysis.py
+# The cohort (ADR 0114): external, in the data directory, git-ignored. Stage 2 replaces this
+# placeholder with each verified file's checksum before the sizing step (section 7).
 0000000000000000000000000000000000000000000000000000000000000000  external:exp29-cohort/2025-09/meta.json

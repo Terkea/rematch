@@ -274,9 +274,9 @@ def decide_size(results: dict[str, Any], measured: dict[str, Any]) -> dict[str, 
     over EXP-0009's 53.8) and `streaming_cpu_hours` (from the logs).
 
     For each cap in the fallback order, the largest w of the grid whose games, CPU-hours and
-    wall time fit the caps is the size, and the target is tested there, at the worse of the two
-    phi. It passes: that is the design. It fails: the kill rule. A smaller cap is tried only
-    when no w fits the caps, since it lowers the reliability."""
+    wall time fit the caps is that cap's size, and the target is tested there, at the worse of
+    the two phi. The first cap whose size passes is the design; if every cap's size fails (or
+    none fits), the kill rule (R3-1)."""
     activity = json.loads(ACTIVITY.read_text(encoding="utf-8"))
     rng = np.random.default_rng(seed("sizing"))
     ratios = memory_ratio(activity, measured["april_share"])
@@ -297,13 +297,14 @@ def decide_size(results: dict[str, Any], measured: dict[str, Any]) -> dict[str, 
             inp = inputs(results, w, measured["density"], k, PLAN["truth"], measured["sd_ratio"])
             t = target(inp, bias, rng)
             tried.append({**row, **t})
-            out = {"run": t["ok"], "w": w, "cap": [read, kept], "k": k,
-                   "memory_ratio": ratios, "bias": bias, "tried": tried}
-            if not t["ok"]:
-                out["reason"] = "the target fails at the largest size within the caps"
-            return out
-    return {"run": False, "reason": "no size fits the caps", "memory_ratio": ratios,
-            "tried": tried}
+            if t["ok"]:
+                return {"run": True, "w": w, "cap": [read, kept], "k": k,
+                        "memory_ratio": ratios, "bias": bias, "tried": tried}
+            break  # this cap's largest fitting size fails: try the next cap (R3-1)
+    fitted = any(t["fits"] for t in tried)
+    return {"run": False, "memory_ratio": ratios, "bias": bias, "tried": tried,
+            "reason": ("the target fails at every cap's largest size within the caps" if fitted
+                       else "no size fits the caps")}
 
 
 # ---- the plan ----------------------------------------------------------------------------------

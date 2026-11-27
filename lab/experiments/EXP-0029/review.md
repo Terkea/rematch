@@ -55,3 +55,29 @@ The same critic re-read the revised registration and re-ran `power.py` on a scra
 - **S8 (partly, now resolved).** `summary.md` gives the outcome probabilities at the size the rule chooses, including the lower-bound case.
 
 What is not fixed, and why: the bias model itself (EXP-0009's shift × the memory ratio × 1/√3) is still an estimate from development data. Only its scale is varied, by ×1.5 and ×2, because no data before the run can check its form. The lower-bound-reliability case remains the main risk. There, outcome 3 is 0.82 to 0.93 whatever the bias, and no design change within nine months and the caps removes it: the five keys' reliabilities are what they are.
+
+### Round 3 of part one: the critic's re-review of 012ca9a6 and 636f8c37
+
+Verdict: ready after fixes, and the value gate's call is now to run. One should-fix and three minor findings, all fixed:
+
+- **R3-1 (should-fix). The fallback caps could not fire when they were needed.** w = 0.1 always fit the first cap, so the fallback was reached only when nothing could fit. Done: for each cap in the fixed order, `decide_size` takes that cap's largest fitting w and tests the target there, and kills only when every cap fails. A fixture test covers a streaming overrun. At 20 streaming CPU-hours the first two caps fail at w = 0.2, and cap 72/60 passes at w = 0.3.
+- **R3-2. The value score.** Impact is 2, not 3, because no outcome changes the product by itself: 2 × 3 ÷ 2 = 3.0 (section 0).
+- **R3-3. `summary.md`.** "A tenth to a sixth of the luck (the check uses the worse)".
+- **R3-4. The lower-bound case.** It is stated as a tail case, with the critic's interpolation (a quarter of the way to the point: outcome 3 about 0.30; halfway: about 0.06; three quarters: about 0.01). The real remaining risk is named as the form of the bias model and of Spearman-Brown.
+
+## Stage 2a: the analysis code, before any month is streamed
+
+Written by the lane with no EXP-0029 month read. A critic reviews it before the freeze.
+
+- `analysis.py` implements sections 6 to 9 as registered. It imports EXP-0009's frozen `analysis.py` for the definitions that are the same: the evaluations, the game key, a month's measures and the split halves, the orientation, the bands and the start search. Its sha256 (EXP-0009's own section 10) is in `inputs.sha256`. The sizing step (`analysis.py sizing`) reads the players files only and calls `power.py`'s `decide_size`. The run reads the size it chose.
+- Tests: `lab/tests/test_exp0029_analysis.py` runs on a synthetic cohort in the cohort command's file format (`lab/tests/exp0029_synthetic.py`), with `cli lab observe` replaced by a generator of known rates. The tests cover these cases:
+  - an injected W7.traps effect reads outcome 1 on W7.traps alone;
+  - a null reads outcome 2 or 3 and never 1;
+  - the control holds when accuracy is linked and fails when it is not, which gives outcome 3;
+  - two runs give byte-identical output, and EXP-0009's range is excluded;
+  - the budget cap stops the run;
+  - the sizing step works with the games files deleted.
+
+  The synthetic seed is 1. At seed 29 a null key (W5) read "precedes climbing" by chance (p 0.002 before Holm), and over seeds 1 to 6 no null key did.
+- Clarifications made before any data, none a change of design. The registration said the flow into F2 is reported "by F1 level", and that staying into F2 is modelled "on the F1 terms". Players who leave before F2 are never observed, so their F1 level does not exist. The flow is therefore reported by F1 rating band and F1 activity tercile, and the staying-into-F2 model uses the players-file F1 terms (sections 2, 7 and 8). The inverse-probability weight is the product of the two staying probabilities, each floored at 0.05. The analysis writes no figure.
+- `lichess-db cohort`: no Rust change. The history month and the outcome months are players files only, which the command writes without `--games`. `--hash-range` is not built. `--player-rate 0.9` with [0, 0.3) dropped on reading needs about 59 GB, inside the 70 GB cap. No image on this host has the `cohort` subcommand yet (the stack's `rust-worker` image predates it), so the streaming needs a `rust-worker` image built from this branch.
