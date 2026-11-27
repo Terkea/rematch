@@ -2,14 +2,14 @@
 counts, for the number of settled players N read at the three lengths.
 
 A candidate's six co-primary cells (told "falling" and told "rising", at 60, 120 and 250 rated
-games) must each have the upper end of a Wilson interval at 1 - 0.05/12 at most 0.15 (two
-candidates x six cells). At each length the falling and rising counts of the same players are
+games) must each have the upper end of a Wilson interval at 1 - 0.025/2 at most 0.15 (an
+intersection-union test within a candidate; two candidates and two possible looks split the 5%). At each length the falling and rising counts of the same players are
 one multinomial draw (a player cannot be told both); the three lengths are drawn independently,
-though they are the same players read three times and so positively correlated, which makes
-"every cell within" more likely than simulated: the simulation is the harder case. The guards
+though they are the same players read three times; the result is approximate either way. The guards
 are sized the same way: detection at a 200-point fall (300 players a length, the lower end of the
-80% Wilson interval at least 0.50), the breaks-and-streaks world (N_ROUGH players, a cell above
-the bound when the lower end at 1 - 0.05/12 exceeds 0.15). No algorithm is called.
+80% Wilson interval at least 0.50), and a world guard (the rough and the chess.com-like worlds,
+N_ROUGH players, six cells; it fails when any share is above 0.15 or any 80% upper end above
+0.20). No algorithm is called.
 
     python power.py > power.json
 """
@@ -21,13 +21,14 @@ import json
 import numpy as np
 from scipy import stats
 
-BOUND, FAMILY, SIMS = 0.15, 12, 20_000
+BOUND, HIDE, SIMS = 0.15, 0.20, 20_000
+LEVEL = 1 - 0.025 / 2
 GRID_N = [700, 1000, 1500, 2000, 2500]
 GRID_P = [0.08, 0.10, 0.11, 0.12, 0.13, 0.14, 0.15, 0.16]
 DETECT_N = 300
 GRID_D = [0.45, 0.50, 0.55, 0.60, 0.65, 0.70]
 N_ROUGH = 1000
-GRID_R = [0.10, 0.15, 0.18, 0.20, 0.25]
+GRID_R = [0.08, 0.10, 0.11, 0.12, 0.13, 0.15, 0.18]
 
 
 def wilson(k: np.ndarray, n: int, level: float) -> tuple[np.ndarray, np.ndarray]:
@@ -41,7 +42,7 @@ def wilson(k: np.ndarray, n: int, level: float) -> tuple[np.ndarray, np.ndarray]
 
 def main() -> None:
     rng = np.random.default_rng(int.from_bytes(b"EXP-0030/power", "big") % 2**32)
-    level = 1 - 0.05 / FAMILY
+    level = LEVEL
     primary = []
     for n in GRID_N:
         for p in GRID_P:
@@ -61,17 +62,20 @@ def main() -> None:
         detection.append({"players_a_length": DETECT_N, "true_detection_each_length": d, "guard_passes": round(float(ok.mean()), 4)})
     rough = []
     for r in GRID_R:
-        trip = np.zeros(SIMS, dtype=bool)
-        lo, _ = wilson(rng.binomial(N_ROUGH, r, SIMS), N_ROUGH, level)
-        trip |= lo > BOUND
-        rough.append({"players": N_ROUGH, "true_rate_one_cell": r, "guard_trips": round(float(trip.mean()), 4)})
+        ok = np.ones(SIMS, dtype=bool)
+        for _ in range(3):
+            k = rng.multinomial(N_ROUGH, [r, r, 1 - 2 * r], size=SIMS)
+            for side in (0, 1):
+                _, hi = wilson(k[:, side], N_ROUGH, 0.80)
+                ok &= (k[:, side] / N_ROUGH <= BOUND) & (hi <= HIDE)
+        rough.append({"players": N_ROUGH, "true_rate_each_cell": r, "guard_passes": round(float(ok.mean()), 4)})
     out = {
-        "rule": "Wilson at 1 - 0.05/12 per cell; a candidate's primary clears when all six upper ends "
+        "rule": "Wilson at 1 - 0.025/2 per cell; a candidate's primary clears when all six upper ends "
         "are at most 0.15",
         "sims": SIMS,
         "primary": primary,
         "detection_guard": detection,
-        "rough_guard_one_cell": rough,
+        "world_guard": rough,
     }
     print(json.dumps(out, indent=2))
 

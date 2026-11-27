@@ -45,10 +45,11 @@ from rematch_lab.experiments import (
 from rematch_lab.models import RatedGame, TrajectoryPlayer, TrajectoryRequest
 
 EXP = "EXP-0030"
-# The confirmatory namespace (section 7), drawn after the candidates were frozen. The
-# development namespace is EXP-0015-dev (--seed-namespace EXP-0015-dev).
-REGISTERED_NS = "EXP-0030"
-SEED_NS = REGISTERED_NS
+# The confirmatory namespace (section 7) is drawn after the candidates are frozen and written to
+# namespace.txt (checked by inputs.sha256); until then only the development namespace runs.
+NAMESPACE_FILE = Path(__file__).resolve().parent / "namespace.txt"
+DEV_NS = "EXP-0015-dev"
+SEED_NS = DEV_NS
 
 # ---- the rules (section 3) ----------------------------------------------------------------------
 CHAMPION = "peak-bootstrap"
@@ -64,6 +65,9 @@ DECLINES = [100, 200]
 ROUGH_PLAYERS = 1000
 ROUGH_DECLINE = (200, 120)  # exploratory: one decline cell in the rough world
 ARM_PLAYERS = 300
+GLICKO1_PLAYERS = 1000  # the chess.com-like guard (section 9)
+FORM_SENSITIVITY = [0.0, 20.0]  # exploratory: the rough world with less slow form
+FORM_SENSITIVITY_PLAYERS = 500
 ELO_KS = [10, 32]
 NEW_PLAYERS = 300
 BURN_IN = 300
@@ -75,11 +79,16 @@ CHUNK = 200
 NOMINAL = 0.10
 BOUND = 0.15
 HIDE = 0.20
-FAMILY = 12  # two candidates x six co-primary cells
+# A candidate's six cells are an intersection-union test (all must clear), so only the two
+# candidates and the two looks the rule allows (section 9) split the 5%.
+DECISION_LEVEL = 1 - 0.025 / 2
 ARENA_LEVEL = 1 - 0.05 / 3  # EXP-0015's arena rule
 DETECT_LEVEL = 0.80
 DETECT_FLOOR = 0.50
 TRANSFER_LEVEL = 0.95
+TRANSFER_GROSS = 0.40  # twice the nominal two-sided 0.20: a gross failure of the model
+STEP_CAP = 30.0  # a cohort series with a bigger step looks provisional
+CONTROL_250 = 0.5  # the champion must reproduce EXP-0015 at 250 games, or the run stops
 Z80 = 1.2815515655446004
 UNSETTLED = 25.0
 
@@ -87,6 +96,7 @@ UNSETTLED = 25.0
 # hex digit is COHORT_SLICE; the development slice was "0".
 COHORT_MONTHS = ["2026-07", "2026-08", "2026-09", "2026-10"]
 COHORT_SLICE = "8"
+COHORT_DEV_SLICE = "0"  # read by development runs only
 COHORT_MIN_GAMES = 40
 Q = math.log(10.0) / 400.0
 
@@ -140,10 +150,11 @@ SEED_NAMES = [
     *[f"elo/{k}" for k in ELO_KS],
     "glicko1",
     "new-account",
+    *[f"rough-form/{sd:g}" for sd in FORM_SENSITIVITY],
 ]
 BUDGET = {
-    "simulated_games": 3_144_000,
-    "trajectory_players": 50_100,
+    "simulated_games": 4_079_000,
+    "trajectory_players": 65_400,
     "cohort_lines": 3_955_242,
 }
 
@@ -221,11 +232,11 @@ class Schedule:
     1 + Poisson games 20 minutes apart, gaps between sessions, now and then a long break; each
     session draws its day's form, the slow form moves from session to session."""
 
-    def __init__(self, rng: np.random.Generator, rough: bool) -> None:
-        self.rng, self.rough = rng, rough
+    def __init__(self, rng: np.random.Generator, rough: bool, form_sd: float = FORM_SD) -> None:
+        self.rng, self.rough, self.form_sd = rng, rough, form_sd
         self.t = 0.0  # days since the series began
         self.left = 0
-        self.form = rng.normal(0.0, FORM_SD) if rough else 0.0
+        self.form = rng.normal(0.0, form_sd) if rough else 0.0
         self.day = 0.0
         self.tilt = 0.0
 
@@ -242,7 +253,7 @@ class Schedule:
                 else max(rng.exponential(SESSION_GAP_DAYS), 1.0 / 24.0)
             )
             self.left = 1 + int(rng.poisson(SESSION_EXTRA_GAMES))
-            self.form = FORM_PHI * self.form + rng.normal(0.0, FORM_SD * math.sqrt(1 - FORM_PHI**2))
+            self.form = FORM_PHI * self.form + rng.normal(0.0, self.form_sd * math.sqrt(1 - FORM_PHI**2))
             self.day = rng.normal(0.0, DAY_SD)
             self.tilt = 0.0
             elapsed = gap
@@ -266,6 +277,7 @@ def play(
     observed_from: int,
     system: tuple[str, float],
     rough: bool = False,
+    form_sd: float = FORM_SD,
 ) -> list[dict]:
     """Plays every game of `truth` (the true strength before each game) from a fresh account and
     returns the games from `observed_from` on, as EXP-0015's `play`, with the rough world's
@@ -273,7 +285,7 @@ def play(
     r, vol = START_RATING, START_VOL
     rd = G1_START_RD if system[0] == "glicko1" else START_RD
     base = float(truth[observed_from])
-    sched = Schedule(rng, rough)
+    sched = Schedule(rng, rough, form_sd)
     games = []
     for t, true_now in enumerate(truth):
         elapsed = sched.next_game()
@@ -393,6 +405,7 @@ class Runner:
         decline: float,
         system: tuple[str, float],
         rough: bool = False,
+        form_sd: float = FORM_SD,
     ) -> list[list[dict]]:
         rng = np.random.default_rng(seed(SEED_NS, name))
         series = []
@@ -402,7 +415,7 @@ class Runner:
             if decline:
                 truth[burn_in:] = t0 - decline * np.arange(games) / (games - 1)
             self.budget.spend("simulated_games", burn_in + games)
-            series.append(play(rng, truth, burn_in, system, rough))
+            series.append(play(rng, truth, burn_in, system, rough, form_sd))
         return series
 
 
@@ -418,7 +431,7 @@ def wilson(k: int, n: int, level: float) -> list:
     return [r6(max(0.0, c - h)), r6(min(1.0, c + h))]
 
 
-def share(flags: list[bool], family: int = 1) -> dict:
+def share(flags: list[bool], decision: bool = False) -> dict:
     k, n = sum(flags), len(flags)
     return {
         "n": n,
@@ -426,7 +439,7 @@ def share(flags: list[bool], family: int = 1) -> dict:
         "share": r6(k / n),
         "ci95": wilson(k, n, 0.95),
         "ci80": wilson(k, n, 0.80),
-        "ci_bonferroni": wilson(k, n, 1 - 0.05 / family) if family > 1 else None,
+        "ci_decision": wilson(k, n, DECISION_LEVEL) if decision else None,
     }
 
 
@@ -440,9 +453,19 @@ def classify(lo: float, hi: float) -> str:
     return "undecided"
 
 
-def classified(flags: list[bool], family: int = FAMILY) -> dict:
-    cell = share(flags, family)
-    cell["read"] = classify(*cell["ci_bonferroni"])
+def classified(flags: list[bool]) -> dict:
+    """A co-primary cell, read by its interval at DECISION_LEVEL."""
+    cell = share(flags, decision=True)
+    cell["read"] = classify(*cell["ci_decision"])
+    return cell
+
+
+def guarded(flags: list[bool]) -> dict:
+    """A world guard's cell (rough, chess.com-like): it fails when its share is above the bound
+    or the upper end of its 80% interval is above the hide line, with no correction."""
+    cell = share(flags)
+    bad = cell["share"] > BOUND or cell["ci80"][1] > HIDE
+    cell["guard"] = "fails" if bad else "passes"
     return cell
 
 
@@ -472,30 +495,37 @@ def calibration(ts: list[dict]) -> dict:
     }
 
 
-def steps_of(ratings: list[float]) -> np.ndarray:
-    return np.diff(np.asarray(ratings, dtype=float))
-
-
-def step_lag1(blocks: list[np.ndarray]) -> float | None:
-    """The pooled lag-1 correlation of consecutive rating steps, each block centred on its own
-    mean: about 0 when results carry no memory (an Elo rating's own mean reversion makes it
-    slightly negative), above 0 with streaks."""
-    xs, ys = [], []
+def lag1(blocks: list[np.ndarray], sign: bool = False) -> float | None:
+    """The pooled lag-1 correlation of consecutive steps within blocks (or of their signs, a
+    proxy for the results), centred on the pooled mean, not on each block's: about 0 when
+    results carry no memory, above 0 with streaks."""
+    xs: list[float] = []
+    ys: list[float] = []
     for b in blocks:
-        if len(b) < 3:
-            continue
-        c = b - b.mean()
-        xs.extend(c[:-1])
-        ys.extend(c[1:])
-    if len(xs) < 3:
+        v = np.sign(b) if sign else b
+        xs.extend(v[:-1])
+        ys.extend(v[1:])
+    if len(xs) < 3 or np.std(xs) == 0 or np.std(ys) == 0:
         return None
     return r6(float(np.corrcoef(xs, ys)[0, 1]))
 
 
 def world_steps(series: list[list[dict]]) -> dict:
-    blocks = [steps_of([g["rating"] for g in s]) for s in series]
-    rms = [float(np.sqrt(np.mean(b * b))) for b in blocks if len(b)]
-    return {"step_rms_median": r6(float(np.median(rms))), "step_lag1": step_lag1(blocks)}
+    """The step diagnostics the cohort reports, on the same blocks: the steps of the first and
+    the last five games of each series (the stored ratings), and the median RMS of those ten."""
+    blocks: list[np.ndarray] = []
+    rms = []
+    for s in series:
+        r = np.asarray([g["rating"] for g in s], dtype=float)
+        a, b = np.diff(r[:6]), np.diff(r[-6:])
+        blocks += [a, b]
+        both = np.concatenate([a, b])
+        rms.append(float(np.sqrt(np.mean(both * both))))
+    return {
+        "step_rms_median": r6(float(np.median(rms))),
+        "step_lag1": lag1(blocks),
+        "sign_lag1": lag1(blocks, sign=True),
+    }
 
 
 # ---- the memory model's check on real series (section 7) ----------------------------------------
@@ -510,72 +540,104 @@ def within(m: int, phi: float) -> float:
 
 def model_var(a0: int, a1: int, b0: int, b1: int, rms: float) -> float | None:
     """Section 7's variance of mean(b) - mean(a) for a stationary rating whose RMS step is
-    `rms`: sigma^2 = rms / (q (1 - a/2)), phi = 1 - a, a = q rms / 2."""
+    `rms`: a = min(q rms / 2, 1), phi = 1 - a, sigma^2 = rms^2 / (a (2 - a))."""
     if rms <= 0.0:
         return None
-    a = Q * rms / 2.0
+    a = min(Q * rms / 2.0, 1.0)
     phi = min(max(1.0 - a, 0.0), 1.0 - 1e-12)
-    s2 = rms / (Q * (1.0 - a / 2.0))
+    s2 = rms * rms / (a * (2.0 - a))
     ma, mb = a1 - a0, b1 - b0
     sa = (1 - phi**ma) / (1 - phi)
     sb = (1 - phi**mb) / (1 - phi)
-    cross = phi ** (b0 - a1 + 1) * sa * sb
+    cross = phi ** (b0 - a1 + 1) * sa * sb if phi > 0 else 0.0
     return s2 * (within(ma, phi) / ma**2 + within(mb, phi) / mb**2 - 2 * cross / (ma * mb))
+
+
+def cohort_reads(rows: list[tuple[float, int, float]], pooled_rms: float | None = None) -> dict:
+    zs = []
+    for diff, n, rms in rows:
+        v = model_var(0, 5, n - 5, n, pooled_rms if pooled_rms is not None else rms)
+        zs.append(diff / math.sqrt(v))
+    z = np.array(zs)
+    two = [bool(abs(x) > Z80) for x in z]
+    out = {
+        "players": len(z),
+        "falling": share([bool(x < -Z80) for x in z]),
+        "rising": share([bool(x > Z80) for x in z]),
+        "two_sided": share(two),
+        "mean_z": r6(float(z.mean())),
+        "mean_z2": r6(float(np.mean(z * z))),
+    }
+    out["two_sided"]["ci_transfer"] = wilson(sum(two), len(two), TRANSFER_LEVEL)
+    return out
 
 
 def cohort_check(budget: Budget) -> dict:
     """Each pseudonym of the slice once, in its first month with at least COHORT_MIN_GAMES rapid
-    games: the mean pre-game rating of its last five rapid games against its first five, in
-    units of the model's standard deviation, from the RMS of those ten games' own steps."""
+    games (a pseudonym whose first such month is skipped is not used later): the mean pre-game
+    rating of its last five rapid games against its first five, in units of the model's standard
+    deviation from the RMS of those ten games' own steps. The guard reads the settled series (no
+    step above STEP_CAP in absolute value); every series is reported too."""
     seen: set[str] = set()
-    zs: list[float] = []
+    rows_all: list[tuple[float, int, float]] = []
+    rows_settled: list[tuple[float, int, float]] = []
     blocks: list[np.ndarray] = []
     rms_all: list[float] = []
     games_all: list[int] = []
+    skipped = {"not_five_and_five": 0, "no_movement": 0}
+    cohort_slice = COHORT_DEV_SLICE if SEED_NS == DEV_NS else COHORT_SLICE
     for month in COHORT_MONTHS:
         with open(external_input(f"exp09-cohort/{month}/players.jsonl"), encoding="utf-8") as f:
             for line in f:
                 budget.spend("cohort_lines", 1)
                 p = json.loads(line)
                 h = p["h"]
-                if h[0] != COHORT_SLICE or h in seen or p["rapid_games"] < COHORT_MIN_GAMES:
-                    continue
-                first, last = p["first"], p["last"]
-                if len(first) != 5 or len(last) != 5:
+                if h[0] != cohort_slice or h in seen or p["rapid_games"] < COHORT_MIN_GAMES:
                     continue
                 seen.add(h)
+                first, last = p["first"], p["last"]
+                if len(first) != 5 or len(last) != 5:
+                    skipped["not_five_and_five"] += 1
+                    continue
                 n = p["rapid_games"]
                 steps = np.array([g[3] - g[2] for g in first + last], dtype=float)
                 rms = float(np.sqrt(np.mean(steps * steps)))
-                v = model_var(0, 5, n - 5, n, rms)
-                if v is None or v <= 0:
+                if rms <= 0.0:
+                    skipped["no_movement"] += 1
                     continue
-                diff = np.mean([g[2] for g in last]) - np.mean([g[2] for g in first])
-                zs.append(float(diff / math.sqrt(v)))
-                blocks.append(steps[:5])
-                blocks.append(steps[5:])
+                diff = float(np.mean([g[2] for g in last]) - np.mean([g[2] for g in first]))
+                rows_all.append((diff, n, rms))
+                if float(np.max(np.abs(steps))) <= STEP_CAP:
+                    rows_settled.append((diff, n, rms))
+                    blocks += [steps[:5], steps[5:]]
                 rms_all.append(rms)
                 games_all.append(n)
-    z = np.array(zs)
-    falling = [bool(x < -Z80) for x in z]
-    rising = [bool(x > Z80) for x in z]
-    fall = share(falling)
-    fall["ci_transfer"] = wilson(sum(falling), len(falling), TRANSFER_LEVEL)
+    settled = cohort_reads(rows_settled)
+    pooled = float(np.median([r for _, _, r in rows_settled]))
     return {
-        "players": len(z),
-        "falling": fall,
-        "rising": share(rising),
-        "mean_z": r6(float(z.mean())),
-        "mean_z2": r6(float(np.mean(z * z))),
-        "median_z2": r6(float(np.median(z * z))),
+        "slice": cohort_slice,
+        "pseudonyms": len(seen),
+        "skipped": skipped,
+        "settled": settled,
+        "settled_pooled_rms": cohort_reads(rows_settled, pooled),
+        "all": cohort_reads(rows_all),
         "step_rms_median": r6(float(np.median(rms_all))),
-        "step_lag1": step_lag1(blocks),
+        "settled_step_rms_median": r6(pooled),
+        "step_lag1": lag1(blocks),
+        "sign_lag1": lag1(blocks, sign=True),
         "games_median": int(np.median(games_all)),
-        "guard": "passes" if fall["ci_transfer"][0] <= BOUND else "fails",
+        "guard": "fails" if settled["two_sided"]["ci_transfer"][0] > TRANSFER_GROSS else "passes",
     }
 
 
 # ---- everything ---------------------------------------------------------------------------------
+
+
+def by_rule(ts: dict[str, list[dict]]) -> dict:
+    return {
+        rule: {side: share([t["kind"] == side for t in ts[rule]]) for side in ("falling", "rising")}
+        for rule in RULES
+    }
 
 
 def run_all(run: Runner, budget: Budget) -> dict:
@@ -589,6 +651,11 @@ def run_all(run: Runner, budget: Budget) -> dict:
         )
         for g in reads
     }
+    # The positive control (section 8): the lab path must give the rule's own `kind`, so the
+    # champion reproduces EXP-0015 at 250 games, or nothing below means anything.
+    control = float(np.mean([t["kind"] == "falling" for t in flat[250][CHAMPION]]))
+    if control <= CONTROL_250:
+        raise SystemExit(f"positive control failed: the champion told {control:.3f} falling at 250")
 
     detect: dict[str, dict[str, list[dict]]] = {}
     detect_series = {}
@@ -605,13 +672,13 @@ def run_all(run: Runner, budget: Budget) -> dict:
         g: run.trajectories([request_player(f"rough-{i:04d}", s[:g]) for i, s in enumerate(rough)])
         for g in CHECKPOINTS
     }
-    rd_dec, rd_len = ROUGH_DECLINE
-    rough_dec = run.simulate(
-        f"rough-decline/{rd_dec}/{rd_len}", DECLINE_PLAYERS, rd_len, BURN_IN, float(rd_dec), glicko, True
-    )
-    rough_dec_t = run.trajectories(
-        [request_player(f"rough-decline-{i:04d}", s) for i, s in enumerate(rough_dec)]
-    )
+    g1 = run.simulate("glicko1", GLICKO1_PLAYERS, max(CHECKPOINTS), BURN_IN, 0.0, ("glicko1", 0.0))
+    g1_t = {
+        g: run.trajectories(
+            [request_player(f"glicko1-{i:04d}", s[:g], chesscom=True) for i, s in enumerate(g1)]
+        )
+        for g in CHECKPOINTS
+    }
 
     cohort = cohort_check(budget)
 
@@ -621,7 +688,9 @@ def run_all(run: Runner, budget: Budget) -> dict:
         cells = []
         for g in CHECKPOINTS:
             for side in ("falling", "rising"):
-                cells.append({"games": g, "side": side, **classified([t["kind"] == side for t in flat[g][c]])})
+                cells.append(
+                    {"games": g, "side": side, **classified([t["kind"] == side for t in flat[g][c]])}
+                )
         arena = {}
         for g in CHECKPOINTS:
             champ = [t["kind"] == "falling" for t in flat[g][CHAMPION]]
@@ -647,15 +716,21 @@ def run_all(run: Runner, budget: Budget) -> dict:
                 if d == 200:
                     cell["guard"] = "passes" if cell["ci80"][0] >= DETECT_FLOOR else "fails"
                 detection.append(cell)
-        rough_cells = []
-        for g in CHECKPOINTS:
-            for side in ("falling", "rising"):
-                rough_cells.append({"games": g, "side": side, **classified([t["kind"] == side for t in rough_t[g][c]])})
+
+        def world(ts: dict[int, dict[str, list[dict]]], rule: str = c) -> list[dict]:
+            return [
+                {"games": g, "side": side, **guarded([t["kind"] == side for t in ts[g][rule]])}
+                for g in CHECKPOINTS
+                for side in ("falling", "rising")
+            ]
+
+        rough_cells, g1_cells = world(rough_t), world(g1_t)
         checks = {
             "primary_within": all(x["read"] == "within the bound" for x in cells),
             "beats_champion": all(a["verdict"] == lstats.BETTER for a in arena.values()),
             "detection_guard": all(x.get("guard", "passes") == "passes" for x in detection),
-            "rough_guard": all(x["read"] in ("within the bound", "undecided") for x in rough_cells),
+            "rough_guard": all(x["guard"] == "passes" for x in rough_cells),
+            "chesscom_guard": all(x["guard"] == "passes" for x in g1_cells),
             "transfer_guard": cohort["guard"] == "passes",
         }
         only_undecided = (
@@ -668,34 +743,65 @@ def run_all(run: Runner, budget: Budget) -> dict:
             "arena": arena,
             "detection": detection,
             "rough": rough_cells,
+            "chesscom": g1_cells,
             "checks": checks,
             "clears": all(checks.values()),
             "only_undecided": only_undecided,
         }
 
     cleared = [c for c in CANDIDATES if candidates[c]["clears"]]
+    follow_up = [c for c in CANDIDATES if candidates[c]["only_undecided"]]
     if cleared:
         decision = f"ship {cleared[0]}"
-    elif all(candidates[c]["only_undecided"] for c in CANDIDATES):
-        decision = "need more data"
+    elif follow_up:
+        decision = "need more data: " + ", ".join(follow_up)
     else:
         decision = "keep the verdict hidden"
 
-    # The champion on the same players, for the record (EXP-0015's numbers on fresh seeds).
+    # The champion on the same players (EXP-0015 on fresh seeds), and in the other worlds.
     champion = {
-        "falling": [{"games": g, **share([t["kind"] == "falling" for t in flat[g][CHAMPION]])} for g in CHECKPOINTS],
-        "rising": [{"games": g, **share([t["kind"] == "rising" for t in flat[g][CHAMPION]])} for g in CHECKPOINTS],
-        "rough_falling": [
-            {"games": g, **share([t["kind"] == "falling" for t in rough_t[g][CHAMPION]])} for g in CHECKPOINTS
+        "falling": [
+            {"games": g, **share([t["kind"] == "falling" for t in flat[g][CHAMPION]])}
+            for g in CHECKPOINTS
         ],
+        "rising": [
+            {"games": g, **share([t["kind"] == "rising" for t in flat[g][CHAMPION]])}
+            for g in CHECKPOINTS
+        ],
+        "rough": [{"games": g, **by_rule(rough_t[g])[CHAMPION]} for g in CHECKPOINTS],
+        "chesscom": [{"games": g, **by_rule(g1_t[g])[CHAMPION]} for g in CHECKPOINTS],
     }
 
     # Exploratory.
-    exploratory: dict = {"games_30": {}, "then_now_rows": {}, "rough_decline": {}, "mean_change": {}}
+    rd_dec, rd_len = ROUGH_DECLINE
+    rough_dec = run.simulate(
+        f"rough-decline/{rd_dec}/{rd_len}", DECLINE_PLAYERS, rd_len, BURN_IN, float(rd_dec), glicko, True
+    )
+    rough_dec_t = run.trajectories(
+        [request_player(f"rough-decline-{i:04d}", s) for i, s in enumerate(rough_dec)]
+    )
+    form_rows = []
+    for sd in FORM_SENSITIVITY:
+        name = f"rough-form/{sd:g}"
+        series = run.simulate(
+            name, FORM_SENSITIVITY_PLAYERS, max(CHECKPOINTS), BURN_IN, 0.0, glicko, True, sd
+        )
+        row: dict = {"form_sd": sd, "steps": world_steps(series), "cells": []}
+        for g in CHECKPOINTS:
+            ts = run.trajectories(
+                [request_player(f"rough-form-{sd:g}-{i:04d}", s[:g]) for i, s in enumerate(series)]
+            )
+            row["cells"].append({"games": g, **by_rule(ts)})
+        form_rows.append(row)
+
+    exploratory: dict = {
+        "games_30": by_rule(flat[EXPLORE_GAMES]),
+        "then_now_rows": {},
+        "rough_decline": {},
+        "mean_change": {},
+        "rough_form": form_rows,
+    }
     for rule in RULES:
-        exploratory["games_30"][rule] = {
-            side: share([t["kind"] == side for t in flat[EXPLORE_GAMES][rule]]) for side in ("falling", "rising")
-        }
         exploratory["then_now_rows"][rule] = [
             {"measure": m, "games": g, **share([t[m] == "worse" for t in flat[g][rule]])}
             for m in ("accuracy", "blunders")
@@ -716,52 +822,47 @@ def run_all(run: Runner, budget: Budget) -> dict:
         ]
 
     new = run.simulate("new-account", NEW_PLAYERS, max(CHECKPOINTS), 0, 0.0, glicko)
-    arms = [(f"elo/{k}", ("elo", float(k)), False, BURN_IN) for k in ELO_KS]
-    arms.append(("glicko1", ("glicko1", 0.0), True, BURN_IN))
     other = []
-    for name, system, chesscom, burn in arms:
-        series = run.simulate(name, ARM_PLAYERS, max(CHECKPOINTS), burn, 0.0, system)
-        row: dict = {"arm": name, "settle": settle(series), "steps": world_steps(series), "cells": []}
+    for k in ELO_KS:
+        name = f"elo/{k}"
+        series = run.simulate(name, ARM_PLAYERS, max(CHECKPOINTS), BURN_IN, 0.0, ("elo", float(k)))
+        row = {"arm": name, "settle": settle(series), "steps": world_steps(series), "cells": []}
         for g in CHECKPOINTS:
             ts = run.trajectories(
-                [request_player(f"{name.replace('/', '-')}-{i:04d}", s[:g], chesscom=chesscom) for i, s in enumerate(series)]
+                [request_player(f"elo-{k}-{i:04d}", s[:g]) for i, s in enumerate(series)]
             )
-            row["cells"].append(
-                {
-                    "games": g,
-                    **{
-                        rule: {side: share([t["kind"] == side for t in ts[rule]]) for side in ("falling", "rising")}
-                        for rule in RULES
-                    },
-                }
-            )
+            row["cells"].append({"games": g, **by_rule(ts)})
         other.append(row)
     new_rows = []
     for g in CHECKPOINTS:
         ts = run.trajectories([request_player(f"new-{i:04d}", s[:g]) for i, s in enumerate(new)])
-        new_rows.append(
-            {
-                "games": g,
-                **{rule: {side: share([t["kind"] == side for t in ts[rule]]) for side in ("falling", "rising")} for rule in RULES},
-            }
-        )
+        new_rows.append({"games": g, **by_rule(ts)})
     exploratory["other_ratings"] = other
     exploratory["new_account"] = new_rows
 
     err = np.array([[g["pre"] - g["truth"] for g in s] for s in settled])
     diagnostics = {
+        "positive_control_falling_250": r6(control),
         "settled": settle(settled),
         "decline": {k: settle(v) for k, v in detect_series.items()},
         "rough": settle(rough),
+        "glicko1": settle(g1),
         "settled_error_sd": r6(float(err.std())),
         "settled_rd_mean": r6(float(np.mean([g["rd"] for s in settled for g in s]))),
         "rough_rd_mean": r6(float(np.mean([g["rd"] for s in rough for g in s]))),
         "rough_days_median": r6(float(np.median([s[-1]["at"] - s[0]["at"] for s in rough]))),
-        "steps": {"settled": world_steps(settled), "rough": world_steps(rough)},
+        "steps": {
+            "settled": world_steps(settled),
+            "rough": world_steps(rough),
+            "glicko1": world_steps(g1),
+        },
         "interval": {
             rule: {str(g): calibration(flat[g][rule]) for g in CHECKPOINTS} for rule in RULES
         },
     }
+
+    def flags_of(ts: dict, side: str, rule: str) -> dict:
+        return {str(g): bits([t["kind"] == side for t in ts[g][rule]]) for g in CHECKPOINTS}
 
     return {
         "decision": decision,
@@ -772,13 +873,15 @@ def run_all(run: Runner, budget: Budget) -> dict:
         "diagnostics": diagnostics,
         "flags": {
             rule: {
-                "falling": {str(g): bits([t["kind"] == "falling" for t in flat[g][rule]]) for g in CHECKPOINTS},
-                "rising": {str(g): bits([t["kind"] == "rising" for t in flat[g][rule]]) for g in CHECKPOINTS},
+                "falling": flags_of(flat, "falling", rule),
+                "rising": flags_of(flat, "rising", rule),
                 "detection": {
                     k: bits([t["kind"] == "falling" for t in v[rule]]) for k, v in detect.items()
                 },
-                "rough_falling": {str(g): bits([t["kind"] == "falling" for t in rough_t[g][rule]]) for g in CHECKPOINTS},
-                "rough_rising": {str(g): bits([t["kind"] == "rising" for t in rough_t[g][rule]]) for g in CHECKPOINTS},
+                "rough_falling": flags_of(rough_t, "falling", rule),
+                "rough_rising": flags_of(rough_t, "rising", rule),
+                "chesscom_falling": flags_of(g1_t, "falling", rule),
+                "chesscom_rising": flags_of(g1_t, "rising", rule),
             }
             for rule in RULES
         },
@@ -806,7 +909,10 @@ def design() -> dict:
             "tilt": [TILT, TILT_CAP],
         },
         "cohort": {"months": COHORT_MONTHS, "slice": COHORT_SLICE, "min_games": COHORT_MIN_GAMES},
-        "family": FAMILY,
+        "decision_level": DECISION_LEVEL,
+        "glicko1_players": GLICKO1_PLAYERS,
+        "form_sensitivity": [FORM_SENSITIVITY, FORM_SENSITIVITY_PLAYERS],
+        "step_cap": STEP_CAP,
         "seed_names": SEED_NAMES,
         "seed_namespace": SEED_NS,
     }
@@ -816,11 +922,22 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True)
     ap.add_argument("--algorithm", default=None)
-    ap.add_argument("--seed-namespace", default=REGISTERED_NS)
+    ap.add_argument(
+        "--seed-namespace",
+        default=None,
+        help="the registered namespace (namespace.txt, the default) or the development one, "
+        + DEV_NS,
+    )
     args = ap.parse_args()
     out_dir = Path(args.out)
+    registered = NAMESPACE_FILE.read_text(encoding="utf-8").strip() if NAMESPACE_FILE.exists() else None
+    ns = args.seed_namespace or registered
+    if ns is None:
+        raise SystemExit("no namespace.txt yet: only --seed-namespace " + DEV_NS + " runs")
+    if ns not in (DEV_NS, registered):
+        raise SystemExit(f"{ns} is neither the registered namespace nor " + DEV_NS)
     global SEED_NS
-    SEED_NS = args.seed_namespace
+    SEED_NS = ns
     (out_dir / "figures").mkdir(parents=True, exist_ok=True)
     if args.algorithm is not None and lab.algorithm()["id"] != args.algorithm:
         raise SystemExit(f"the cli is not the requested {args.algorithm}")
@@ -866,8 +983,8 @@ def figures(fig_dir: Path, res: dict) -> None:
             cells = [x for x in res["candidates"][c]["primary"] if x["side"] == side]
             xs = [x["games"] for x in cells]
             ys = [x["share"] for x in cells]
-            lo = [x["share"] - x["ci_bonferroni"][0] for x in cells]
-            hi = [x["ci_bonferroni"][1] - x["share"] for x in cells]
+            lo = [x["share"] - x["ci_decision"][0] for x in cells]
+            hi = [x["ci_decision"][1] - x["share"] for x in cells]
             ax.errorbar(xs, ys, yerr=[lo, hi], marker="s", capsize=3, label=c)
         ax.axhline(BOUND, color="grey", lw=0.8, ls="--", label="bound 0.15")
         ax.set_xscale("log")
