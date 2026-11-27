@@ -51,6 +51,7 @@ pub fn trajectory() -> Trajectory {
             date: date!(2026 - 11 - 20),
         }),
         change: Some(-281),
+        rating_rule: None,
         months: vec![
             MonthRating {
                 month: "2026-04".into(),
@@ -130,6 +131,7 @@ pub fn short() -> Trajectory {
         peak: None,
         current: None,
         change: None,
+        rating_rule: None,
         months: vec![MonthRating {
             month: "2026-11".into(),
             games: 12,

@@ -8,6 +8,29 @@ One entry per algorithm version, newest first. The id is `algo-<version>+<hash>`
 
 Each entry says what changed, why, the ADR, and the benchmark delta (the scorecard before and after; `cli bench compare` once it exists).
 
+## algo-6.0.0+f40a2b27677a
+
+2026-11-27. The trajectory's rating verdict comes back, from a rule that counts the rating's memory and compares your first games with your last, as EXP-0030 decided.
+
+- What changed: `profile::coaching::trajectory::RatingRule::PRODUCTION` is `MemoryHalves`. "Then" is the first `W = min(30, n / 2)` rated games and "now" the last `W`; no window is placed on the peak. The rating row's 80% interval comes from the player's own rating steps under a mean-reverting model (`Memory`: `a = min(q s / 2, 1)` with `q = ln 10 / 400`, `φ = 1 − a`, `σ² = s² / (a (2 − a))`, and the exact variance of the difference of two block means), not from the bootstrap of the window's ratings. `change` is the difference the verdict tests, the last window's mean minus the first window's. The trajectory names its rule (`ratingRule`, a new optional field of the contract, `memory-halves`). `coaching_input::trajectory::RATING_VERDICT_SHOWN` is `true`, from EXP-0030 (`RATING_VERDICT_SOURCE`), and `player_visible` passes only a trajectory from `CLEARED_RULE`, so every input built before this version still has its verdict withheld when the coach reads it; the manifest names the rule (`profile.trajectory_rating_verdict.rule`). The web's `computeTrajectory` is the same rule (`backend/fixtures/trajectory/cases.json`). The coach's prompts are `report/report.v6.md` and `chat/system.v8.md`: the change between the windows' averages, the peak as a plain fact with no difference against it, and a verdict that says the rating moved by more than its own wander, not why. The Progress headline and the Overview card say "Your rapid rating averaged 1,492 over your last 30 games, down from 1,560 over your first 30 (−68). It is 1,488 now. Your highest was 1,610, in April 2026."; the then | now table's rating row has its verdict and range again. `peak-bootstrap` stays selectable in the lab.
+- Why: on 2,000 fresh simulated players whose strength never changed (`EXP-0030-fb2f150c7574`), `memory-halves` said "falling" to 0.103, 0.117 and 0.105 and "rising" to 0.089, 0.084 and 0.095 at 60, 120 and 250 rated games, every cell within the bound of 0.15 at 1 − 0.025/2 (the worst upper end 0.136), against the old rule's 0.46 to 0.79; it caught a 200-point fall 0.72, 0.84 and 0.99 of the time, and passed the rough-world (0.125 to 0.144), chess.com-like (0.086 to 0.107) and real-cohort guards (`lab/experiments/EXP-0030/decision.md`). The real Lichess series flagged 36% of settled players either way against the model's 20%, so the rate on real players is not yet known (EXP-0032), and long histories and new accounts are untested (EXP-0031).
+- ADRs: 0117 (the rule and where it is stated), 0116 (the hide it lifts), 0105 (the version policy), 0109 (the arena).
+- Benchmark: the replay goldens change only in their header (no replay fixture account has 20 rated games in a time class). The lab's trajectory golden response changes with the rule: `lab-peaked`, which climbs to a peak and falls back towards its start, is now `flat`, and `peak-bootstrap` still calls it `falling`. The arena's EXP-0015 record of this version is the new rule on EXP-0015's registered seeds.
+- Arena (release, against `algo-5.0.0`):
+  - **EXP-0015 better.** Players whose strength never changed were told "falling" 0.094, 0.110 and 0.081 of the time at 60, 120 and 250 games, against 0.443, 0.621 and 0.784. A 200-point fall was caught 0.848 of the time, against 0.978. Its guard reads that as no clear difference under its rule.
+  - **No clear difference on EXP-0002, EXP-0030, EXP-0001, EXP-0007, EXP-0008 or EXP-0009.** EXP-0001's recall at 2 at 80 games is 0.633 on both sides, and its coverage 0.775. EXP-0007 trusts the same 9 of 15 tags. EXP-0009 shows no key whose fall precedes climbing.
+  - EXP-0001's arena guard accepted the change to `lab_rules.rs` by its review (ADR 0117).
+  - The four release-only experiments took about 4.3 CPU-hours.
+
+## algo-5.0.1+d9c1f47013b6
+
+2026-11-27. EXP-0030's two candidate rules for the trajectory's rating verdict, selectable in the lab only, with no output change.
+
+- What changed: `profile::coaching::trajectory::RatingRule` names the rule of the rating row: `peak-bootstrap` (`RatingRule::PRODUCTION`, the rule of every version so far) and EXP-0030's frozen candidates `memory-halves` and `memory-before`, whose interval comes from the rating's own steps (`Memory`, `memory_compare`) instead of the bootstrap, against the first games or every game before the last ones, with no selected peak. `compute` runs the production rule and `compute_with` any of them; only `cli lab trajectory` selects another, through the request's `rule`. The worker and the web never do, so production computes exactly what it did. Only `profile.source_digest` moved.
+- Why: EXP-0030 measures the candidates on the same requests as the champion (`lab/experiments/EXP-0030/preregistration.md`), after EXP-0015 hid the verdict (ADR 0116).
+- ADRs: 0105 (the version policy), 0109 (the arena), 0116 (the hidden verdict).
+- Benchmark: no change. `backend/crates/profile/tests/trajectory.rs` replays the web's fixture unchanged, the replay goldens and the lab's golden responses are byte-identical, and no component other than a source digest moved, so the Tier 1 scorecard of 5.0.0 stands.
+
 ## algo-5.0.0+3cabedf4c935
 
 2026-11-26. The trajectory's rating verdict is computed and no longer stated to players or the coach, as EXP-0015 decided (#136).

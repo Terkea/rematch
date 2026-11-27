@@ -118,6 +118,7 @@ One file per decision: context, decision, alternatives, consequences. New decisi
 - [0114. Following anonymised Lichess players across months](0114-following-anonymised-lichess-players-across-months.md)
 - [0115. The lab calls the trajectory, the timeline and the web's rules](0115-the-lab-calls-the-web-rules-through-node.md)
 - [0116. Hide the trajectory's rating verdict until a rule clears EXP-0015](0116-hide-the-trajectory-rating-verdict.md)
+- [0117. A trajectory verdict that counts the rating's memory](0117-a-trajectory-verdict-that-counts-the-ratings-memory.md)
 
 ## Records with placeholder numbers
 

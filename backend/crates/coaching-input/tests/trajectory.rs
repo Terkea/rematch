@@ -1,6 +1,6 @@
-//! The trajectory's rating verdict is EXP-0015's decision (#136, ADR 0116): hidden until a rule
-//! clears it. Turning it back on after EXP-0030 is one line in `RATING_VERDICT_SHOWN` and this
-//! test's source moving to that experiment's results.
+//! The trajectory's rating verdict is EXP-0030's decision (ADR 0117): stated again, from the rule
+//! that cleared it only. EXP-0015 hid it (#136, ADR 0116); an input built before `algo-6.0.0`
+//! names no rule, so its verdict stays withheld.
 
 #[path = "support/v2.rs"]
 mod v2;
@@ -8,14 +8,14 @@ mod v2;
 mod v3;
 
 use coaching_input::trajectory::{
-    RATING_VERDICT_SHOWN, RATING_VERDICT_SOURCE, player_visible, player_visible_input,
+    CLEARED_RULE, RATING_VERDICT_SHOWN, RATING_VERDICT_SOURCE, player_visible, player_visible_input,
 };
 use coaching_input::{ChangeVerdict, CoachingInput, InputVersion};
 use serde_json::Value;
 
-fn exp_0015() -> Value {
+fn exp_0030() -> Value {
     let path = format!(
-        "{}/../../../lab/experiments/EXP-0015/results.json",
+        "{}/../../../lab/experiments/EXP-0030/results.json",
         env!("CARGO_MANIFEST_DIR")
     );
     let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{path}: {e}"));
@@ -37,17 +37,45 @@ fn v3_input() -> CoachingInput {
 }
 
 #[test]
-fn the_switch_is_exp_0015s_decision() {
-    let r = exp_0015();
-    assert_eq!(RATING_VERDICT_SOURCE, "EXP-0015");
-    assert_eq!(r["experiment"], "EXP-0015");
-    let decision = r["primary"]["decision"].as_str().expect("a decision");
-    let hide = decision == "hide the verdict until fixed";
+fn the_switch_is_exp_0030s_decision() {
+    let r = exp_0030();
+    assert_eq!(RATING_VERDICT_SOURCE, "EXP-0030");
+    assert_eq!(r["experiment"], "EXP-0030");
+    let decision = r["decision"].as_str().expect("a decision");
+    let shipped = decision.strip_prefix("ship ");
     assert!(
-        hide || decision == "keep the verdict",
+        shipped.is_some()
+            || decision == "keep the verdict hidden"
+            || decision.starts_with("need more data"),
         "unknown decision {decision:?}"
     );
-    assert_eq!(RATING_VERDICT_SHOWN, !hide, "EXP-0015 decided {decision:?}");
+    assert_eq!(
+        RATING_VERDICT_SHOWN,
+        shipped.is_some(),
+        "EXP-0030 decided {decision:?}"
+    );
+    assert_eq!(
+        shipped,
+        Some(CLEARED_RULE),
+        "the rule that ships is the one that cleared"
+    );
+}
+
+#[test]
+fn the_cleared_rule_is_stated_and_any_other_is_cut() {
+    let mut cleared = v3::trajectory();
+    cleared.rating_rule = Some(CLEARED_RULE.to_owned());
+    assert_eq!(player_visible(cleared.clone()), cleared);
+    for other in [None, Some("peak-bootstrap".to_owned())] {
+        let mut t = v3::trajectory();
+        t.rating_rule = other;
+        let cut = player_visible(t);
+        assert_eq!(cut.kind, None);
+        assert_eq!(
+            cut.then_vs_now.unwrap().rating.verdict,
+            ChangeVerdict::Withheld
+        );
+    }
 }
 
 #[test]

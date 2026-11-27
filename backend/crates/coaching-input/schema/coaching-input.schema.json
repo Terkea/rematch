@@ -1562,7 +1562,7 @@
       "description": "v3 (ADR 0089): the rating trajectory of the time class. Ratings are pre-game (on chess.com\nthe rating after the previous rated game, ADR-FIX-C-1). Below 20 rated games it is not\n`sufficient`: `kind`, `peak`, `current`, `change` and `thenVsNow` are null and `needMore`\nsays how many more rated games it needs. `kind` is also null when the rating's verdict is\nwithheld (ADR 0116, [`crate::trajectory::RATING_VERDICT_SHOWN`]).",
       "properties": {
         "change": {
-          "description": "`current - peak` with a `peak` \"then\" window, else `current` minus the first window's\nmean, in rating points.",
+          "description": "Since `algo-6.0.0` (EXP-0030), the last window's mean minus the first window's, in rating\npoints: the difference the verdict tests. Earlier inputs: `current - peak` with a `peak`\n\"then\" window, else `current` minus the first window's mean.",
           "maximum": 4000,
           "minimum": -4000,
           "type": [
@@ -1622,6 +1622,13 @@
           "maximum": 100000000,
           "minimum": 0,
           "type": "integer"
+        },
+        "ratingRule": {
+          "description": "The rule that computed `kind` and the rating's verdict (`memory-halves` since\n`algo-6.0.0`). Absent on inputs built before it, whose verdict EXP-0015 found wrong, so\n`trajectory::player_visible` withholds theirs.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "sufficient": {
           "type": "boolean"

@@ -4,7 +4,7 @@ import { TrajectorySection } from "../../(app)/app/_trajectory/section";
 import { trajectoryView } from "../../(app)/app/_trajectory/view";
 
 // The rating trajectory (F6, ADR 0089) on synthetic games (B15 allows fixtures here): a rise to a
-// peak, then a fall, with accuracy and a weakness worse in the last games. A server component:
+// peak, then a fall below where it started, with accuracy and a weakness worse in the last games. A server component:
 // the read model runs here as it does on Progress.
 
 const DAY = 86_400_000;
@@ -15,7 +15,7 @@ function demo() {
   const games = Array.from({ length: n }, (_, i) => ({
     id: `sg-${i}`,
     playedAt: new Date(START + i * 2 * DAY),
-    rating: Math.round((i < 90 ? 820 + i * 3.1 : 1099 - (i - 90) * 4) + (((i * 37) % 11) - 5) * 4),
+    rating: Math.round((i < 90 ? 820 + i * 3.1 : 1099 - (i - 90) * 8) + (((i * 37) % 11) - 5) * 4),
   }));
   const stats: GameStatRow[] = games.map((g, i) => ({
     id: g.id,
@@ -34,7 +34,7 @@ function demo() {
   );
   const t = computeTrajectory({
     games,
-    current: { rating: 816, at: new Date(START + n * 2 * DAY) },
+    current: { rating: 540, at: new Date(START + n * 2 * DAY) },
     stats,
     weaknesses: [
       {
@@ -63,7 +63,7 @@ export function TrajectoryStyleguideSection() {
         </h2>
         <p className="text-sm text-ink-soft">
           Progress opens with the rating line: the peak marked, the compared spans shaded, then the
-          games around the peak against the last games. Synthetic games.
+          first games against the last games. Synthetic games.
         </p>
       </div>
       <TrajectorySection view={demo()} />

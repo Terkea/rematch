@@ -22,8 +22,8 @@ use std::collections::BTreeMap;
 
 use coaching_input::Trajectory;
 use profile::coaching::trajectory::{
-    GameResult, Prior, TRAJECTORY_WEAKNESSES, TrajectoryGame, WeaknessInput, compute, contract,
-    trajectory_input,
+    GameResult, Prior, RatingRule, TRAJECTORY_WEAKNESSES, TrajectoryGame, WeaknessInput,
+    compute_with, contract, trajectory_input,
 };
 use profile::estimates::with_model_baselines;
 use profile::timeline_job::evaluate_all;
@@ -135,6 +135,10 @@ pub struct TrajectoryPlayer {
 #[serde(deny_unknown_fields)]
 pub struct TrajectoryRequest {
     pub schema_version: String,
+    /// The rating rule (`RatingRule::name`): `peak-bootstrap`, `memory-halves` or
+    /// `memory-before` (EXP-0030). `null` or absent: the production rule.
+    #[serde(default)]
+    pub rule: Option<String>,
     pub players: Vec<TrajectoryPlayer>,
 }
 
@@ -155,6 +159,14 @@ pub struct TrajectoryResponse {
 
 /// The trajectory of one player (`trajectory_input`, `compute`, `contract`).
 pub fn trajectory_player(p: &TrajectoryPlayer) -> anyhow::Result<PlayerTrajectory> {
+    trajectory_player_with(p, RatingRule::PRODUCTION)
+}
+
+/// [`trajectory_player`] under a [`RatingRule`] (the lab's candidates, EXP-0030).
+pub fn trajectory_player_with(
+    p: &TrajectoryPlayer,
+    rule: RatingRule,
+) -> anyhow::Result<PlayerTrajectory> {
     if let Some(w) = p
         .games
         .windows(2)
@@ -214,7 +226,7 @@ pub fn trajectory_player(p: &TrajectoryPlayer) -> anyhow::Result<PlayerTrajector
         })
         .collect::<anyhow::Result<_>>()?;
     let input = trajectory_input(&games, p.chesscom, weaknesses, p.seed.clone());
-    let (series, computed) = compute(&input);
+    let (series, computed) = compute_with(&input, rule);
     Ok(PlayerTrajectory {
         id: p.id.clone(),
         trajectory: contract(&series, &computed),
@@ -227,13 +239,18 @@ pub fn trajectory(
     algorithm_id: &str,
 ) -> anyhow::Result<TrajectoryResponse> {
     check_version(&req.schema_version)?;
+    let rule = match req.rule.as_deref() {
+        None => RatingRule::PRODUCTION,
+        Some(name) => RatingRule::from_name(name)
+            .ok_or_else(|| anyhow::anyhow!("unknown trajectory rule {name:?}"))?,
+    };
     Ok(TrajectoryResponse {
         schema_version: SCHEMA_VERSION.to_owned(),
         algorithm_id: algorithm_id.to_owned(),
         players: req
             .players
             .iter()
-            .map(trajectory_player)
+            .map(|p| trajectory_player_with(p, rule))
             .collect::<anyhow::Result<_>>()?,
     })
 }

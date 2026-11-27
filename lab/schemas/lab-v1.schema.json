@@ -772,6 +772,10 @@
       "required": ["schema_version", "players"],
       "properties": {
         "schema_version": { "$ref": "#/$defs/SchemaVersion" },
+        "rule": {
+          "enum": [null, "peak-bootstrap", "memory-halves", "memory-before"],
+          "description": "The rating rule (EXP-0030): the champion peak-bootstrap or a memory candidate; null or absent runs the production rule."
+        },
         "players": { "type": "array", "items": { "$ref": "#/$defs/TrajectoryPlayer" } }
       }
     },
@@ -881,7 +885,7 @@
       }
     },
     "Trajectory": {
-      "description": "The CoachingInput's v3 `trajectory` (backend/crates/coaching-input, ADR 0089), as the rule computes it. `kind` falling and `thenVsNow.rating.verdict` worse are the headline 'worse than your peak'; since algo-5.0.0 the coach never receives either (EXP-0015, ADR 0116).",
+      "description": "The CoachingInput's v3 `trajectory` (backend/crates/coaching-input, ADR 0089), as the rule computes it. `kind` falling and `thenVsNow.rating.verdict` worse are the headline's 'falling'. algo-5.0.0 withheld them (EXP-0015, ADR 0116); since algo-6.0.0 the rule is EXP-0030's memory-halves and its verdict is stated again (ADR 0117). ratingRule names the rule that computed them; it is absent when the trajectory is not sufficient.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -903,6 +907,7 @@
         "peak": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/RatingAt" }] },
         "current": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/RatingAt" }] },
         "change": { "type": ["integer", "null"] },
+        "ratingRule": { "enum": ["peak-bootstrap", "memory-halves", "memory-before"] },
         "months": { "type": "array", "items": { "$ref": "#/$defs/MonthRating" } },
         "thenVsNow": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/ThenVsNow" }] }
       }

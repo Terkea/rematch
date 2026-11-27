@@ -505,7 +505,7 @@ def test_the_committed_results_are_the_champions_cache() -> None:
     # Each live experiment's results.json is its version's record, reused, never re-run.
     for live in arena.live_experiments("release"):
         record = arena.committed_record(live, ran_on(live))
-        assert record is not None and record["seed_namespace"] == live.id
+        assert record is not None and record["seed_namespace"] == live.namespace
         digest = hashlib.sha256((live.exp / "results.json").read_bytes()).hexdigest()
         assert record["results_sha256"] == digest
 

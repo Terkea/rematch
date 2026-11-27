@@ -377,6 +377,174 @@ pub fn compare_rates(a: RateSide, b: RateSide, prior: Prior, seed: u32) -> RateC
     }
 }
 
+// ---- the rating's memory (EXP-0030) ---------------------------------------------------------
+
+/// The scale of every chess rating: 400 points is a factor of 10 in the odds.
+pub const RATING_SCALE: f64 = std::f64::consts::LN_10 / 400.0;
+
+/// How the rating row is compared then against now.
+///
+/// - `PeakBootstrap`: "then" is the games around the peak (or the first), compared by the
+///   bootstrap of the windows' pre-game ratings (ADR 0089), the rule of every version up to
+///   `algo-5.0.0`. EXP-0015 found it six to thirteen times too narrow.
+/// - `MemoryHalves`: "then" is the first `W` games; the interval comes from the rating's memory
+///   ([`Memory`]), not the bootstrap.
+/// - `MemoryBefore`: "then" is every game before "now"; the same memory interval.
+///
+/// The candidates are EXP-0030's, selectable in the lab only (`cli lab trajectory`'s `rule`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RatingRule {
+    PeakBootstrap,
+    MemoryHalves,
+    MemoryBefore,
+}
+
+impl RatingRule {
+    /// The rule [`compute`] runs: EXP-0030's `memory-halves`, which kept every false-alarm cell
+    /// within the bound and passed every guard on fresh seeds (`algo-6.0.0`, ADR 0117).
+    /// `PeakBootstrap` stays for the lab.
+    pub const PRODUCTION: RatingRule = RatingRule::MemoryHalves;
+    pub const ALL: [RatingRule; 3] = [
+        RatingRule::PeakBootstrap,
+        RatingRule::MemoryHalves,
+        RatingRule::MemoryBefore,
+    ];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            RatingRule::PeakBootstrap => "peak-bootstrap",
+            RatingRule::MemoryHalves => "memory-halves",
+            RatingRule::MemoryBefore => "memory-before",
+        }
+    }
+
+    pub fn from_name(name: &str) -> Option<RatingRule> {
+        RatingRule::ALL.into_iter().find(|r| r.name() == name)
+    }
+}
+
+/// A rating as a mean-reverting series around the player's strength (EXP-0030, section 7): the
+/// error after each game is `phi` times the one before plus fresh noise, with stationary variance
+/// `sigma2`. Both come from the root mean square of the player's own steps `s`: an Elo-type
+/// update of step `K` reverts by `a = q K p (1 - p)` a game with noise `K^2 var(s)`, and with
+/// `p (1 - p) = var(s) = 1/4`, `a = q s / 2` and `sigma2 = s^2 / (a (2 - a))`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Memory {
+    pub sigma2: f64,
+    pub phi: f64,
+}
+
+impl Memory {
+    /// The memory of a series of pre-game ratings; `None` with fewer than two or no movement.
+    pub fn of(ratings: &[f64]) -> Option<Memory> {
+        if ratings.len() < 2 {
+            return None;
+        }
+        let steps = ratings.len() - 1;
+        let sq = ratings
+            .windows(2)
+            .fold(0.0, |s, w| s + (w[1] - w[0]) * (w[1] - w[0]));
+        let rms = (sq / steps as f64).sqrt();
+        if !(rms.is_finite() && rms > 0.0) {
+            return None;
+        }
+        let a = (RATING_SCALE * rms / 2.0).min(1.0);
+        Some(Memory {
+            sigma2: rms * rms / (a * (2.0 - a)),
+            phi: (1.0 - a).clamp(0.0, 1.0 - 1e-12),
+        })
+    }
+
+    /// The sum of `phi^|i - j|` over a block of `m` consecutive games.
+    pub fn block(&self, m: usize) -> f64 {
+        let (p, m) = (self.phi, m as f64);
+        if p <= 0.0 {
+            return m;
+        }
+        m * (1.0 + p) / (1.0 - p) - 2.0 * p * (1.0 - p.powf(m)) / ((1.0 - p) * (1.0 - p))
+    }
+
+    /// The variance of a block mean of `m` games around the strength.
+    pub fn mean_var(&self, m: usize) -> f64 {
+        self.sigma2 * self.block(m) / (m as f64 * m as f64)
+    }
+
+    /// The variance of `mean(b) - mean(a)` for blocks `a` and `b` (`b.start >= a.end`).
+    pub fn diff_var(&self, a: std::ops::Range<usize>, b: std::ops::Range<usize>) -> f64 {
+        let (ma, mb) = (a.len(), b.len());
+        let p = self.phi;
+        let cross = if p <= 0.0 {
+            0.0
+        } else {
+            let gap = (b.start + 1 - a.end) as f64;
+            p.powf(gap) * (1.0 - p.powf(ma as f64)) * (1.0 - p.powf(mb as f64))
+                / ((1.0 - p) * (1.0 - p))
+        };
+        let v = self.mean_var(ma) + self.mean_var(mb)
+            - 2.0 * self.sigma2 * cross / (ma as f64 * mb as f64);
+        v.max(0.0)
+    }
+}
+
+/// The rating row under the memory model: each window's mean with its 80% interval, and the
+/// difference `mean(now) - mean(then)` called only when its 80% interval excludes 0. A series
+/// that never moved gives no verdict.
+pub fn memory_compare(
+    ratings: &[f64],
+    then: std::ops::Range<usize>,
+    now: std::ops::Range<usize>,
+) -> (MeanComparison, (Estimate, Estimate)) {
+    let mean = |r: &std::ops::Range<usize>| {
+        ratings[r.clone()].iter().fold(0.0, |s, x| s + x) / r.len() as f64
+    };
+    let (ma, mb) = (mean(&then), mean(&now));
+    let diff = mb - ma;
+    let memory = Memory::of(ratings);
+    let side = |m: f64, r: &std::ops::Range<usize>| Estimate::Estimate {
+        value: m,
+        interval: memory.and_then(|mem| {
+            let h = Z80 * mem.mean_var(r.len()).sqrt();
+            finish(m - h, m + h, RATING)
+        }),
+        n: r.len(),
+    };
+    let sides = (side(ma, &then), side(mb, &now));
+    let Some(mem) = memory else {
+        return (
+            MeanComparison {
+                verdict: Verdict::NoClearChange,
+                diff: Some((
+                    diff,
+                    Interval {
+                        low: diff,
+                        high: diff,
+                    },
+                )),
+            },
+            sides,
+        );
+    };
+    let h = Z80 * mem.diff_var(then, now).sqrt();
+    let interval = Interval {
+        low: diff - h,
+        high: diff + h,
+    };
+    let verdict = if interval.low > 0.0 {
+        Verdict::Better
+    } else if interval.high < 0.0 {
+        Verdict::Worse
+    } else {
+        Verdict::NoClearChange
+    };
+    (
+        MeanComparison {
+            verdict,
+            diff: Some((diff, interval)),
+        },
+        sides,
+    )
+}
+
 // ---- the trajectory -------------------------------------------------------------------------
 
 /// One rated game with the player's pre-game rating.
@@ -470,6 +638,8 @@ pub struct Ready {
     pub rating: MeanComparison,
     pub rating_sides: (Estimate, Estimate),
     pub rows: Vec<Row>,
+    /// The rule that computed the kind and the rating row.
+    pub rule: RatingRule,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -482,8 +652,14 @@ fn ms(t: OffsetDateTime) -> i128 {
     t.unix_timestamp_nanos().div_euclid(1_000_000)
 }
 
-/// The web's `computeTrajectory` (module docs). Returns the sorted series too.
+/// The web's `computeTrajectory` (module docs) under the production rule
+/// ([`RatingRule::PRODUCTION`]). Returns the sorted series too.
 pub fn compute(input: &Input) -> (Vec<RatedGame>, Computed) {
+    compute_with(input, RatingRule::PRODUCTION)
+}
+
+/// [`compute`] under any [`RatingRule`] (the lab's candidates, EXP-0030).
+pub fn compute_with(input: &Input, rule: RatingRule) -> (Vec<RatedGame>, Computed) {
     let mut series: Vec<RatedGame> = input
         .games
         .iter()
@@ -524,15 +700,20 @@ pub fn compute(input: &Input) -> (Vec<RatedGame>, Computed) {
     };
     let size = TRAJECTORY_WINDOW.min(n / 2);
     let now_start = n - size;
-    let peak_earlier = peak.2.is_some() && peak_idx < now_start;
+    let peak_earlier =
+        rule == RatingRule::PeakBootstrap && peak.2.is_some() && peak_idx < now_start;
     let then_start = if peak_earlier {
         let centred = peak_idx as i64 - (size / 2) as i64;
         centred.min((now_start - size) as i64).max(0) as usize
     } else {
         0
     };
-    let window = |start: usize, basis: WindowBasis| {
-        let slice = &series[start..start + size];
+    let then_len = match rule {
+        RatingRule::MemoryBefore => now_start,
+        _ => size,
+    };
+    let window = |start: usize, len: usize, basis: WindowBasis| {
+        let slice = &series[start..start + len];
         Window {
             basis,
             games: slice.len(),
@@ -545,23 +726,31 @@ pub fn compute(input: &Input) -> (Vec<RatedGame>, Computed) {
     };
     let then = window(
         then_start,
+        then_len,
         if peak_earlier {
             WindowBasis::Peak
         } else {
             WindowBasis::Start
         },
     );
-    let now = window(now_start, WindowBasis::Last);
-    let then_games = &series[then_start..then_start + size];
+    let now = window(now_start, size, WindowBasis::Last);
+    let then_games = &series[then_start..then_start + then_len];
     let now_games = &series[now_start..];
     let then_ratings: Vec<f64> = then_games.iter().map(|g| g.rating).collect();
     let now_ratings: Vec<f64> = now_games.iter().map(|g| g.rating).collect();
     let seed = &input.seed;
-    let rating = compare_means(&then_ratings, &now_ratings, true, &format!("{seed}:rating"));
-    let rating_sides = (
-        estimate_mean(&then_ratings, &format!("{seed}:rating:a"), RATING),
-        estimate_mean(&now_ratings, &format!("{seed}:rating:b"), RATING),
-    );
+    let (rating, rating_sides) = if rule == RatingRule::PeakBootstrap {
+        (
+            compare_means(&then_ratings, &now_ratings, true, &format!("{seed}:rating")),
+            (
+                estimate_mean(&then_ratings, &format!("{seed}:rating:a"), RATING),
+                estimate_mean(&now_ratings, &format!("{seed}:rating:b"), RATING),
+            ),
+        )
+    } else {
+        let all: Vec<f64> = series.iter().map(|g| g.rating).collect();
+        memory_compare(&all, then_start..then_start + then_len, now_start..n)
+    };
     let kind = match rating.verdict {
         Verdict::Worse => TrajectoryKind::Falling,
         Verdict::Better => TrajectoryKind::Rising,
@@ -611,22 +800,25 @@ pub fn compute(input: &Input) -> (Vec<RatedGame>, Computed) {
             result: compare_rates(a, b, w.prior, seed),
         });
     }
-    let reference = if then.basis == WindowBasis::Peak {
-        peak.0
-    } else {
-        then.mean_rating
+    // The memory rules state the difference the verdict tests, mean against mean; the peak
+    // stays a plain fact (EXP-0030, section 9).
+    let (reference, against) = match rule {
+        RatingRule::PeakBootstrap if then.basis == WindowBasis::Peak => (peak.0, current.0),
+        RatingRule::PeakBootstrap => (then.mean_rating, current.0),
+        _ => (then.mean_rating, now.mean_rating),
     };
     let ready = Ready {
         kind,
         games: n,
         peak,
         current,
-        change: js_round(current.0 - reference),
+        change: js_round(against - reference),
         then,
         now,
         rating,
         rating_sides,
         rows,
+        rule,
     };
     (series, Computed::Ready(Box::new(ready)))
 }
@@ -794,6 +986,7 @@ pub fn contract(series: &[RatedGame], c: &Computed) -> ContractTrajectory {
                 peak: None,
                 current: None,
                 change: None,
+                rating_rule: None,
                 months,
                 then_vs_now: None,
             };
@@ -868,6 +1061,7 @@ pub fn contract(series: &[RatedGame], c: &Computed) -> ContractTrajectory {
             date: utc_date(r.current.1),
         }),
         change: Some(r.change.clamp(-4000.0, 4000.0) as i32),
+        rating_rule: Some(r.rule.name().to_owned()),
         months,
         then_vs_now: Some(ThenVsNow {
             then: window(&r.then),

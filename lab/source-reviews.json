@@ -35,6 +35,13 @@
     "reason": "a new module, cli lab trajectory and timeline, which the bench run never calls (ADR 0115)"
   },
   {
+    "adr": "docs/decisions/0117-a-trajectory-verdict-that-counts-the-ratings-memory.md",
+    "blob": "035b9fe2bd20ee6e606bc407ad102a6d9fdb9dec",
+    "experiment": "EXP-0001",
+    "path": "backend/crates/bench/src/lab_rules.rs",
+    "reason": "an optional rule on cli lab trajectory, the production rule when absent; EXP-0001 does not call cli lab trajectory (ADR 0117)"
+  },
+  {
     "adr": "docs/decisions/0109-champion-and-challenger.md",
     "blob": "fd9d50a2899990b0517eec6543ed7cd95b072b2b",
     "experiment": "EXP-0001",

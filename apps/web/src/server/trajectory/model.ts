@@ -1,27 +1,31 @@
 import {
   type BetaPosterior,
   CONFIDENCE,
-  compareMeans,
   compareRates,
   type Estimate,
-  estimateMean,
   KPI_MIN_GAMES,
   type MeanComparison,
   type Pair,
   type Prior,
   posterior,
   type RateComparison,
+  Z,
 } from "../stats";
+import { finishInterval } from "../stats/bootstrap";
 import type { GameStatRow } from "../stats/game-stats";
 import { comparePeriodRows } from "../stats/period-compare";
 
 // The rating trajectory (F6, F7; ADR 0089): the player's rating over time in one time class, its
-// peak and the current rating, and a "then" window against the last games. Pure: the loader
+// peak and the current rating, and the first games against the last games. Pure: the loader
 // (`load.ts`) reads the games, and the coach's v3 block is the same rule in Rust
-// (`profile::coaching::trajectory`). Every difference is called only by the ADR 0083 rule
-// (`compareMeans`, `compareRates`), so "worse" means the 80% evidence says so.
+// (`profile::coaching::trajectory`, `RatingRule::MemoryHalves`). The rating row's 80% interval
+// counts the rating's memory from game to game (EXP-0030, ADR 0117): a rating carries most of its
+// error over to the next game, so 30 consecutive ratings are not 30 independent measurements, and
+// the interval comes from the player's own rating steps, not a bootstrap of the window (which
+// EXP-0015 found six to thirteen times too narrow). The other rows are called by the ADR 0083
+// rules (`compareMeans`, `compareRates`), so "worse" means the 80% evidence says so.
 
-/** Games per window: "the 30 games around the peak" against "your last 30 games". */
+/** Games per window: "your first 30 games" against "your last 30 games". */
 export const TRAJECTORY_WINDOW = 30;
 /** Rated games before anything is said: two windows of `KPI_MIN_GAMES`. */
 export const TRAJECTORY_MIN_GAMES = 2 * KPI_MIN_GAMES;
@@ -99,7 +103,7 @@ export type Trajectory =
       /** The highest rating; `gameId` is null when the peak is the current rating. */
       peak: { rating: number; at: Date; gameId: string | null };
       current: { rating: number; at: Date };
-      /** Current minus the reference: the peak (basis `peak`) or the first window's mean. */
+      /** The difference the verdict tests: the last window's mean minus the first window's. */
       change: number;
       then: TrajectoryWindow;
       now: TrajectoryWindow;
@@ -111,6 +115,104 @@ export type Trajectory =
     };
 
 const RATING_DOMAIN = { min: 0, max: 4000 };
+
+/** The scale of every chess rating: 400 points is a factor of 10 in the odds (Rust `RATING_SCALE`). */
+export const RATING_SCALE = Math.LN10 / 400;
+
+/**
+ * A rating as a mean-reverting series around the player's strength (EXP-0030, Rust `Memory`): the
+ * error after each game is `phi` times the one before plus fresh noise, with stationary variance
+ * `sigma2`. Both come from the root mean square of the player's own steps `s`: `a = q s / 2`
+ * (at most 1), `phi = 1 - a`, `sigma2 = s^2 / (a (2 - a))`.
+ */
+export type Memory = { sigma2: number; phi: number };
+
+/** The memory of a series of pre-game ratings; null with fewer than two or no movement. */
+export function memoryOf(ratings: readonly number[]): Memory | null {
+  if (ratings.length < 2) return null;
+  let sq = 0;
+  for (let i = 1; i < ratings.length; i++) {
+    const d = (ratings[i] as number) - (ratings[i - 1] as number);
+    sq += d * d;
+  }
+  const rms = Math.sqrt(sq / (ratings.length - 1));
+  if (!(Number.isFinite(rms) && rms > 0)) return null;
+  const a = Math.min((RATING_SCALE * rms) / 2, 1);
+  return { sigma2: (rms * rms) / (a * (2 - a)), phi: Math.min(Math.max(1 - a, 0), 1 - 1e-12) };
+}
+
+/** The sum of `phi^|i - j|` over a block of `m` consecutive games. */
+function blockSum(mem: Memory, m: number): number {
+  const p = mem.phi;
+  if (p <= 0) return m;
+  return (m * (1 + p)) / (1 - p) - (2 * p * (1 - p ** m)) / ((1 - p) * (1 - p));
+}
+
+/** The variance of a block mean of `m` games around the strength. */
+function meanVar(mem: Memory, m: number): number {
+  return (mem.sigma2 * blockSum(mem, m)) / (m * m);
+}
+
+/** The variance of `mean(b) - mean(a)` for blocks `[a0, a1)` and `[b0, b1)`, `b0 >= a1`. */
+export function diffVar(mem: Memory, a: [number, number], b: [number, number]): number {
+  const ma = a[1] - a[0];
+  const mb = b[1] - b[0];
+  const p = mem.phi;
+  const cross =
+    p <= 0 ? 0 : (p ** (b[0] + 1 - a[1]) * (1 - p ** ma) * (1 - p ** mb)) / ((1 - p) * (1 - p));
+  const v = meanVar(mem, ma) + meanVar(mem, mb) - (2 * mem.sigma2 * cross) / (ma * mb);
+  return Math.max(v, 0);
+}
+
+/**
+ * The rating row under the memory model: each window's mean with its 80% interval, and the
+ * difference `mean(now) - mean(then)`, called only when its 80% interval excludes 0. A series that
+ * never moved gets no verdict.
+ */
+export function memoryCompare(
+  ratings: readonly number[],
+  then: [number, number],
+  now: [number, number],
+): { rating: MeanComparison; sides: Pair<Estimate> } {
+  const mean = (r: [number, number]) => {
+    let s = 0;
+    for (let i = r[0]; i < r[1]; i++) s += ratings[i] as number;
+    return s / (r[1] - r[0]);
+  };
+  const ma = mean(then);
+  const mb = mean(now);
+  const diff = mb - ma;
+  const mem = memoryOf(ratings);
+  const side = (m: number, r: [number, number]): Estimate => {
+    const n = r[1] - r[0];
+    if (!mem) return { kind: "estimate", value: m, interval: null, n };
+    const h = Z[0.8] * Math.sqrt(meanVar(mem, n));
+    return { kind: "estimate", value: m, interval: finishInterval(m - h, m + h, RATING_DOMAIN), n };
+  };
+  const sides = { a: side(ma, then), b: side(mb, now) };
+  const base = {
+    n: { a: then[1] - then[0], b: now[1] - now[0] },
+    mean: { a: ma, b: mb },
+  };
+  if (!mem) {
+    return {
+      rating: {
+        verdict: "no_clear_change",
+        ...base,
+        diff: { value: diff, interval: { low: diff, high: diff, level: CONFIDENCE } },
+      },
+      sides,
+    };
+  }
+  const h = Z[0.8] * Math.sqrt(diffVar(mem, then, now));
+  const low = diff - h;
+  const high = diff + h;
+  const verdict = low > 0 ? "better" : high < 0 ? "worse" : "no_clear_change";
+  return {
+    rating: { verdict, ...base, diff: { value: diff, interval: { low, high, level: CONFIDENCE } } },
+    sides,
+  };
+}
 const LABEL = { accuracy: "Accuracy", blunders: "Blunders per game", score: "Score" } as const;
 const UNIT = { accuracy: "accuracy", blunders: "perGame", score: "score" } as const;
 
@@ -211,29 +313,23 @@ export function computeTrajectory(input: TrajectoryInput): Trajectory {
       ? { rating: current.rating, at: current.at, gameId: null }
       : { rating: peakGame.rating, at: peakGame.at, gameId: peakGame.id };
 
+  // The first games against the last (EXP-0030): no window is placed on a selected peak, which
+  // is a maximum of the same noise the verdict tests.
   const size = Math.min(TRAJECTORY_WINDOW, Math.floor(n / 2));
   const nowStart = n - size;
-  const peakEarlier = peak.gameId !== null && peakIdx < nowStart;
-  const thenStart = peakEarlier
-    ? Math.max(0, Math.min(peakIdx - Math.floor(size / 2), nowStart - size))
-    : 0;
-  const then = windowOf(series, thenStart, size, peakEarlier ? "peak" : "start");
+  const thenStart = 0;
+  const then = windowOf(series, thenStart, size, "start");
   const now = windowOf(series, nowStart, size, "last");
 
   const ids = {
     a: series.slice(thenStart, thenStart + size).map((p) => p.id),
     b: series.slice(nowStart).map((p) => p.id),
   };
-  const thenRatings = series.slice(thenStart, thenStart + size).map((p) => p.rating);
-  const nowRatings = series.slice(nowStart).map((p) => p.rating);
-  const rating = compareMeans(thenRatings, nowRatings, {
-    higherIsBetter: true,
-    seed: `${input.seed}:rating`,
-  });
-  const ratingSides = {
-    a: estimateMean(thenRatings, `${input.seed}:rating:a`, RATING_DOMAIN),
-    b: estimateMean(nowRatings, `${input.seed}:rating:b`, RATING_DOMAIN),
-  };
+  const { rating, sides: ratingSides } = memoryCompare(
+    series.map((p) => p.rating),
+    [thenStart, thenStart + size],
+    [nowStart, n],
+  );
   const kind: TrajectoryKind =
     rating.verdict === "worse" ? "falling" : rating.verdict === "better" ? "rising" : "flat";
 
@@ -259,7 +355,7 @@ export function computeTrajectory(input: TrajectoryInput): Trajectory {
     series,
     peak,
     current,
-    change: Math.round(current.rating - (then.basis === "peak" ? peak.rating : then.meanRating)),
+    change: Math.round(now.meanRating - then.meanRating),
     then,
     now,
     rating,

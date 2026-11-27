@@ -40,6 +40,9 @@ export function TrajectorySection({ view }: { view: TrajectoryView }) {
               >
                 {view.headline}
               </p>
+              <p className="m-0 text-base text-ink-soft" style={LINING}>
+                {view.facts}
+              </p>
               {view.since ? (
                 <p className="m-0 text-base text-ink-soft" style={LINING}>
                   {view.since}
