@@ -493,6 +493,9 @@ class TrajectoryPlayer(Snake):
 
 class TrajectoryRequest(Snake):
     schema_version: Literal["lab-v1"] = SCHEMA_VERSION
+    # The rating rule (EXP-0030): "peak-bootstrap", "memory-halves" or "memory-before"; None runs
+    # the production rule.
+    rule: Literal["peak-bootstrap", "memory-halves", "memory-before"] | None = None
     players: list[TrajectoryPlayer]
 
 

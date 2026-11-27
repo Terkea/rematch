@@ -772,6 +772,10 @@
       "required": ["schema_version", "players"],
       "properties": {
         "schema_version": { "$ref": "#/$defs/SchemaVersion" },
+        "rule": {
+          "enum": [null, "peak-bootstrap", "memory-halves", "memory-before"],
+          "description": "The rating rule (EXP-0030): the champion peak-bootstrap or a memory candidate; null or absent runs the production rule."
+        },
         "players": { "type": "array", "items": { "$ref": "#/$defs/TrajectoryPlayer" } }
       }
     },
