@@ -51,9 +51,9 @@
       ],
       "prompt_sets": {
         "change": "c0bdee42eee0db3131b70c37a9a2a7b91076d57256e51cb5d03fb9742a04783c",
-        "chat": "9e013b0821b4abd327036753831ed15f4b1241cf027447243e2b3e7f098cdf4e",
+        "chat": "433f844a077825da522bcda4614eeca815aeb1fe5a600b46d926219cedd380f8",
         "chat_summary": "68e53e35309c86c6334dc3b45ac9e210552ace66563a452975ea256d795fb26f",
-        "report": "cd79cfe46264374d12883a873fd2dfeb0ab076ce24730bcd4588faabc4d0eac4",
+        "report": "8f87c3a7abd616da87e4ee3fb18b8b07a28fed10ff7e03509fdc9e8aa6d56cd8",
         "weekly": "82758a37e89b26b90f52f2eb7f3f33b3e05ab389bdf149a5a2be1a14e03c9236"
       },
       "validator_digest": "de9be7308916979e494f224ba1c67d715514d0356511b4853680568be3b9e727"
@@ -79,12 +79,13 @@
       },
       "source_digest": {
         "backend/crates/profile-core/src": "51836f302a3ca8f62575eb7d3333f894be499ef15a35ff05c8ff973bdb33733a",
-        "backend/crates/profile/src": "3fe4b3e259084c66d954edb663533756582239a73ae9d10faf6f9c16812980d4"
+        "backend/crates/profile/src": "1bdd0d68650cb38ac235ae131179e33d4d3f781f22853f3ec04b48c55ce8cdba"
       },
       "t_win": 85,
       "trajectory_rating_verdict": {
-        "shown": false,
-        "source": "EXP-0015"
+        "rule": "memory-halves",
+        "shown": true,
+        "source": "EXP-0030"
       }
     },
     "recommendation": {
@@ -99,12 +100,12 @@
         "apps/web/src/server/profile/obvious-capture.ts": "54cf1a95d3ac7116732b50ec32c525a495c7a9aa872bee8fe4b7e4bd7aa95393",
         "apps/web/src/server/train/model.ts": "1197d865dc59322a585c87fbaacb1a61c2d9652cea402efec559b4b364dea7cd",
         "backend/crates/ai/src/output/drills.rs": "3875d4337a16de8dd2a3912f2bfc53d97528003ae88e12a17a5a6b8d13c3960c",
-        "backend/crates/coaching-input/src": "49d16b1e9acbd2d42b34001d888f1a117f8b334df894eb473d131ac8fc0edded"
+        "backend/crates/coaching-input/src": "874122a2d84f6db764adc76d15e416d584d718fb29555331985180be03ee157a"
       },
       "trainer_version": "trainer-v1",
       "weekly_input_version": "weekly-input-v1"
     }
   },
-  "id": "algo-5.0.1+d9c1f47013b6",
-  "version": "5.0.1"
+  "id": "algo-6.0.0+e51884dc834a",
+  "version": "6.0.0"
 }

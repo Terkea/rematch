@@ -315,9 +315,10 @@ fn the_contract_states_units_shortfalls_and_months() {
     assert_eq!(t.kind, Some(TrajectoryKind::Falling));
     let peak = t.peak.as_ref().unwrap();
     assert!(peak.rating >= t.current.as_ref().unwrap().rating);
-    assert_eq!(t.current.as_ref().unwrap().rating, 816);
+    assert_eq!(t.current.as_ref().unwrap().rating, 612);
     let v = t.then_vs_now.as_ref().unwrap();
-    assert_eq!(v.then.basis, WindowBasis::Peak);
+    assert_eq!(v.then.basis, WindowBasis::Start);
+    assert_eq!(t.rating_rule.as_deref(), Some("memory-halves"));
     assert_eq!(v.rating.then.unit, MetricUnit::Elo);
     assert_eq!(v.accuracy.then.unit, MetricUnit::Pct);
     assert_eq!(v.blunders_per_game.then.unit, MetricUnit::PerGame);

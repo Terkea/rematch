@@ -165,7 +165,7 @@ fn each_rule_compares_its_windows() {
     let champ = ready(compute_with(&inp, RatingRule::PeakBootstrap).1);
     assert_eq!(champ.then.basis, WindowBasis::Peak);
     assert_eq!(compute(&inp), compute_with(&inp, RatingRule::PRODUCTION));
-    assert_eq!(RatingRule::PRODUCTION, RatingRule::PeakBootstrap);
+    assert_eq!(RatingRule::PRODUCTION, RatingRule::MemoryHalves);
 
     let halves = ready(compute_with(&inp, RatingRule::MemoryHalves).1);
     assert_eq!(halves.then.basis, WindowBasis::Start);

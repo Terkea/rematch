@@ -400,8 +400,10 @@ pub enum RatingRule {
 }
 
 impl RatingRule {
-    /// The rule [`compute`] runs.
-    pub const PRODUCTION: RatingRule = RatingRule::PeakBootstrap;
+    /// The rule [`compute`] runs: EXP-0030's `memory-halves`, which kept every false-alarm cell
+    /// within the bound and passed every guard on fresh seeds (`algo-6.0.0`, ADR 0117).
+    /// `PeakBootstrap` stays for the lab.
+    pub const PRODUCTION: RatingRule = RatingRule::MemoryHalves;
     pub const ALL: [RatingRule; 3] = [
         RatingRule::PeakBootstrap,
         RatingRule::MemoryHalves,
@@ -636,6 +638,8 @@ pub struct Ready {
     pub rating: MeanComparison,
     pub rating_sides: (Estimate, Estimate),
     pub rows: Vec<Row>,
+    /// The rule that computed the kind and the rating row.
+    pub rule: RatingRule,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -814,6 +818,7 @@ pub fn compute_with(input: &Input, rule: RatingRule) -> (Vec<RatedGame>, Compute
         rating,
         rating_sides,
         rows,
+        rule,
     };
     (series, Computed::Ready(Box::new(ready)))
 }
@@ -981,6 +986,7 @@ pub fn contract(series: &[RatedGame], c: &Computed) -> ContractTrajectory {
                 peak: None,
                 current: None,
                 change: None,
+                rating_rule: None,
                 months,
                 then_vs_now: None,
             };
@@ -1055,6 +1061,7 @@ pub fn contract(series: &[RatedGame], c: &Computed) -> ContractTrajectory {
             date: utc_date(r.current.1),
         }),
         change: Some(r.change.clamp(-4000.0, 4000.0) as i32),
+        rating_rule: Some(r.rule.name().to_owned()),
         months,
         then_vs_now: Some(ThenVsNow {
             then: window(&r.then),

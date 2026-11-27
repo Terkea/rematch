@@ -40,3 +40,21 @@ Every run on the development namespace `EXP-0015-dev` and the cohort's `0` slice
 - Freeze: commit `09b265b1398e4b42763edfa06801633662974267`, tagged `exp-0030-freeze`, committer time 1795739570 (2026-11-27 00:32:50 UTC); the cli built from it is `algo-5.0.1+d9c1f47013b6`.
 - Beacon: drand quicknet (chain `52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971`, genesis 1692803367, a round every 3 seconds). The first round at least 10 minutes after the freeze is 34312269 (time 1795740171); its randomness is `fb2f150c7574e48ca31070e87962c48ecdc3d3f68440f63f52871a6ff0bbb064`.
 - Namespace: `EXP-0030-fb2f150c7574`, in `namespace.txt`, listed in `inputs.sha256`. No run used it before the confirmatory run.
+
+## Part two: the result, after the run
+
+A second fresh critic (the same skills, no part in the design) read the frozen registration, `review.md`, `analysis.py`, `power.py`, `results.json`, the figure, the git history of the folder and the tag, EXP-0015's decision, and the candidates' Rust, on 2026-11-27, after the confirmatory run. It recomputed all twelve co-primary intervals from the counts (Wilson at 0.9875; they match to six decimals), the detection, rough, chess.com-like and transfer guards, the positive control and the budget; it re-derived the beacon round (1795739570 + 600 s gives round 34312269 at 1795740171) and fetched its randomness from drand, which gives the namespace; and it checked that between the candidates' commit and the freeze only `algo::VERSION` moved in the backend, and that the Rust matches section 7's formula. It found nothing that blocks the decision: "ship memory-halves" follows from section 9 as written. Its points, and what `decision.md` does with them:
+
+1. **New accounts and long histories are outside the claim, and the shipped rule looks worse there** (0.177 falling and 0.167 rising at 250 games from a new account). Stated in "What this does not show"; EXP-0031 tests full histories with a provisional start and decides whether a settled-history gate is needed, as a registered rule.
+2. **The plain world is close to the model's own assumption.** Written as "the implementation is right and calibrated where the assumption holds", not as calibration on real players.
+3. **The rough world is borderline and milder than real series.** The development fail (0.166) is reported beside the confirmatory pass (at most 0.144); the rule is said to run at about 1.3 to 1.4 times nominal under streaks and form; the real lag-1 of steps (0.036) is above the rough world's (0.020). EXP-0032 brings a rough world calibrated to it.
+4. **The cohort check bounds only gross failure.** 0.356 two-sided against 0.20 nominal, mean z² 2.37 (3.10 with a pooled step), stated plainly; the real false-alarm rate is said to be unknown, between nominal and about twice it. EXP-0032 measures it at the product's windows, with the gap analysis that separates a wrong model from real change.
+5. **No claim beyond the guards.** chess.com is not measured; the Elo arms are exploratory reads; detection is printed with the false-alarm rate beside it, with the share of false headlines at 60 games.
+6. **The 120-game asymmetry** (234 against 168 players, mean difference −2.3 points). Reported, and left to EXP-0031.
+7. **Section 7's σ² was rewritten after registration.** Recorded in "Deviations" as a clarification, identical below a 347-point step, made before the development run and the freeze.
+8. **The live rerun reads an external input.** The cohort is listed as `external:` in `inputs.sha256`, so a hosted runner does not plan it; `summary.md` is `live: true`, `rerun: release`, and `arena.py` compares the shipped rule's own flags (the six false-alarm cells and detection per length).
+9. **Provenance.** The run times are below.
+10. **The figure** has no error bars on the champion and a stray log-axis tick. Noted; the frozen `analysis.py` is not changed.
+11. **What `memory-before` did better.** Recorded in "Exploratory" without arguing for it; the order was fixed before the run.
+
+Run times: development run 2026-11-27, about 00:15 to 00:30 UTC on the cli of `2b8cbd29` (857 s); confirmatory run 00:44 to 00:58 UTC on the freeze's cli (858 s); the second confirmatory run after it, byte-identical.

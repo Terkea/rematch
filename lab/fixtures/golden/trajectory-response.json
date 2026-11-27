@@ -8,7 +8,7 @@
         "ratedGames": 80,
         "sufficient": true,
         "needMore": null,
-        "kind": "falling",
+        "kind": "flat",
         "peak": {
           "rating": 1620,
           "date": "2026-03-26"
@@ -17,7 +17,8 @@
           "rating": 1474,
           "date": "2026-05-06"
         },
-        "change": -146,
+        "change": -41,
+        "ratingRule": "memory-halves",
         "months": [
           {
             "month": "2026-03",
@@ -40,10 +41,10 @@
         ],
         "thenVsNow": {
           "then": {
-            "basis": "peak",
+            "basis": "start",
             "games": 30,
-            "from": "2026-03-14",
-            "to": "2026-04-07"
+            "from": "2026-03-01",
+            "to": "2026-03-25"
           },
           "now": {
             "basis": "last",
@@ -53,11 +54,11 @@
           },
           "rating": {
             "then": {
-              "value": 1594.0333333333333,
+              "value": 1558.4333333333334,
               "unit": "elo",
               "n": 30,
-              "low": 1590.0333333333333,
-              "high": 1597.7333333333333,
+              "low": 1514.5333788013897,
+              "high": 1602.333287865277,
               "sufficient": true,
               "needMore": null
             },
@@ -65,23 +66,23 @@
               "value": 1517.0666666666666,
               "unit": "elo",
               "n": 30,
-              "low": 1510.6,
-              "high": 1522.9333333333334,
+              "low": 1473.166712134723,
+              "high": 1560.9666211986103,
               "sufficient": true,
               "needMore": null
             },
-            "verdict": "worse",
-            "diff": -76.9666666666667,
-            "diffLow": -84.29999999999995,
-            "diffHigh": -69.66666666666652
+            "verdict": "no_clear_change",
+            "diff": -41.36666666666679,
+            "diffLow": -89.96771811585782,
+            "diffHigh": 7.234384782524252
           },
           "accuracy": {
             "then": {
-              "value": 77.60769230769232,
+              "value": 77.75769230769232,
               "unit": "pct",
               "n": 26,
-              "low": 76.83846153846156,
-              "high": 78.41923076923077,
+              "low": 76.96538461538462,
+              "high": 78.53076923076924,
               "sufficient": true,
               "needMore": null
             },
@@ -95,9 +96,9 @@
               "needMore": null
             },
             "verdict": "no_clear_change",
-            "diff": 0.853846153846149,
-            "diffLow": -0.29615384615387086,
-            "diffHigh": 1.9384615384615245
+            "diff": 0.7038461538461434,
+            "diffLow": -0.384615384615401,
+            "diffHigh": 1.8115384615384755
           },
           "blundersPerGame": {
             "then": {
@@ -197,7 +198,8 @@
           "rating": 1399,
           "date": "2026-04-19"
         },
-        "change": -2,
+        "change": -1,
+        "ratingRule": "memory-halves",
         "months": [
           {
             "month": "2026-03",
@@ -230,8 +232,8 @@
               "value": 1400.9333333333334,
               "unit": "elo",
               "n": 30,
-              "low": 1399.2666666666667,
-              "high": 1402.6333333333334,
+              "low": 1354.593319588772,
+              "high": 1447.2733470778949,
               "sufficient": true,
               "needMore": null
             },
@@ -239,15 +241,15 @@
               "value": 1400.2,
               "unit": "elo",
               "n": 30,
-              "low": 1398.3,
-              "high": 1401.9666666666667,
+              "low": 1353.8599862554386,
+              "high": 1446.5400137445615,
               "sufficient": true,
               "needMore": null
             },
             "verdict": "no_clear_change",
             "diff": -0.7333333333333485,
-            "diffLow": -3.0,
-            "diffHigh": 1.7333333333333485
+            "diffLow": -42.571453937708554,
+            "diffHigh": 41.10478727104186
           },
           "accuracy": {
             "then": {

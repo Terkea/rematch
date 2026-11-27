@@ -185,8 +185,8 @@ fn report_prompt_set_is_the_brief_list() {
         "report/section-areas",
     ];
     let want = |id: &str| match id {
-        // ADR 0116: report v5 withholds the rating's verdict (EXP-0015).
-        "report/report" => 5,
+        // ADR 0117: report v6 states the rating's verdict again from EXP-0030's rule.
+        "report/report" => 6,
         // ADR 0112: glossary v3 names only the motifs EXP-0007 cleared (#122).
         "core/glossary" => 3,
         id if v2.contains(&id) => 2,
@@ -789,7 +789,7 @@ fn report_blocks_use_the_set_versions() {
     assert!(
         req.system[1]
             .text
-            .starts_with(load_prompt("report/report", 5).unwrap().text)
+            .starts_with(load_prompt("report/report", 6).unwrap().text)
     );
     assert!(
         req.system[1]
@@ -841,8 +841,8 @@ fn v3_prompts_teach_the_trajectory_and_its_honest_words() {
     }
     // ADR 0101 moved the report set to v4 and ADR 0116 to v5; ADR 0094 moved the chat set to
     // v5, ADR 0101 to v6 and ADR 0116 to v7. All keep the trajectory text.
-    assert!(REPORT_PROMPT_SET.contains(&("report/report", 5)));
-    assert!(ai::prompts::CHAT_PROMPT_SET.contains(&("chat/system", 7)));
+    assert!(REPORT_PROMPT_SET.contains(&("report/report", 6)));
+    assert!(ai::prompts::CHAT_PROMPT_SET.contains(&("chat/system", 8)));
 }
 
 /// The chat context a v3 input gives the model (a snapshot of its trajectory part): the peak,
@@ -964,10 +964,10 @@ fn plan_prompts_teach_the_plan_and_its_honest_words() {
             .text
             .contains("`plan`")
     );
-    assert!(ai::prompts::CHAT_PROMPT_SET.contains(&("chat/system", 7)));
+    assert!(ai::prompts::CHAT_PROMPT_SET.contains(&("chat/system", 8)));
     assert!(ai::prompts::WEEKLY_PROMPT_SET.contains(&("weekly-review/system", 2)));
-    // The requests send the set versions (chat v7 since ADR 0116).
-    let chat = load_prompt("chat/system", 7).unwrap().text;
+    // The requests send the set versions (chat v8 since ADR 0117).
+    let chat = load_prompt("chat/system", 8).unwrap().text;
     assert!(
         ai::chat::engine::chat_system_blocks()[1]
             .text
@@ -1111,8 +1111,8 @@ fn w5_median_is_named_as_the_evaluation() {
             "{id} v{v}"
         );
     }
-    assert!(REPORT_PROMPT_SET.contains(&("report/report", 5)));
-    assert!(ai::prompts::CHAT_PROMPT_SET.contains(&("chat/system", 7)));
+    assert!(REPORT_PROMPT_SET.contains(&("report/report", 6)));
+    assert!(ai::prompts::CHAT_PROMPT_SET.contains(&("chat/system", 8)));
 }
 
 /// ADR 0116 (EXP-0015): report v5 and chat v7 withhold the rating's verdict. The peak, the
@@ -1149,6 +1149,46 @@ fn the_rating_verdict_is_withheld_from_the_coach() {
             "{id}: only the rating lines change: {gone:#?}"
         );
     }
-    assert!(REPORT_PROMPT_SET.contains(&("report/report", 5)));
-    assert!(ai::prompts::CHAT_PROMPT_SET.contains(&("chat/system", 7)));
+    assert!(REPORT_PROMPT_SET.contains(&("report/report", 6)));
+    assert!(ai::prompts::CHAT_PROMPT_SET.contains(&("chat/system", 8)));
+}
+
+/// ADR 0117 (EXP-0030): report v6 and chat v8 state the rating's verdict again, from the rule
+/// that cleared it: the change between the windows' averages, the peak a plain fact with no
+/// difference against it, and a verdict that says the rating moved, not why. An older input's
+/// `withheld` verdict keeps its plain words. Each is its predecessor with only the trajectory's
+/// rating lines changed, and v5 and v7 stay for stored hashes.
+#[test]
+fn the_rating_verdict_is_stated_from_the_cleared_rule() {
+    let pairs = [
+        (("report/report", 5), ("report/report", 6)),
+        (("chat/system", 7), ("chat/system", 8)),
+    ];
+    for ((id, old), (_, new)) in pairs {
+        let (a, b) = (
+            load_prompt(id, old).unwrap().text,
+            load_prompt(id, new).unwrap().text,
+        );
+        for f in [
+            "moved by more than its own wander",
+            "no difference against it",
+            "`withheld`",
+            "`not_enough_games`",
+            "`{{num:trajectory.peak.rating}}`",
+        ] {
+            assert!(b.contains(f), "{id} v{new} says {f:?}");
+        }
+        assert!(
+            !b.contains("do not say the rating is rising"),
+            "{id} v{new}"
+        );
+        assert!(a.contains("`withheld`"), "{id} v{old} is unchanged");
+        let gone: Vec<&str> = a.lines().filter(|l| !b.lines().any(|m| m == *l)).collect();
+        assert!(
+            gone.len() <= 3,
+            "{id}: only the trajectory lines change: {gone:#?}"
+        );
+    }
+    assert!(REPORT_PROMPT_SET.contains(&("report/report", 6)));
+    assert!(ai::prompts::CHAT_PROMPT_SET.contains(&("chat/system", 8)));
 }

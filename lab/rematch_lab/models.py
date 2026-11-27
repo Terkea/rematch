@@ -564,8 +564,9 @@ class ThenVsNow(Camel):
 
 class Trajectory(Camel):
     """The CoachingInput's `trajectory` (ADR 0089) as the rule computes it. `kind == "falling"`
-    (`then_vs_now.rating.verdict == "worse"`) is "clearly worse than your peak"; since
-    algo-5.0.0 the coach never receives either (EXP-0015, ADR 0116)."""
+    is `then_vs_now.rating.verdict == "worse"`. algo-5.0.0 withheld both (EXP-0015, ADR 0116);
+    since algo-6.0.0 production's rule is EXP-0030's memory-halves and they are stated again
+    (ADR 0117)."""
 
     rated_games: int
     sufficient: bool
@@ -574,6 +575,9 @@ class Trajectory(Camel):
     peak: RatingAt | None
     current: RatingAt | None
     change: int | None
+    # The rule that computed `kind` (absent below the minimum); since algo-6.0.0 production's is
+    # EXP-0030's "memory-halves" (ADR 0117).
+    rating_rule: Literal["peak-bootstrap", "memory-halves", "memory-before"] | None = None
     months: list[MonthRating]
     then_vs_now: ThenVsNow | None
 

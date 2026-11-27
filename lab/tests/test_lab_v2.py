@@ -88,15 +88,24 @@ def test_the_typed_wrapper_gives_the_golden_values(step: str) -> None:
     assert res.schema_version == rematch_lab.SCHEMA_VERSION
     golden = json.loads(golden_text(step))
     golden["algorithm_id"] = res.algorithm_id
-    assert json.loads(res.model_dump_json(by_alias=True)) == golden
+    # exclude_unset: a field the step leaves out (the trajectory's ratingRule below the minimum)
+    # stays out, as in the golden.
+    assert json.loads(res.model_dump_json(by_alias=True, exclude_unset=True)) == golden
 
 
 def test_the_trajectory_verdicts_of_the_fixture() -> None:
     req = models.TrajectoryRequest.model_validate_json(request_text("trajectory"))
     by = {p.id: p.trajectory for p in rematch_lab.trajectory(req.players).players}
-    assert by["lab-peaked"].kind == "falling"
+    # Since algo-6.0.0 (EXP-0030): the first games against the last, so the climb and the fall
+    # back towards the start is no clear change; EXP-0015's champion still says "falling".
+    assert by["lab-peaked"].kind == "flat"
+    assert by["lab-peaked"].rating_rule == "memory-halves"
     assert by["lab-peaked"].then_vs_now is not None
-    assert by["lab-peaked"].then_vs_now.rating.verdict == "worse"
+    assert by["lab-peaked"].then_vs_now.then.basis == "start"
+    old = rematch_lab.trajectory(req.model_copy(update={"rule": "peak-bootstrap"}))
+    peaked = next(p.trajectory for p in old.players if p.id == "lab-peaked")
+    assert peaked.kind == "falling"
+    assert peaked.rating_rule == "peak-bootstrap"
     assert by["lab-steady"].kind != "falling"
     assert by["lab-new"].sufficient is False
 

@@ -1,4 +1,4 @@
-# replay golden: algorithm version 5.0.0, 3000 nodes per search, engine protocol sf19-n1m-v1, regenerate with REPLAY_UPDATE=1 (major bumps only)
+# replay golden: algorithm version 6.0.0, 3000 nodes per search, engine protocol sf19-n1m-v1, regenerate with REPLAY_UPDATE=1 (major bumps only)
 ## weakness_estimates (357 rows)
 {"account_id":"account:replay-chesscom","alpha":1,"band_median":null,"band_p40":null,"beta":1,"ci_high":0.9000000000210662,"ci_low":0.10000000000042905,"confidence":0,"excess":null,"k":0,"k_unweighted":0,"mean":0.5,"n":0,"n_unweighted":0,"p_imp":null,"percentile":null,"priority":0,"series_key":"W1","side":"black","state":"not_an_issue","time_class":"blitz"}
 {"account_id":"account:replay-chesscom","alpha":1,"band_median":null,"band_p40":null,"beta":1,"ci_high":0.9000000000210662,"ci_low":0.10000000000042905,"confidence":0,"excess":null,"k":0,"k_unweighted":0,"mean":0.5,"n":0,"n_unweighted":0,"p_imp":null,"percentile":null,"priority":0,"series_key":"W1","side":"black","state":"not_an_issue","time_class":"daily"}

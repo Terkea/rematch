@@ -25,12 +25,13 @@ import { TRAJECTORY_GLOSSARY } from "./glossary";
 // points. A change is "clearly better" or "clearly worse" only when its verdict says so (ADR 0083
 // §6); a window below the minimum says what it still needs. Never NaN, never an arrow.
 //
-// The rating's own verdict is computed and not stated while the manifest's
-// `profile.trajectory_rating_verdict.shown` is false (EXP-0015, ADR 0116): it told most players
-// whose strength had not changed that their rating was falling. The headline then states the
-// peak, the current rating and the change as numbers, and the table's rating row shows both
-// windows' averages and the difference, with no range and no "Worse" or "Better". Accuracy,
-// blunders, score and the weaknesses keep their verdicts.
+// The headline compares the two windows' average ratings, the same difference the verdict tests,
+// and states the current rating and the highest one as plain facts (EXP-0030, ADR 0117): a peak is
+// a maximum of the rating's own wander, so a difference against it is negative for a player whose
+// strength never moved. The rating's verdict is stated while the manifest's
+// `profile.trajectory_rating_verdict.shown` is true (EXP-0030 cleared it); with it false (EXP-0015,
+// ADR 0116) the same sentence carries no word for a direction, and the table's rating row shows
+// both windows' averages and the difference, with no range and no "Worse" or "Better".
 
 /** Whether the rating's verdict is stated (Rust `coaching_input::trajectory::RATING_VERDICT_SHOWN`). */
 export const RATING_VERDICT_SHOWN: boolean =
@@ -108,44 +109,26 @@ function verdictWords(v: string): string {
 
 type Ready = Extract<Trajectory, { kind: TrajectoryKind }>;
 
-/** The peak, the current rating and the change, with no word for a direction (ADR 0116). */
-function factHeadline(t: Ready, tc: TimeClass): string {
-  const now = rating(t.current.rating);
+/**
+ * "Your rapid rating averaged 1,492 over your last 30 games, down from 1,560 over your first 30
+ * (−68). It is 1,488 now. Your highest was 1,610, in April 2026." With the verdict withheld the
+ * first sentence names no direction.
+ */
+function headline(t: Ready, tc: TimeClass, shown: boolean): string {
+  const last = `${rating(t.now.meanRating)} over your last ${t.now.games} games`;
+  const first = `${rating(t.then.meanRating)} over your first ${t.then.games}`;
   const delta = signed(t.change);
-  if (t.then.basis === "peak") {
-    return `Your ${tc} rating peaked at ${rating(t.peak.rating)} in ${monthOf(t.peak.at)} and is ${now} now (${delta}).`;
-  }
+  const lead =
+    shown && t.kind === "rising"
+      ? `Your ${tc} rating averaged ${last}, up from ${first} (${delta}).`
+      : shown && t.kind === "falling"
+        ? `Your ${tc} rating averaged ${last}, down from ${first} (${delta}).`
+        : `Your ${tc} rating averaged ${last} and ${first} (${delta})${shown ? ": no clear change" : ""}.`;
   const peak =
     t.peak.gameId !== null && t.peak.rating > t.current.rating
-      ? ` Your peak was ${rating(t.peak.rating)} in ${monthOf(t.peak.at)}.`
+      ? ` Your highest was ${rating(t.peak.rating)}, in ${monthOf(t.peak.at)}.`
       : "";
-  return `Your ${tc} rating is ${now} now; it averaged ${rating(t.then.meanRating)} over your first ${t.then.games} rated games (${delta}).${peak}`;
-}
-
-function headline(t: Ready, tc: TimeClass, shown: boolean): string {
-  if (!shown) return factHeadline(t, tc);
-  const now = rating(t.current.rating);
-  const delta = signed(t.change);
-  if (t.then.basis === "peak") {
-    const peak = `${rating(t.peak.rating)} in ${monthOf(t.peak.at)}`;
-    if (t.kind === "falling") {
-      return `Your ${tc} rating peaked at ${peak} and is ${now} now (${delta}).`;
-    }
-    return `Your ${tc} rating is ${now} now, ${delta} from its peak of ${peak}: ${verdictWords(t.rating.verdict)} since the games around it.`;
-  }
-  const first = `your first ${t.then.games} rated games`;
-  const mean = rating(t.then.meanRating);
-  if (t.kind === "rising") {
-    const peak =
-      t.peak.gameId !== null && t.peak.rating > t.current.rating
-        ? ` Your peak was ${rating(t.peak.rating)} in ${monthOf(t.peak.at)}.`
-        : "";
-    return `Your ${tc} rating is ${now} now, up from an average of ${mean} over ${first} (${delta}).${peak}`;
-  }
-  if (t.kind === "falling") {
-    return `Your ${tc} rating is ${now} now, down from an average of ${mean} over ${first} (${delta}).`;
-  }
-  return `Your ${tc} rating is ${now} now, about where it was over ${first} (an average of ${mean}): no clear change.`;
+  return `${lead} It is ${rating(t.current.rating)} now.${peak}`;
 }
 
 const pct0 = (v: number) => `${Math.round(v * 100)}%`;

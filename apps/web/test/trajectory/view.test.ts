@@ -31,8 +31,9 @@ function stats(games: RatedGame[], f: (i: number) => Partial<GameStatRow>): Game
   }));
 }
 
+/** Up to a peak of 1,080 at game 40, then down below where it started. */
 const fall = Array.from({ length: 100 }, (_, i) =>
-  i <= 40 ? 800 + i * 7 : 1080 - (i - 40) * 4 + (i % 2) * 3,
+  i <= 40 ? 800 + i * 7 : 1080 - (i - 40) * 10 + (i % 2) * 3,
 );
 
 function falling() {
@@ -42,7 +43,7 @@ function falling() {
   );
   return computeTrajectory({
     games,
-    current: { rating: 816, at: new Date(START + 100 * DAY) },
+    current: { rating: 500, at: new Date(START + 100 * DAY) },
     stats: stats(games, (i) =>
       i >= 70 ? { accuracy: 60 + (i % 5), blunders: 2 + (i % 2) } : { accuracy: 78 + (i % 5) },
     ),
@@ -59,8 +60,8 @@ function falling() {
 }
 
 const forbidden = /NaN|undefined|Infinity|→/;
-/** The copy a rule that clears EXP-0030 would get back (ADR 0116). */
-const SHOWN = { ratingVerdict: true } as const;
+/** The copy with the verdict withheld (ADR 0116), for an input whose rule did not clear. */
+const HIDDEN = { ratingVerdict: false } as const;
 /** Words that give the rating a direction. */
 const direction =
   /falling|rising|clearly (better|worse)|no clear change|about where|up from|down from/i;
@@ -87,86 +88,64 @@ function level() {
   });
 }
 
-describe("trajectoryView, with the rating's verdict withheld (EXP-0015, ADR 0116)", () => {
-  it("is withheld by the manifest", () => {
-    expect(RATING_VERDICT_SHOWN).toBe(false);
+describe("trajectoryView, with the rating's verdict stated (EXP-0030, ADR 0117)", () => {
+  it("is stated by the manifest", () => {
+    expect(RATING_VERDICT_SHOWN).toBe(true);
   });
 
-  it("states the peak, the current rating and the change as facts", () => {
+  it("compares the windows' averages and states the peak as a plain fact", () => {
     const t = falling();
     if (t.kind === "not_enough_games") throw new Error("expected a trajectory");
     expect(t.kind).toBe("falling");
     const v = trajectoryView(t, "rapid");
     if (v.state !== "ready") throw new Error("expected a trajectory");
     expect(v.headline).toBe(
-      "Your rapid rating peaked at 1,080 in February 2026 and is 816 now (−264).",
+      "Your rapid rating averaged 637 over your last 30 games, down from 902 over your first 30 (−265). It is 500 now. Your highest was 1,080, in February 2026.",
     );
-    expect(v.kind).toBeNull();
+    // No difference against the peak: it is a maximum of the rating's own wander.
+    expect(v.headline).not.toMatch(/peaked at|from its peak/);
+    expect(v.kind).toBe("falling");
+    expect(v.explain.measured).not.toContain("not called");
     expect(JSON.stringify(v)).not.toMatch(forbidden);
   });
 
-  it("gives a rise and a level line no direction either", () => {
-    const up = trajectoryView(rise(), "blitz");
-    if (up.state !== "ready") throw new Error("expected a trajectory");
-    expect(up.headline).toBe(
-      "Your blitz rating is 1,120 now; it averaged 858 over your first 30 rated games (+262).",
+  it("describes a rise from the first games", () => {
+    const v = trajectoryView(rise(), "blitz");
+    if (v.state !== "ready") throw new Error("expected a trajectory");
+    expect(v.headline).toBe(
+      "Your blitz rating averaged 1,058 over your last 30 games, up from 858 over your first 30 (+200). It is 1,120 now.",
     );
-    const flat = trajectoryView(level(), "rapid");
-    if (flat.state !== "ready") throw new Error("expected a trajectory");
-    expect(flat.headline).toBe(
-      "Your rapid rating peaked at 912 in January 2026 and is 900 now (−12).",
-    );
-    for (const v of [up, flat]) {
-      expect(v.kind).toBeNull();
-      expect(v.headline).not.toMatch(direction);
-    }
+    expect(v.compare.a.label).toBe("Your first 30 games");
   });
 
-  it("shows the rating row's windows and difference with no range and no verdict", () => {
+  it("calls a level rating no clear change", () => {
+    const v = trajectoryView(level(), "rapid");
+    if (v.state !== "ready") throw new Error("expected a trajectory");
+    expect(v.headline).toBe(
+      "Your rapid rating averaged 900 over your last 30 games and 900 over your first 30 (±0): no clear change. It is 900 now. Your highest was 912, in January 2026.",
+    );
+    expect(v.kind).toBe("flat");
+  });
+
+  it("gives the rating row its verdict and the range of the difference", () => {
     const v = trajectoryView(falling(), "rapid");
     if (v.state !== "ready") throw new Error("expected a trajectory");
     const [r, ...rest] = v.compare.rows;
     expect(r?.key).toBe("rating");
-    expect(r?.change).toEqual({
-      verdict: "withheld",
-      text: "Not called",
-      detail: expect.any(String),
-    });
-    expect(r?.change.detail).toMatch(
-      /^Difference −\d+ points\. A rating moves after every game, so this isn't judged on its own\.$/,
-    );
-    expect(r?.explain.measured).toMatch(/^Your rating moves after every game/);
-    expect(r?.explain.measured).not.toMatch(/\bmean\b/);
-    expect(r?.a.value).toMatch(/^\d,\d{3} on average$/);
-    expect(r?.a.detail).toBe("30 rated games");
-    expect(r?.b.detail).toBe("30 rated games");
-    expect(JSON.stringify(r)).not.toMatch(/80% range|Worse|Better/);
-    expect(r?.explain.measured).toContain("not called better or worse");
-    expect(v.explain.measured).toContain("The rating's own change is shown and not called");
-    // Accuracy and blunders keep their verdicts.
+    expect(r?.change.text).toBe("Worse");
+    expect(r?.change.detail).toMatch(/^Difference −\d+ points, 80% range −\d+ to −\d+$/);
+    expect(r?.a.detail).toMatch(/^80% range [\d,]+ to [\d,]+, 30 rated games$/);
+    expect(r?.explain.measured).toContain("carries most of its error over");
+    expect(r?.explain.whyItMatters).toContain("It says the rating moved, not why.");
     expect(rest.find((x) => x.key === "accuracy")?.change.text).toBe("Worse");
     expect(rest.find((x) => x.key === "blunders")?.change.text).toBe("Worse");
-    expect(v.since).toMatch(/^Since then: accuracy .* \(clearly worse\)/);
-  });
-});
-
-describe("trajectoryView, with the rating's verdict stated", () => {
-  it("states the peak, the current rating and the change from it", () => {
-    const v = trajectoryView(falling(), "rapid", SHOWN);
-    if (v.state !== "ready") throw new Error("expected a trajectory");
-    expect(v.headline).toBe(
-      "Your rapid rating peaked at 1,080 in February 2026 and is 816 now (−264).",
-    );
-    expect(v.kind).toBe("falling");
-    expect(v.explain.measured).not.toContain("not called");
-    expect(JSON.stringify(v)).not.toMatch(forbidden);
   });
 
   it("names each change by its verdict in the since-then sentence", () => {
     const v = trajectoryView(falling(), "rapid");
     if (v.state !== "ready") throw new Error("expected a trajectory");
     expect(v.since).toMatch(
-      /^Since then: accuracy \d+(\.\d)?% then, \d+(\.\d)?% now \(clearly worse\)/,
+      /^Since your first games: accuracy \d+(\.\d)?% then, \d+(\.\d)?% now \(clearly worse\)/,
     );
     expect(v.since).toContain("blunders per game");
     expect(v.since).toMatch(
@@ -178,38 +157,14 @@ describe("trajectoryView, with the rating's verdict stated", () => {
   it("labels the two windows with their games and dates", () => {
     const v = trajectoryView(falling(), "rapid");
     if (v.state !== "ready") throw new Error("expected a trajectory");
-    expect(v.compare.a.label).toBe("Around your peak");
-    expect(v.compare.a.detail).toBe("30 rated games, 26 Jan to 24 Feb 2026");
+    expect(v.compare.a.label).toBe("Your first 30 games");
+    expect(v.compare.a.detail).toBe("30 rated games, 1 Jan to 30 Jan 2026");
     expect(v.compare.b.label).toBe("Your last 30 games");
     expect(v.compare.b.detail).toBe("30 rated games, 12 Mar to 10 Apr 2026");
     const keys = v.compare.rows.map((r) => r.key);
     expect(keys).toEqual(["rating", "accuracy", "blunders", "score", "weakness:W3.shallow"]);
-    const rating = v.compare.rows[0];
-    expect(rating?.change.text).toBe("Not called");
-    const shown = trajectoryView(falling(), "rapid", SHOWN);
-    if (shown.state !== "ready") throw new Error("expected a trajectory");
-    expect(shown.compare.rows[0]?.change.text).toBe("Worse");
     const w = v.compare.rows.at(-1);
     expect(w?.a.detail).toMatch(/^80% range \d+% to \d+%, 90 of 300 chances in 30 games$/);
-  });
-
-  it("describes a rise from the first games", () => {
-    const v = trajectoryView(rise(), "blitz", SHOWN);
-    if (v.state !== "ready") throw new Error("expected a trajectory");
-    expect(v.headline).toBe(
-      "Your blitz rating is 1,120 now, up from an average of 858 over your first 30 rated games (+262).",
-    );
-    expect(v.compare.a.label).toBe("Your first 30 games");
-  });
-
-  it("calls a level rating no clear change", () => {
-    const v = trajectoryView(level(), "rapid", SHOWN);
-    if (v.state !== "ready") throw new Error("expected a trajectory");
-    // A level line still has a highest game, so it is compared with the games around it.
-    expect(v.headline).toBe(
-      "Your rapid rating is 900 now, −12 from its peak of 912 in January 2026: no clear change since the games around it.",
-    );
-    expect(v.kind).toBe("flat");
   });
 
   it("says how many more rated games it needs", () => {
@@ -221,5 +176,43 @@ describe("trajectoryView, with the rating's verdict stated", () => {
       text: "Your rating trajectory appears after 20 rated rapid games: 17 more to go.",
       games: 3,
     });
+  });
+});
+
+describe("trajectoryView, with the rating's verdict withheld (ADR 0116)", () => {
+  it("states the windows' averages with no direction", () => {
+    const v = trajectoryView(falling(), "rapid", HIDDEN);
+    if (v.state !== "ready") throw new Error("expected a trajectory");
+    expect(v.headline).toBe(
+      "Your rapid rating averaged 637 over your last 30 games and 902 over your first 30 (−265). It is 500 now. Your highest was 1,080, in February 2026.",
+    );
+    expect(v.kind).toBeNull();
+    for (const t of [rise(), level()]) {
+      const w = trajectoryView(t, "rapid", HIDDEN);
+      if (w.state !== "ready") throw new Error("expected a trajectory");
+      expect(w.kind).toBeNull();
+      expect(w.headline).not.toMatch(direction);
+    }
+    expect(JSON.stringify(v)).not.toMatch(forbidden);
+  });
+
+  it("shows the rating row's windows and difference with no range and no verdict", () => {
+    const v = trajectoryView(falling(), "rapid", HIDDEN);
+    if (v.state !== "ready") throw new Error("expected a trajectory");
+    const [r, ...rest] = v.compare.rows;
+    expect(r?.change).toEqual({
+      verdict: "withheld",
+      text: "Not called",
+      detail: expect.any(String),
+    });
+    expect(r?.change.detail).toMatch(
+      /^Difference −\d+ points\. A rating moves after every game, so this isn't judged on its own\.$/,
+    );
+    expect(r?.a.value).toMatch(/^\d+ on average$/);
+    expect(r?.a.detail).toBe("30 rated games");
+    expect(JSON.stringify(r)).not.toMatch(/80% range|Worse|Better/);
+    expect(r?.explain.measured).toContain("not called better or worse");
+    expect(v.explain.measured).toContain("The rating's own change is shown and not called");
+    expect(rest.find((x) => x.key === "accuracy")?.change.text).toBe("Worse");
   });
 });

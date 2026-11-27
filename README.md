@@ -64,7 +64,7 @@ Rematch suggests the weakness that costs you most and sets a target over your ne
 
 Your rating line with the peak marked, then the games around the peak against your last games: rating, accuracy, blunders per game, score and your top weaknesses. Each measure but the rating is called better or worse only when the evidence separates. The rating's change is shown as a number with no verdict, because the rule told 44% to 78% of simulated players whose strength never changed that their rating was falling ([EXP-0015](lab/experiments/EXP-0015/decision.md)).
 
-<picture><source media="(prefers-color-scheme: dark)" srcset="site/public/shots/trajectory-dark.webp"><img src="site/public/shots/trajectory-light.webp" width="760" alt="A rating trajectory: the line rising to a peak of 1,111 and falling to 816, with the games around the peak and the last 30 games shaded."></picture>
+<picture><source media="(prefers-color-scheme: dark)" srcset="site/public/shots/trajectory-dark.webp"><img src="site/public/shots/trajectory-light.webp" width="760" alt="A rating trajectory: the line rising to a peak and falling below where it started, with the first 30 and the last 30 games shaded."></picture>
 
 ## What it does that a game review doesn't
 
@@ -374,17 +374,17 @@ The strengths page uses the same gates as the weaknesses ([`strengths.ts`](apps/
 </details>
 
 <details>
-<summary>Trajectory: what changed since your peak</summary>
+<summary>Trajectory: what changed since your first games</summary>
 
-Your rating line with its peak marked, and the games around the peak set against your last games, measure by measure.
+Your rating line with its peak marked, and your first games set against your last games, measure by measure.
 
 From your rated games in one time class, each with its pre-game rating ([ADR 0089](docs/decisions/0089-rating-trajectory-and-then-vs-now.md)):
 
 - Peak: the first game with your highest rating, or your current rating if it is higher still.
-- Windows: `W = min(30, floor(n / 2))` games each. "Now" is the last W rated games. "Then" is the W games centred on the peak, clamped to end before "now", or your first W games if the peak is inside "now".
+- Windows: `W = min(30, floor(n / 2))` games each. "Then" is your first W rated games, "now" your last W. Since `algo-6.0.0` no window sits on the peak, a maximum of the rating's own ups and downs.
 - Then against now: rating, accuracy, blunders per game and score, by the period-comparison rules, plus your top three ranked weaknesses as events per chance in each window, under the prior behind the stored estimate.
-- The words: "Clearly worse" only with that verdict. The headline states facts ("peaked at 1,111 in March 2026 and is 816 now"), and a clearly worse measure is named as the likeliest place to look, never as the cause.
-- The rating itself gets no verdict since `algo-5.0.0` ([ADR 0116](docs/decisions/0116-hide-the-trajectory-rating-verdict.md)): a rating carries over from game to game, so the rule's range was six to thirteen times too narrow. The table shows both windows' averages and the difference, "Not called", and the coach is never told the rating is falling or rising. The rule still runs for the lab, so its replacement (EXP-0030) can be measured against it.
+- The rating's range counts its memory ([ADR 0117](docs/decisions/0117-a-trajectory-verdict-that-counts-the-ratings-memory.md)): a rating carries most of its error over from one game to the next, so 30 ratings in a row are not 30 separate results. The 80% range of the difference comes from how far your own rating moves each game. On 2,000 simulated players whose strength never changed it said "falling" or "rising" to about one in ten each way (EXP-0030); the bootstrap it replaced, hidden in `algo-5.0.0` ([ADR 0116](docs/decisions/0116-hide-the-trajectory-rating-verdict.md)), said "falling" to 44% to 78%.
+- The words: "Clearly worse" only with that verdict, and for the rating it means the rating moved by more than its own wander, not why. The headline compares the two averages and states the peak as a plain fact ("averaged 1,492 over your last 30 games, down from 1,560 over your first 30 (−68). It is 1,488 now. Your highest was 1,610, in April 2026."), and a clearly worse measure is named as the likeliest place to look, never as the cause.
 
 The web and the coach compute it with the same seeds and stream; a shared fixture checks every window and number to 1e-9.
 

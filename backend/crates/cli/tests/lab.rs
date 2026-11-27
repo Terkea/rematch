@@ -392,10 +392,39 @@ fn trajectory_is_the_production_rule() {
             .unwrap()["trajectory"]
             .clone()
     };
+    // Since algo-6.0.0 (EXP-0030) the first games are compared with the last: the climb and the
+    // fall back towards the start is no clear change, and the peak is a plain fact.
     let peaked = by("lab-peaked");
-    assert_eq!(peaked["kind"], json!("falling"));
-    assert_eq!(peaked["thenVsNow"]["then"]["basis"], json!("peak"));
-    assert_eq!(peaked["thenVsNow"]["rating"]["verdict"], json!("worse"));
+    assert_eq!(peaked["kind"], json!("flat"));
+    assert_eq!(peaked["ratingRule"], json!("memory-halves"));
+    assert_eq!(peaked["thenVsNow"]["then"]["basis"], json!("start"));
+    assert_eq!(
+        peaked["thenVsNow"]["rating"]["verdict"],
+        json!("no_clear_change")
+    );
+    // The champion of EXP-0015 is still selectable by `rule`, and still calls the fall from the
+    // peak "worse".
+    let mut old: Value = serde_json::from_str(&request).unwrap();
+    old["rule"] = json!("peak-bootstrap");
+    let old_out: Value =
+        serde_json::from_str(&run_pure("trajectory", &old.to_string()).unwrap()).unwrap();
+    let old_peaked = old_out["players"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["id"] == json!("lab-peaked"))
+        .unwrap()["trajectory"]
+        .clone();
+    assert_eq!(old_peaked["kind"], json!("falling"));
+    assert_eq!(old_peaked["ratingRule"], json!("peak-bootstrap"));
+    assert_eq!(old_peaked["thenVsNow"]["then"]["basis"], json!("peak"));
+    assert!(
+        run_pure("trajectory", &{
+            old["rule"] = json!("nope");
+            old.to_string()
+        })
+        .is_err()
+    );
     assert_eq!(
         peaked["thenVsNow"]["weaknesses"][0]["seriesKey"],
         json!("W1")

@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 import type { GameStatRow } from "../../src/server/stats/game-stats.js";
 import {
   computeTrajectory,
+  diffVar,
+  memoryCompare,
+  memoryOf,
+  RATING_SCALE,
   type RatedGame,
   TRAJECTORY_MIN_GAMES,
   TRAJECTORY_WINDOW,
@@ -9,8 +13,9 @@ import {
 } from "../../src/server/trajectory/model.js";
 
 // The rating trajectory (F6/F7): the rating over time, the peak and the current rating, and the
-// "then" window (the games around the peak, or the first games) against the last games, with
-// every difference called only by the ADR 0083 rule. Synthetic games only (B15).
+// first games against the last games. The rating row's interval counts the rating's memory
+// (EXP-0030, ADR 0117); the other rows are called by the ADR 0083 rules. Synthetic games only
+// (B15).
 
 const DAY = 86_400_000;
 const START = Date.UTC(2025, 0, 1);
@@ -64,7 +69,7 @@ describe("computeTrajectory", () => {
     expect(t.series).toHaveLength(15);
   });
 
-  it("finds a fall from an earlier peak: the 30 games around the peak against the last 30", () => {
+  it("finds a fall: the first 30 games against the last 30, with the peak a plain fact", () => {
     const games = rated(riseAndFall);
     const t = computeTrajectory({
       games,
@@ -77,20 +82,21 @@ describe("computeTrajectory", () => {
     if (t.kind === "not_enough_games") return;
     expect(t.peak).toMatchObject({ rating: 1100, gameId: "g40" });
     expect(t.current.rating).toBe(520);
-    expect(t.change).toBe(520 - 1100);
-    expect(t.then.basis).toBe("peak");
+    // The difference the verdict tests: the windows' averages, never the current rating against
+    // the peak.
+    expect(t.change).toBe(Math.round(t.now.meanRating - t.then.meanRating));
+    expect(t.then.basis).toBe("start");
     expect(t.then.games).toBe(TRAJECTORY_WINDOW);
-    // Centred on the peak: games 25 to 54.
-    expect(t.then.firstId).toBe("g25");
-    expect(t.then.lastId).toBe("g54");
+    expect(t.then.firstId).toBe("g0");
+    expect(t.then.lastId).toBe("g29");
     expect(t.now.basis).toBe("last");
     expect(t.now.firstId).toBe("g70");
     expect(t.now.lastId).toBe("g99");
     expect(t.rating.verdict).toBe("worse");
   });
 
-  it("keeps the peak window clear of the last games", () => {
-    // The peak at game 50 of 70: its window ends where the last 30 begin.
+  it("never places a window on the peak", () => {
+    // The peak at game 50 of 70.
     const ratings = Array.from({ length: 70 }, (_, i) => (i === 50 ? 1200 : 900 - i));
     const games = rated(ratings);
     const t = computeTrajectory({
@@ -102,7 +108,6 @@ describe("computeTrajectory", () => {
     });
     if (t.kind === "not_enough_games") throw new Error("expected a trajectory");
     expect(t.then.basis).toBe("start");
-    // Game 50 sits inside the last 30, so "then" is the first 30 games.
     expect(t.then.firstId).toBe("g0");
     expect(t.then.lastId).toBe("g29");
   });
@@ -221,5 +226,53 @@ describe("computeTrajectory", () => {
     const w = t.rows.find((r) => r.key === "weakness:W5");
     expect(w?.result.verdict).toBe("not_enough_games");
     expect(w?.a).toMatchObject({ kind: "insufficient" });
+  });
+
+  it("counts the rating's memory: the closed forms are the sums", () => {
+    const mem = { sigma2: 950, phi: 0.984 };
+    const brute = (a: [number, number], b: [number, number]) => {
+      let v = 0;
+      for (let i = a[0]; i < b[1]; i++) {
+        for (let j = a[0]; j < b[1]; j++) {
+          const w = (k: number) =>
+            k >= a[0] && k < a[1] ? -1 / (a[1] - a[0]) : k >= b[0] ? 1 / (b[1] - b[0]) : 0;
+          v += w(i) * w(j) * mem.phi ** Math.abs(i - j);
+        }
+      }
+      return mem.sigma2 * v;
+    };
+    for (const [a, b] of [
+      [
+        [0, 30],
+        [30, 60],
+      ],
+      [
+        [0, 30],
+        [90, 120],
+      ],
+      [
+        [0, 5],
+        [35, 40],
+      ],
+    ] as [number, number][][]) {
+      const got = diffVar(mem, a as [number, number], b as [number, number]);
+      expect(got).toBeCloseTo(brute(a as [number, number], b as [number, number]), 6);
+    }
+  });
+
+  it("takes the memory from the player's own steps", () => {
+    const r = Array.from({ length: 40 }, (_, i) => (i % 2 === 0 ? 1500 : 1506));
+    const mem = memoryOf(r);
+    const a = (RATING_SCALE * 6) / 2;
+    expect(mem?.phi).toBeCloseTo(1 - a, 12);
+    expect(mem?.sigma2).toBeCloseTo(36 / (a * (2 - a)), 9);
+    expect(memoryOf(Array.from({ length: 30 }, () => 1500))).toBeNull();
+  });
+
+  it("gives a series that never moved no verdict and no range", () => {
+    const r = Array.from({ length: 60 }, () => 1500);
+    const { rating, sides } = memoryCompare(r, [0, 30], [30, 60]);
+    expect(rating.verdict).toBe("no_clear_change");
+    expect(sides.a).toMatchObject({ kind: "estimate", value: 1500, interval: null, n: 30 });
   });
 });

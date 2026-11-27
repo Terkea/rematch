@@ -1908,8 +1908,8 @@ async fn a_paragraph_cut_off_by_max_tokens_is_never_published() {
 fn chat_prompts_have_no_json_output_instruction() {
     let system = chat_system_blocks();
     assert_eq!(system[0], rules_block());
-    // ADR 0116: v7, the set's version.
-    let chat = load_prompt("chat/system", 7).unwrap();
+    // ADR 0117: v8, the set's version.
+    let chat = load_prompt("chat/system", 8).unwrap();
     assert!(system[1].text.starts_with(chat.text.trim_end()));
     // ADR 0085: the glossary (v3, ADR 0112) follows, and the off-topic marker stays the last line.
     let glossary = load_prompt("core/glossary", 3).unwrap().text.trim_end();
@@ -2083,9 +2083,9 @@ async fn tools_after_the_off_topic_marker_are_refused() {
 fn chat_system_v2_teaches_the_move_filter_and_honest_empty_searches() {
     // ADR 0085: v3 keeps v2's text and adds the colour split, the benchmark and the glossary.
     // ADR 0089: v4 keeps v3's text and adds the rating history.
-    // ADR 0094: v5 keeps v4's text and adds the player's plan. ADR 0116: v7 is the set's.
-    assert!(CHAT_PROMPT_SET.contains(&("chat/system", 7)));
-    let v2 = load_prompt("chat/system", 7).unwrap().text;
+    // ADR 0094: v5 keeps v4's text and adds the player's plan. ADR 0117: v8 is the set's.
+    assert!(CHAT_PROMPT_SET.contains(&("chat/system", 8)));
+    let v2 = load_prompt("chat/system", 8).unwrap().text;
     assert!(chat_system_blocks()[1].text.starts_with(v2.trim_end()));
     for f in [
         "`phase`",
