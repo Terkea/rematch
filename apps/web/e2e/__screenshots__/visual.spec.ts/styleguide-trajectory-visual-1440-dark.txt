@@ -1,23 +1,25 @@
 Trajectory
 
-Progress opens with the rating line: the peak marked, the compared spans shaded, then the games around the peak against the last games. Synthetic games.
+Progress opens with the rating line: the peak marked, the compared spans shaded, then the first games against the last games. Synthetic games.
 
 Rating trajectory
 
-Where your rating has been, its peak, and how your play then compares with now.
+Where your rating has been, and how your first games compare with your last.
 
-Your rapid rating peaked at 1,111 in March 2026 and is 816 now (−295).
+Your rapid rating averaged 663 over your last 30 games, down from 864 over your first 30 (−201).
 
-Since then: accuracy 74.0% then, 64.1% now (clearly worse), blunders per game 1.33 a game then, 2.33 a game now (clearly worse), score 50.0% then, 50.0% now (no clear change), missing a short tactic 27% then, 43% now of chances (clearly worse).
+It is 540 now. Your highest was 1,111, in March 2026.
 
-Your rapid rating over time: 160 rated games. Peak 1,111, March 2026. Now 816.
+Since your first games: accuracy 74.0% then, 64.1% now (clearly worse), blunders per game 1.33 a game then, 2.33 a game now (clearly worse), score 50.0% then, 50.0% now (no clear change), missing a short tactic 27% then, 43% now of chances (clearly worse).
 
-Around your peak
+Your rapid rating over time: 160 rated games. Peak 1,111, March 2026. Now 540.
+
+Your first 30 games
 Your last 30 games
+400
+600
 800
-900
 1,000
-1,100
 1,200
 Oct 2025
 Nov 2025
@@ -31,27 +33,27 @@ Jun 2026
 Jul 2026
 Aug 2026
 Peak 1,111, March 2026
-Now 816
+Now 540
 Show as a table
 
 Based on 160 rated rapid games. The line is your rating before each game; the shaded spans are the games compared below.
 
 Then and now
-Around your peak
-30 rated games, 28 Feb to 27 Apr 2026
+Your first 30 games
+30 rated games, 1 Oct to 28 Nov 2025
 Your last 30 games
 30 rated games, 18 Jun to 15 Aug 2026
-Measure	Around your peak	Your last 30 games	Change
+Measure	Your first 30 games	Your last 30 games	Change
 Rating
 
-1,072 on average
-30 rated games
+864 on average
+80% range 803 to 926, 30 rated games
 
-881 on average
-30 rated games
+663 on average
+80% range 601 to 724, 30 rated games
 
-Not called
-Difference −192 points. A rating moves after every game, so this isn't judged on its own.
+Worse
+Difference −201 points, 80% range −288 to −115
 
 Accuracy
 
@@ -62,7 +64,7 @@ Accuracy
 80% range 63.4% to 64.8%, 30 analysed games
 
 Worse
-Difference −9.9 points, 80% range −10.8 to −8.9
+Difference −9.9 points, 80% range −10.8 to −9.0
 
 Blunders per game
 
@@ -95,4 +97,4 @@ Missing a short tactic
 80% range 38% to 49%, 60 of 120 chances in 30 games
 
 Worse
-Difference +17 points of chances
+Difference +16 points of chances

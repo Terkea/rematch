@@ -20,7 +20,7 @@ Compare periods
 Compare periods
 Rating trajectory
 
-Where your rating has been, its peak, and how your play then compares with now.
+Where your rating has been, and how your first games compare with your last.
 
 Your rating trajectory appears after 20 rated rapid games: 3 more to go.
 
