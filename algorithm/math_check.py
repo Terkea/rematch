@@ -866,6 +866,187 @@ def numbers() -> None:
     check("numbers: B 4.0.0 300 games = 3.3 CPU-hours, 49 minutes on 4 engines", round(cpu, 1) == 3.3 and round(cpu / 4 * 60) == 49, f"{cpu:.3f} h")
 
 
+# ---- KPIs (ADR 0119, MATH.md "KPIs") ----------------------------------------------------------
+
+KPI_RS = "backend/crates/bench/src/kpi.rs"
+
+
+def wilson80(k: int, n: int) -> tuple[float, float]:
+    z = stats.norm.ppf(0.9)
+    return wilson(k, n, z)
+
+
+def km_steps(times: np.ndarray, detected: np.ndarray) -> list[tuple[float, float, float]]:
+    """(t, S(t), Greenwood se) at each event time, as `kpi::kaplan_meier`."""
+    out, s, g = [], 1.0, 0.0
+    for t in sorted(set(times[detected].tolist())):
+        n = int(np.sum(times >= t))
+        d = int(np.sum(detected & (times == t)))
+        s *= 1 - d / n
+        if n > d:
+            g += d / (n * (n - d))
+        out.append((t, s, s * math.sqrt(g) if s > 0 else 0.0))
+    return out
+
+
+def km_median(steps, z: float):
+    first = lambda f: next((t for t, s, se in steps if f(s, se)), None)
+    m = first(lambda s, se: s <= 0.5)
+    lo = first(lambda s, se: s - z * se <= 0.5)
+    hi = first(lambda s, se: s + z * se <= 0.5)
+    return m, (lo, hi) if lo is not None and hi is not None else None
+
+
+def percentile80(values: np.ndarray) -> tuple[float, float]:
+    v = np.sort(values)
+    b = len(v)
+    tail = (1 - 0.8) / 2  # as kpi::percentile_interval and EXP-0001's arena
+    return float(v[int(tail * b)]), float(v[int((1 - tail) * b) - 1])
+
+
+def kpi_checks() -> None:
+    z = stats.norm.ppf(0.9)
+    # K0 constants: the Rust module's level, quantile, resamples, seed and target.
+    check("K0 constants: kpi.rs LEVEL 0.8, Z80, BOOTSTRAP 2000, SEED 119, target 0.8",
+          num(KPI_RS, r"pub const LEVEL: f64 = ([0-9.]+);") == 0.8
+          and close(num(KPI_RS, r"pub const Z80: f64 = ([0-9._]+);"), z, rel=1e-15)
+          and num(KPI_RS, r"pub const BOOTSTRAP: usize = (\d+);") == 2000
+          and num(KPI_RS, r"pub const SEED: u32 = (\d+);") == 119
+          and num(KPI_RS, r"pub const RECALL_TARGET: f64 = ([0-9.]+);") == 0.8)
+
+    # K1 Wilson: closed forms at the edges, and its exact coverage.
+    n_, z_ = sp.symbols("n z", positive=True)
+    p = n_ / n_
+    centre = (p + z_**2 / (2 * n_)) / (1 + z_**2 / n_)
+    half = z_ * sp.sqrt(p * (1 - p) / n_ + z_**2 / (4 * n_**2)) / (1 + z_**2 / n_)
+    check("K1 symbolic: n of n has Wilson lower end n / (n + z^2)", sp.simplify(centre - half - n_ / (n_ + z_**2)) == 0)
+    centre0 = (z_**2 / (2 * n_)) / (1 + z_**2 / n_)
+    half0 = z_ * sp.sqrt(z_**2 / (4 * n_**2)) / (1 + z_**2 / n_)
+    check("K1 symbolic: 0 of n has Wilson upper end z^2 / (n + z^2)", sp.simplify(centre0 + half0 - z_**2 / (n_ + z_**2)) == 0)
+    grid = np.linspace(0.05, 0.95, 181)
+    for n in (6, 22, 32):
+        cov = []
+        for q in grid:
+            ks = np.arange(n + 1)
+            hit = np.array([wilson80(int(k), n)[0] <= q <= wilson80(int(k), n)[1] for k in ks])
+            cov.append(float(np.sum(stats.binom.pmf(ks, n, q)[hit])))
+        cov = np.array(cov)
+        check(f"K1 exact: Wilson 80% coverage at n = {n}, mean over p in [0.05, 0.95] within 0.03 of 0.80",
+              abs(cov.mean() - 0.8) < 0.03, f"mean {cov.mean():.4f}, min {cov.min():.4f}")
+
+    # K2 D1a: the counts a type needs before its interval can clear 0.8, and the power.
+    def kmin(n: int):
+        return next((k for k in range(n + 1) if wilson80(k, n)[0] >= 0.8), None)
+    check("K2 numbers: 3 or 6 players a type can never clear 0.8; 7 of 7 can (lower 0.810)",
+          kmin(3) is None and kmin(6) is None and kmin(7) == 7 and round(wilson80(7, 7)[0], 3) == 0.810)
+    pw = 1 - stats.binom.cdf(kmin(22) - 1, 22, 0.9)
+    check("K2 numbers: full suite (22 a type) needs 21 hits; power 0.339 at a true 0.90, 0.698 at 0.95",
+          kmin(22) == 21 and round(pw, 3) == 0.339 and round(1 - stats.binom.cdf(20, 22, 0.95), 3) == 0.698)
+    check("K2 numbers: D3 needs 32 clean controls for 0 of n to have its upper end <= 0.05",
+          wilson80(0, 32)[1] <= 0.05 < wilson80(0, 31)[1] and math.ceil(0.95 * z * z / 0.05) == 32,
+          f"0 of 32: {wilson80(0, 32)[1]:.4f}")
+
+    # K3 macro recall: the stratified bootstrap's coverage on a known truth.
+    rng = np.random.default_rng(1190)
+    truth = np.array([0.95, 0.9, 0.8, 0.3, 0.5])
+    n, reps, boot = 22, 400, 400
+    hits = 0
+    for _ in range(reps):
+        y = rng.random((5, n)) < truth[:, None]
+        idx = rng.integers(0, n, size=(boot, 5, n))
+        bm = np.take_along_axis(np.broadcast_to(y, (boot, 5, n)), idx, axis=2).mean(axis=2).mean(axis=1)
+        lo, hi = percentile80(bm)
+        hits += lo <= truth.mean() <= hi
+    cov = hits / reps
+    se = math.sqrt(0.8 * 0.2 / reps)
+    check("K3 simulation: stratified bootstrap 80% interval of macro recall covers within 0.06 of 0.80 (22 a type)",
+          abs(cov - 0.8) < 0.06, f"{cov:.3f} of {reps} (Monte Carlo se {se:.3f})")
+    se_macro = math.sqrt(sum(q * (1 - q) / n for q in [1, 1, 5 / 6, 0, 1 / 3])) / 5
+    check("K3 numbers: macro recall's standard error at today's per-type recalls, 22 a type, is 0.026 (80% half-width 0.033)",
+          round(se_macro, 3) == 0.026 and round(z * se_macro, 3) == 0.033)
+
+    # K4 Kaplan–Meier: Greenwood telescopes to the binomial variance without censoring.
+    S = sp.symbols("S0:5", positive=True)
+    nn = sp.symbols("N", positive=True)
+    total = sum((S[j - 1] - S[j]) / (nn * S[j - 1] * S[j]) for j in range(1, 5))
+    check("K4 symbolic: without censoring, Greenwood's sum is (1/S - 1)/N, so Var = S(1 - S)/N",
+          sp.simplify(total.subs(S[0], 1) - (1 / S[4] - 1) / nn) == 0)
+    # On the checkpoint grid with a known detection law and censoring at 80 games.
+    grid_t = np.array([30, 45, 60, 80])
+    p_det = np.array([0.25, 0.20, 0.15, 0.10])  # P(first detected at each checkpoint)
+    s_true = 1 - np.cumsum(p_det)  # 0.75, 0.55, 0.40, 0.30: the median is 60
+    reps, n = 2000, 110
+    s_hat = np.zeros((reps, 4))
+    se_hat = np.zeros((reps, 4))
+    med_cover = 0
+    meds = []
+    for r in range(reps):
+        u = rng.random(n)
+        cut = np.searchsorted(np.cumsum(p_det), u, side="right")
+        detected = cut < 4
+        times = np.where(detected, grid_t[np.minimum(cut, 3)], 80)
+        steps = {t: (s, e) for t, s, e in km_steps(times, detected)}
+        for j, t in enumerate(grid_t):
+            s_hat[r, j], se_hat[r, j] = steps.get(int(t), (np.nan, np.nan))
+        m, iv = km_median(km_steps(times, detected), z)
+        meds.append(m)
+        med_cover += iv is not None and iv[0] <= 60 <= iv[1]
+    mean_s = np.nanmean(s_hat, axis=0)
+    emp_sd = np.nanstd(s_hat, axis=0)
+    ok = all(abs(mean_s[j] - s_true[j]) < 4 * emp_sd[j] / math.sqrt(reps) for j in range(4))
+    check("K4 simulation: KM survival is unbiased at every checkpoint (110 players, 2,000 samples)", ok,
+          ", ".join(f"{a:.4f}/{b:.2f}" for a, b in zip(mean_s, s_true)))
+    ratio = np.nanmean(se_hat, axis=0) / emp_sd
+    check("K4 simulation: Greenwood's standard error matches the spread of S within 5%",
+          bool(np.all(np.abs(ratio - 1) < 0.05)), ", ".join(f"{x:.3f}" for x in ratio))
+    share60 = sum(1 for m in meds if m == 60) / reps
+    # The median is 60 exactly when S(45) > 0.5 (56 or more of 110 still undetected) and S(60) <= 0.5.
+    want = (1 - stats.binom.cdf(55, 110, 0.55)) - (1 - stats.binom.cdf(55, 110, 0.40))
+    within("K4 simulation: the KM median is the true 60 games as often as S(45) > 0.5 >= S(60) predicts",
+           share60, want, math.sqrt(want * (1 - want) / reps))
+    cover = med_cover / reps
+    check("K4 simulation: the median's interval holds the true 60 at least 80% of the time (a grid makes it conservative)",
+          cover >= 0.8, f"{cover:.3f}")
+    # With random censoring before the end (the general estimator).
+    reps, n = 1500, 200
+    est = []
+    for _ in range(reps):
+        t = rng.exponential(50, n)
+        c = rng.uniform(20, 150, n)
+        obs = np.ceil(np.minimum(t, c))
+        detected = t <= c
+        steps = km_steps(obs, detected)
+        s50 = [s for tt, s, _ in steps if tt <= 50]
+        est.append(s50[-1] if s50 else 1.0)
+    est = np.array(est)
+    truth50 = math.exp(-50 / 50)
+    # Whole-game rounding moves the event times up by up to 1: the truth lies between S(49) and S(50).
+    lo_t, hi_t = math.exp(-50 / 50), math.exp(-49 / 50)
+    se = est.std() / math.sqrt(reps)
+    check("K4 simulation: KM with random censoring recovers S(50) of an exponential (mean 50)",
+          lo_t - 4 * se <= est.mean() <= hi_t + 4 * se, f"{est.mean():.4f} against {truth50:.4f} to {hi_t:.4f}")
+
+    # K5 compare: a paired bootstrap under no change calls "higher" about 10% of the time.
+    reps, boot, n = 300, 400, 22
+    truth = np.array([0.9, 0.9, 0.8, 0.3, 0.5])
+    churn = 0.1
+    higher = lower = 0
+    for _ in range(reps):
+        a = rng.random((5, n)) < truth[:, None]
+        flip = rng.random((5, n)) < churn
+        # B re-draws the flipped players from the same rate: no change in expectation.
+        b = np.where(flip, rng.random((5, n)) < truth[:, None], a)
+        idx = rng.integers(0, n, size=(boot, 5, n))
+        da = np.take_along_axis(np.broadcast_to(a, (boot, 5, n)), idx, axis=2).mean(axis=(1, 2))
+        db = np.take_along_axis(np.broadcast_to(b, (boot, 5, n)), idx, axis=2).mean(axis=(1, 2))
+        lo, hi = percentile80(db - da)
+        higher += lo > 0
+        lower += hi < 0
+    rate = higher / reps
+    check("K5 simulation: under no change the paired verdict reads 'higher' at most about 10% of the time",
+          rate < 0.10 + 4 * math.sqrt(0.09 / reps), f"higher {rate:.3f}, lower {lower / reps:.3f} of {reps}")
+
+
 def main() -> int:
     n0 = constants()
     symbolic()
@@ -873,6 +1054,7 @@ def main() -> int:
     bocpd_exact()
     build(n0)
     numbers()
+    kpi_checks()
     print(f"\n{PASSES} passed, {len(FAILURES)} failed")
     for f in FAILURES:
         print(f"  {f}")

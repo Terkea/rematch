@@ -432,6 +432,85 @@ where $k, n$ are the weighted sums, $\tilde n = n_{\text{eff}}/\varphi$, $\tilde
 
 **Justified by** ADR 0101's floor, A6(a, c): a ranked weakness has its range wholly above the median and confidence above 0.9. On the first benchmark run, the floor removed the clean control's false alarm.
 
+# KPIs
+
+The engine's Tier 1 KPIs (ADR 0119), as `backend/crates/bench/src/kpi.rs` computes them. Every one is reported as $\{\text{value}, [\text{lo}, \text{hi}], \text{level}, n\}$ at level 0.8, from one row per synthetic player. They are synthetic numbers: they say how the pipeline does on simulated players with injected flaws, not on people. Checked by `math_check.py` under K0 to K5 (the constants of `kpi.rs` are K0).
+
+Notation: $T$ flaw types, $n_t$ players of type $t$, $y_{ti} \in \{0, 1\}$ whether player $i$'s flaw is in the top 2 at the last checkpoint (80 games), $z = 1.2815515655446004$.
+
+## K1. Recall at 2, pooled and per type: the Wilson interval
+
+$\hat p_t = k_t / n_t$ with $k_t = \sum_i y_{ti}$; pooled $\hat p = \sum_t k_t / \sum_t n_t$ (`recall_at_2`, unchanged, EXP-0001's primary). The interval is Wilson's:
+
+```math
+\frac{\hat p + \frac{z^2}{2n} \pm z\sqrt{\frac{\hat p(1-\hat p)}{n} + \frac{z^2}{4n^2}}}{1 + \frac{z^2}{n}} .
+```
+
+**Result K1.** (a) It is the set of $p$ the score test does not reject at level 0.2: $\{p : (\hat p - p)^2 \le z^2 p(1-p)/n\}$. (b) At $k = n$ its lower end is $n/(n + z^2)$; at $k = 0$ its upper end is $z^2/(n + z^2)$.
+
+*Proof.* (a) The inequality is a quadratic in $p$ with positive leading coefficient $1 + z^2/n$; its roots are the formula above, so the set is the interval between them. (b) Substitute $\hat p = 1$ (or 0): the square root becomes $z/(2n)$, and the ends simplify to the stated values. $\blacksquare$
+
+Its coverage is not exactly 0.8 for a binomial (the lattice makes it oscillate), but its average over $p \in [0.05, 0.95]$ is within 0.02 of 0.8 at $n = 6, 22, 32$ (`K1 exact`, computed by summing the binomial, not simulated). Why Wilson: with $n_t$ as small as 3 and $\hat p_t \in \{0, 1\}$ common, the Wald interval collapses to a point.
+
+## K2. D1a: flaw types detectable
+
+D1a $= \#\{t : \text{lo}_t \ge 0.8\}$, the types whose Wilson lower end clears the target, and beside it $\#\{t : \hat p_t \ge 0.8\}$ by point estimate (`flaw_types_detectable`, `flaw_types_detectable_point`). $n$ is the number of types.
+
+**Result K2 (power).** By K1(b), a type with $n_t$ players can clear 0.8 only if $n_t/(n_t + z^2) \ge 0.8$, that is $n_t \ge 4z^2 = 6.57$. So the smoke suite (3 a type) and EXP-0001's pilot (6 a type) can never count a type by its interval: their D1a by interval is 0 whatever the engine does, and only the point count says anything. The full suite (22 a type) needs 21 hits of 22; the probability of that is 0.339 when the true recall is 0.90 and 0.698 at 0.95. *Target reasoning:* "every type at least 0.8" is the same 0.8 bar as recall at 2 since ADR 0100, applied per type, because a pooled 0.8 can hide a type that is never found (today 0 of 6 for missed mates at every version).
+
+## K3. D1b: macro recall at 2, with a stratified bootstrap
+
+```math
+M = \frac{1}{T}\sum_{t=1}^{T} \hat p_t .
+```
+
+Each type weighs the same whatever its player count. With equal $n_t$ (every suite today), $M$ equals the pooled recall; the two part when the counts differ.
+
+The interval is the percentile interval of $B = 2000$ stratified resamples: within each type, $n_t$ players drawn with replacement; values sorted, the ends taken at indices $\lfloor 0.1B \rfloor$ and $\lfloor 0.9B \rfloor - 1$, as EXP-0001's arena does. The generator is mulberry32 seeded with 119 (`kpi::SEED`), so a run's interval is reproducible.
+
+**Result K3.** (a) The types are independent, so $\operatorname{Var} M = T^{-2}\sum_t p_t(1-p_t)/n_t$, and the stratified bootstrap's variance is its plug-in, $T^{-2}\sum_t \hat p_t(1-\hat p_t)/n_t$. (b) The interval is first-order correct as every $n_t \to \infty$ with $p_t \in (0, 1)$.
+
+*Proof.* (a) Within a stratum the resampled mean has variance $\hat p_t(1 - \hat p_t)/n_t$ given the data; the strata are resampled independently, and $M^*$ is their average with weights $1/T$. (b) Each $\hat p_t$ is asymptotically normal, so $M$ is too (a fixed linear combination), and the percentile interval of a smooth function of means is first-order correct (Hall 1992, 3.10). $\blacksquare$
+
+Limits: a type with $\hat p_t \in \{0, 1\}$ adds no bootstrap variance, so with today's all-or-nothing types the interval is narrower than the truth; at 22 a type the plug-in standard error at today's per-type recalls (1, 1, 5/6, 0, 1/3) is 0.026, an 80% half-width of 0.033. `K3 simulation`: 400 samples of 22 players for each of five types with true recalls 0.95, 0.9, 0.8, 0.3 and 0.5; the 80% interval held the true macro recall 0.782 of the time (Monte Carlo standard error 0.02). *Target:* 0.8, as K2.
+
+## K4. D5: the Kaplan–Meier median games to detection, with Greenwood
+
+The time grid is the checkpoints (30, 45, 60, 80 games). A player's time is the first checkpoint with the flaw in the top 2 (an event), or 80 if it never is (censored at the last checkpoint). At each event time $t_j$, $r_j$ players are at risk (time $\ge t_j$) and $d_j$ are detected:
+
+```math
+\hat S(t) = \prod_{t_j \le t}\Big(1 - \frac{d_j}{r_j}\Big), \qquad
+\widehat{\operatorname{Var}}\,\hat S(t) = \hat S(t)^2 \sum_{t_j \le t} \frac{d_j}{r_j(r_j - d_j)} .
+```
+
+The median is the first $t_j$ with $\hat S(t_j) \le 0.5$; its interval runs from the first $t_j$ with $\hat S - z\,\mathrm{se} \le 0.5$ to the first with $\hat S + z\,\mathrm{se} \le 0.5$ (Brookmeyer and Crowley's inversion, with the plain Greenwood band). When fewer than half are ever detected, the median is "not reached" (value null); when the upper band never reaches 0.5, the interval is null and the note says its upper end lies beyond 80 games. It replaces `mean_games_to_detection`, which averaged only the detected players and so ignored the ones never found (kept in the JSON for one version, deprecated).
+
+**Result K4.** (a) With censoring only at the last checkpoint, $\hat S(t)$ is the share of players not yet detected at $t$, and Greenwood's variance is exactly the binomial $\hat S(1 - \hat S)/N$. (b) The median's interval has coverage at least about 0.8 when the true median is a grid point.
+
+*Proof.* (a) Before the last time no one is censored, so $r_j = N\hat S(t_{j-1})$ and $d_j = N(\hat S(t_{j-1}) - \hat S(t_j))$. The product telescopes to $\hat S(t_j) = r_{j+1}/N$, and
+
+```math
+\sum_j \frac{d_j}{r_j(r_j - d_j)} = \frac1N\sum_j\Big(\frac{1}{\hat S(t_j)} - \frac{1}{\hat S(t_{j-1})}\Big) = \frac1N\Big(\frac{1}{\hat S(t)} - 1\Big),
+```
+
+so $\hat S^2$ times it is $\hat S(1 - \hat S)/N$. (b) Let $m$ be the true median. The interval misses $m$ below only if the upper band is at most 0.5 before $m$, at a $t < m$ where $S(t) > 0.5$: a one-sided normal-approximation event of probability at most about 0.1. It misses above only if the lower band is above 0.5 at $m$ itself, where $S(m) \le 0.5$: again about 0.1 at most. A grid with gaps of 15 or 20 games makes both events rarer. $\blacksquare$
+
+The median is in checkpoint units: "45" means detected by the 45-game checkpoint, not at game 45 (interval-censored data read at the grid). `K4 simulation`: on 2,000 samples of 110 players with $S = 0.75, 0.55, 0.40, 0.30$ at the four checkpoints, the mean $\hat S$ is within 4 standard errors of the truth at each, Greenwood's standard error is within 5% of the spread, the median is 60 as often as $P(\hat S(45) > 0.5 \ge \hat S(60))$ predicts, and the interval holds 60 in 0.989 of samples (conservative, as (b) says). A second check uses random censoring before the end and recovers $S(50)$ of an exponential. *Target:* at most 45 games, a little more than half of the 80-game window (plan §2), reached today by the two always-found types at 30 games.
+
+## K5. Comparing two runs
+
+`cli bench compare A.json B.json` reports $\Delta = \theta(B) - \theta(A)$ for each metric of `kpi::values` and an 80% percentile interval of $B = 2000$ bootstrap differences. When both runs have the same players on the same seeds (`same_players`: names, seeds, flaws and checkpoints), each resample draws one set of player indices, stratified by flaw, and evaluates both runs on it (paired); otherwise each run is resampled on its own. The verdict reads only the interval: "higher" when it lies above 0, "lower" when below, "no clear difference" otherwise. Which way is better is a separate column.
+
+**Result K5.** Under no change in expectation, the paired verdict reads "higher" with probability at most about 0.10, and likewise "lower". Pairing removes the between-player variance the two runs share: $\operatorname{Var}(\hat\theta_B - \hat\theta_A) = \operatorname{Var}\hat\theta_A + \operatorname{Var}\hat\theta_B - 2\operatorname{Cov}$, and on the same players the covariance is large (only the players whose outcome changed contribute to the paired difference).
+
+*Proof sketch.* The difference of two smooth functions of stratified means is a smooth function of the paired means, so (K3 b) the percentile interval is first-order correct for $\Delta$, and an 80% two-sided interval excludes a true 0 on each side with probability about 0.1. $\blacksquare$
+
+`K5 simulation`: 300 pairs of runs, 22 players for each of five types, B re-drawing 10% of the players from the same rate: "higher" 0.050 and "lower" 0.063, at most 0.10 as stated (the discrete differences make it conservative). The interval is for one metric; reading several at once needs Holm, as the arena does.
+
+## Not a KPI: plan hit rate
+
+`plan_hit_rate` is the share of flawed players whose top-1 weakness's drills include one for their flaw. Each flaw's expected drills are in its target key's catalogue, so a player ranked first on its flaw always hits: the plan hit rate is at least recall at 1, and it equals recall at 1 when no other key at rank 1 shares the flaw's drills. It measures the catalogue, not the engine, so it is reported but not a KPI. `every_rankable_key_has_a_drill` (in `results.rs`) holds the catalogue side: every key in `RANKABLE` has a drill other than `own_game_analysis`, and every flaw's expected drill is in its target's list.
+
 # Findings
 
 Places where the shipped code and its documented maths disagree. No product code was changed here.
@@ -446,7 +525,7 @@ Places where the shipped code and its documented maths disagree. No product code
 
 # Verification
 
-`math_check.py` in `rematch-lab:main` (its `cli` is this build, `algo-6.0.0+f40a2b27677a`, and `cli algo show --json` equals `manifest.json`): 94 checks passed and 0 failed. It exits 0.
+`math_check.py` in `rematch-lab:main` (its `cli` is this build, `algo-6.0.0+f40a2b27677a`, and `cli algo show --json` equals `manifest.json`): 112 checks passed and 0 failed, 18 of them the KPIs' (K0 to K5, ADR 0119). It exits 0.
 
 **Blind re-derivation.** A fresh agent, given the code and the fixtures but not this file, re-derived A1, A3, A5 (with the `lab-hangs` W1 estimate), A6, A12 (with `lab-peaked`'s rating row), A13 and A14.
 
