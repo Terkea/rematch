@@ -1,10 +1,22 @@
 name: Benchmark
 # The Tier 1 pipeline benchmark (ADR 0100, docs/benchmark.md): synthetic players with injected
 # flaws through the real analysis, enrichment, profile engine and CoachingInput. The smoke suite
-# runs on pull requests that touch the pipeline and fails on a regression against
+# runs on pull requests and pushes to main that touch the pipeline and fails on a regression against
 # bench/baseline.json; the full suite runs weekly and on demand, and only reports.
 on:
   pull_request:
+    paths:
+      - backend/crates/enrich/**
+      - backend/crates/profile/**
+      - backend/crates/profile-core/**
+      - backend/crates/coaching-input/**
+      - backend/crates/bench/**
+      - bench/**
+      - .github/workflows/bench.yml
+  # Changes also reach main by direct merge, which no pull_request event sees; without this the
+  # smoke gate never ran (2026-11-28).
+  push:
+    branches: [main]
     paths:
       - backend/crates/enrich/**
       - backend/crates/profile/**
@@ -29,7 +41,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: bench-${{ github.ref }}
+  group: bench-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 jobs:
@@ -41,7 +53,7 @@ jobs:
     env:
       LANE: bench
       COMPOSE: docker compose -p ci-bench
-      SUITE: ${{ github.event_name == 'pull_request' && 'smoke' || inputs.suite || 'full' }}
+      SUITE: ${{ (github.event_name == 'pull_request' || github.event_name == 'push') && 'smoke' || inputs.suite || 'full' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Build the Rust dev image
