@@ -126,3 +126,11 @@ This departs from ADR 0106's measurement rule (one interval against a band): the
   - Section 7 and `analysis.py` call the unreferenced remainder "concordant". It is concordant for 300,000 and 1 million on every game, and for 100,000 only in the 40 step-down games; the exploratory absolute measures of 50,000, 100,000 and Lichess's evaluations, best-move agreement and the win% error rest on its 100 sampled moves.
   - `analysis.py`'s grid includes 180 games, which section 6 does not list; 180 is past the ceiling, so the sample stays 160.
   - The published figure is `figures/contrasts.png`, drawn from `results.json`; the frozen code's `figures/disagreement.png` shows the exploratory absolute curve.
+
+- 2026-11-28, from the maths audit (ADR 0118), recorded after the decision; sections 0 to 10, `analysis.py` and `results.json` are unchanged and the decision stands (`math.md`, Findings):
+  1. `decision.md`'s "0.86 a player and game": 7.45% of a player's moves is 2.47 a game; 0.86 is 0.0246 × 35, the depth contrast, not the share.
+  2. `summary.md`'s lower end of 1.2 is 1.149, which rounds to 1.1.
+  3. The "120 of 5,398" dropped does not reproduce: the player rule drops 2,291 over the whole order and 5 before the 180th kept game.
+  4. The step-up's boundary error is 0.001 to 0.0205 (0.0035 at 160 games), not 0.002 to 0.004.
+  5. The reference budget is 47 billion nodes against the 46.1 billion the plan implies, and the worst case is 17.18, quoted as 17.1.
+  6. With the follow-up, the procedure's error can reach 0.10, not 0.05.
