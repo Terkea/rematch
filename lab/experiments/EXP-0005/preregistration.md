@@ -121,3 +121,11 @@ A mismatch in the between-runs check overrides the above: the churn is not inter
 ## 11. Deviations
 
 1. 2026-11-24, after the critic's review (`review.md`, concern 1): closed unrun. The design cannot move the suites in any branch, so its outcomes lead to one action and ADR 0107 says it is not run. The churn is reported descriptively by EXP-0006, which owns the side-by-side run. Sections 0 to 10 are left as registered.
+
+From the maths audit (2026-11-28, ADR 0118), recorded after the decision; sections 0 to 10 and `analysis.py` are unchanged and the closure stands (`math.md`, Findings):
+
+1. Section 5's "halves" is a 30% cut (28 against 40).
+2. On EXP-0001's grid a resize needs a churn upper end of about 0.022, which takes about 112 hits with none lost, not the 0.03 and 83 that `review.md` and `decision.md` give. The full and smoke suites at today's recall give about 79 hits, an upper end of 0.031, so EXP-0024 as planned in the decision's Next could not resize the suites even with no hit lost.
+3. Rounding and attribution: 0.1223, not 0.124; the review's 0.51 and 0.82 are its own values (EXP-0001 published 0.525 and 0.826).
+4. "Above" at x = 7 sits on the 0.15/0.20 edge.
+5. Section 0's items sum to 212,000 simulated suites, not 172,000.
