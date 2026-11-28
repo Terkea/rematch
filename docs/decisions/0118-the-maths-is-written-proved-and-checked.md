@@ -49,3 +49,12 @@ On the same day a separate bug surfaced: `python -m rematch_lab.experiments chec
 - The lab image grows by sympy and mpmath (about 7 MB). The site ships KaTeX's CSS (about 23 KB) on every docs page; its fonts load only where a formula uses them.
 - Writing an experiment costs more: the proofs and `math_check.py` before the freeze. That cost is the point: a power figure or an interval nobody can derive is not evidence.
 - The site build now reads `$` as maths. Prose prices are escaped by the content sync; a hand-written page under `site/src/content` must write a price as `\$`.
+
+## Amendment 1 (2026-11-28): the Lean project
+
+Decision 3's shared lemmas are proved in `lab/lean/` (branch `feat/lean-lemmas`). The owner chose machine-checked proofs over prose for them.
+
+1. **Pins.** Lean `v4.36.0` and mathlib's tag `v4.36.0` (commit `fc4f59e5`), both from 2026-11-16, with mathlib's own dependency commits in `lake-manifest.json`. elan is v4.3.0 (2026-11-17), checked by sha256, and `debian:bookworm-slim` is pinned by digest. Each was at least 7 days old when pinned. An upgrade moves to a newer dated tag under the same rule.
+2. **Theorems.** `Rematch.holm_fwer`, `Rematch.bonferroni` (with `bonferroni_fwer` and `union_bound`), `Rematch.beta_binomial_posterior`, `Rematch.luck_share` and `Rematch.window_mean_independence`. `lab/lean/README.md` states each one in words. Holm is stated over a measure, with valid p-values and no dependence assumption. It is defined without sorting, and the README explains why that matches the sorted procedure. Beta-binomial uses mathlib's `beta` and `betaPDFReal`. The window means use mathlib's `covariance` and `variance`. Benjamini-Hochberg is not proved yet: no committed experiment uses it.
+3. **The check.** `lake build` also builds `RematchTest/Axioms.lean`. That file fails the build if any theorem depends on an axiom other than `propext`, `Classical.choice` and `Quot.sound`, so a `sorry` fails it too. `docker build -t rematch-lean:local lab/lean` runs the whole thing. `.github/workflows/lean.yml` runs it on changes to `lab/lean/**` and every Sunday. It uses a read-only token, actions pinned by SHA and a cache of `.lake/packages` keyed on the manifest.
+4. **Citation.** A `math.md` cites a theorem as "Machine-checked: `lab/lean/Rematch/<File>.lean` theorem `Rematch.<name>`", beside its prose proof, and only when the theorem's hypotheses match the experiment's model.

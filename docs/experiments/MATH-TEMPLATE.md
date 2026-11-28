@@ -24,8 +24,9 @@ How to write the maths. One source renders on GitHub and on the site (remark-mat
 Every result is numbered (Result 1, Result 2, ...), stated in one sentence and a formula, and
 followed by a full proof that ends with $\blacksquare$. A proof that relies on a standard result
 names it (the law of total variance, Holm 1979) and says why its conditions hold here. Where a
-shared lemma has a Lean proof in lab/lean/, the result names the theorem
-(`Rematch.Holm.fwer_le_alpha`), and the prose proof stays.
+shared lemma has a Lean proof in lab/lean/ (listed in lab/lean/README.md), the result names it
+on its own line, "Machine-checked: `lab/lean/Rematch/Multiplicity.lean` theorem
+`Rematch.holm_fwer`", and the prose proof stays.
 
 How math_check.py verifies it, in the lab image (docs/evaluation.md):
 1. Symbolic: each derivation's two sides, subtracted, simplify to 0 with sympy. An identity,
