@@ -175,9 +175,24 @@ describe("the scorecard from the real leaderboard", () => {
     expect(page).toContain("EXP-0015");
     expect(page).toContain("EXP-0030");
   });
-  it("finds three of five flaw types and misses the missed mates", () => {
-    expect(row(m, "d1a").value).toBe(3);
+  it("leads D1a with what the intervals show, not the point estimates", () => {
+    // Six players a type: no type is clearly at 0.80, three are at it by point estimate alone.
+    expect(row(m, "d1a").value).toBe(0);
     expect(row(m, "d1a").status).toBe("misses");
+    expect(page).toContain("3 of 5 at or above 0.80 by point estimate alone");
+  });
+  it("never calls a change whose interval excludes 0 no clear difference", () => {
+    // EXP-0015's 200-point guard passes on its floor, but the versions' interval separates.
+    expect(page).toContain(
+      "Detection of a 200-point fall (its guard has a floor of 0.5): 6.0.0 is lower than 5.0.0",
+    );
+    expect(page).toContain("the interval excludes 0");
+    expect(page).not.toContain("6.0.0 is no clear difference from 5.0.0 (the paired change −0.130");
+  });
+  it("draws both halves of the trajectory trade-off in the D4 row", () => {
+    const d4 = page.match(/<li class="sc-row sc-synthetic" id="kpi-d4"[\s\S]*?<\/li>/)?.[0] ?? "";
+    expect(d4).toContain("false alarms");
+    expect(d4).toContain("100-point falls caught");
   });
   it("writes no overclaim, no NaN and no raw colour", () => {
     expect(page).not.toMatch(/NaN|undefined|Infinity|\bimproved\b/);

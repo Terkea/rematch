@@ -228,7 +228,7 @@ function figuresSection(e) {
   return [
     "## Figures",
     "",
-    "Drawn by the experiment's frozen `analysis.py` from its `results.json`, and copied here unchanged.",
+    "Drawn by the experiment's frozen `analysis.py` from its `results.json`, and copied here unchanged: the colours, the reference lines and the interval levels are the analysis's own (the pre-registration states each level), not the site's. The analysis is frozen once registered, so they are not redrawn.",
     "",
     ...figs.map(
       (f) =>

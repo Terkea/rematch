@@ -536,6 +536,12 @@ dialog {
   color: var(--color-ink-soft);
 }
 
+.sc-trends {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--spacing) * 6);
+}
+
 .sc-trend {
   display: grid;
   justify-items: end;
@@ -676,7 +682,8 @@ dialog {
 
 .kc-missing {
   fill: var(--color-ink-faint);
-  font-size: var(--text-sm);
+  font-size: var(--text-xs);
+  text-anchor: middle;
 }
 
 .kc-grid {
@@ -797,8 +804,12 @@ dialog {
   font-size: var(--text-xs);
 }
 
-.sc-numbers {
+/* The numbers under a chart: a plain text toggle, not another card. */
+.sl-markdown-content details.sc-numbers {
   margin-top: calc(var(--spacing) * 2);
+  padding: 0;
+  border: 0;
+  background: none;
   font-size: var(--text-sm);
 }
 

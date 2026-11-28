@@ -399,16 +399,20 @@ export function buildScorecard(board, history = null, opts = {}) {
     const below = types
       .filter((_, i) => statuses[i] === "misses")
       .map(([f]) => flawLabel(f).toLowerCase());
+    // Lead with what the intervals show, as the status is judged; the point count comes second.
+    const clear = statuses.filter((s) => s === "meets").length;
+    const unclear = statuses.filter((s) => s === "unclear").length;
     rows.push({
       id: "d1a",
       group: "drivers",
       name: "D1a: flaw types the engine detects",
       question: "How many of the five injected flaw types reach recall at 2 of 0.8?",
       tier: "synthetic",
-      value: at,
-      display: `${at} of ${types.length} types`,
+      value: clear,
+      display: `${clear} of ${types.length}`,
+      context: "types clearly at or above 0.80",
       interval: null,
-      intervalText: "Point estimates; each type's 80% interval is in the chart",
+      intervalText: `${unclear} no clear difference from 0.80, ${below.length} wholly below; ${at} of ${types.length} at or above 0.80 by point estimate alone`,
       basis: `${now.recall.n / types.length} simulated players per type, 80 games each (${expLink("EXP-0001")})`,
       target: "Every type at or above 0.80",
       status,
@@ -417,9 +421,14 @@ export function buildScorecard(board, history = null, opts = {}) {
         : "",
       trend: data.map((d) =>
         d.recall
-          ? { value: Object.values(d.recall.flaws).filter((f) => f.value >= 0.8).length }
+          ? {
+              value: Object.values(d.recall.flaws).filter(
+                (f) => statusFor(f.interval, { kind: "min", value: 0.8 }) === "meets",
+              ).length,
+            }
           : null,
       ),
+      trendLabel: "types clearly at 0.80",
       chart: "chart-flaws",
     });
   }
@@ -548,6 +557,8 @@ export function buildScorecard(board, history = null, opts = {}) {
           : "",
       trend: data.map((d) => toPoint(d.trajectory?.fa)),
       trendLabel: "false alarms",
+      trend2: data.map((d) => toPoint(d.trajectory?.d100)),
+      trend2Label: "100-point falls caught",
       chart: "chart-trajectory",
     });
   }
@@ -613,7 +624,7 @@ export function buildScorecard(board, history = null, opts = {}) {
       display: fmt(smoke.top2_agreement),
       interval: null,
       intervalText: "No interval recorded",
-      basis: "The smoke suite's flawed players",
+      basis: "The smoke suite's flawed players; the baseline records no count, so n is not known",
       target: "At or above 0.85",
       status: "unjudged",
       trend: [],
@@ -691,8 +702,8 @@ export function buildScorecard(board, history = null, opts = {}) {
         "Is every motif tag a player is told about right at least 80% of the time against Lichess's puzzle themes?",
       tier: "real",
       value: w.m.value,
-      display: fmt(w.m.value),
-      context: `for ${esc(w.tag)}, the lowest interval of the ${now.trusted?.count ?? ""} trusted tags`,
+      display: `at least ${fmt(Math.floor(w.m.interval[0] * 100) / 100, 2)}`,
+      context: `the lowest lower end of the ${now.trusted?.count ?? ""} trusted tags, for ${esc(w.tag)} (estimate ${fmt(w.m.value)})`,
       interval: w.m.interval,
       level: w.m.level,
       basis: `Lichess puzzles (${expLink("EXP-0007")})`,
@@ -839,7 +850,7 @@ export function dotChart(c) {
   });
   if (c.target) {
     parts.push(line(left, y(c.target.value), left + pw, y(c.target.value), "kc-target"));
-    parts.push(text(left + pw - 2, y(c.target.value) - 6, c.target.label, "kc-label", "end"));
+    parts.push(text(left + 4, y(c.target.value) - 6, c.target.label, "kc-label", "start"));
   }
   if (c.band) parts.push(text(left + pw - 4, y(c.band.lo) + 14, c.band.label, "kc-label", "end"));
   const off = c.series.length > 1 ? Math.min(8, step / 6) : 0;
@@ -851,7 +862,7 @@ export function dotChart(c) {
       if (!p || !finite(p.value)) {
         if (si === 0)
           parts.push(
-            `<g><title>${esc(`${shortVersion(c.versions[i])}: not run on this version`)}</title>${text(cx(i), top + ph - 6, "–", "kc-missing")}</g>`,
+            `<g><title>${esc(`${shortVersion(c.versions[i])}: not run on this version`)}</title>${text(cx(i), top + ph / 2, "not run", "kc-missing")}</g>`,
           );
         return;
       }
@@ -875,9 +886,16 @@ export function dotChart(c) {
 }
 
 /** The flaw × version matrix: per cell the k of n players found, and a shape for the verdict. */
-export function flawMatrix(id, width, model) {
+export function flawMatrix(id, width, fullModel) {
   const narrow = width < 500;
-  const left = narrow ? 104 : 190;
+  // At phone width the last three versions only, so every label and count has room.
+  const keep = narrow ? 3 : fullModel.versions.length;
+  const model = {
+    ...fullModel,
+    versions: fullModel.versions.slice(-keep),
+    data: fullModel.data.slice(-keep),
+  };
+  const left = narrow ? 168 : 190;
   const top = 8;
   const rowH = 34;
   const bottom = 30;
@@ -887,21 +905,13 @@ export function flawMatrix(id, width, model) {
   FLAWS.forEach(([f, label], ri) => {
     const yy = top + rowH * ri + rowH / 2;
     parts.push(line(0, top + rowH * (ri + 1), width, top + rowH * (ri + 1), "kc-grid"));
-    parts.push(
-      text(
-        0,
-        yy + 4,
-        narrow ? label.replace(/^(Blunders|Hangs|Fails to|Misses)\s*/, (m) => m) : label,
-        "kc-label",
-        "start",
-      ),
-    );
+    parts.push(text(0, yy + 4, label, "kc-label", "start"));
     model.data.forEach((d, i) => {
       const x = left + step * (i + 0.5);
       const cell = d.recall?.flaws?.[f];
       if (!cell) {
         parts.push(
-          `<g><title>${esc(`${d.short}: not run`)}</title>${text(x, yy + 4, "–", "kc-missing")}</g>`,
+          `<g><title>${esc(`${d.short}: not run`)}</title>${text(x, yy + 4, "not run", "kc-missing")}</g>`,
         );
         return;
       }
@@ -970,7 +980,7 @@ export function tradeoffChart(id, width, model) {
     line(left, top, left, top + ph, "kc-axis"),
   );
   parts.push(line(x(0.1), top, x(0.1), top + ph, "kc-target"));
-  parts.push(text(x(0.1) + 6, top + 12, "False-alarm target 0.10", "kc-label", "start"));
+  parts.push(text(x(0.1) + 6, top + ph - 8, "False-alarm target 0.10", "kc-label", "start"));
   parts.push(
     text(
       left + pw / 2,
@@ -1314,9 +1324,12 @@ function rowHtml(row) {
   const value = measured
     ? `<p class="sc-value"><span class="sc-num">${row.display}</span>${row.context ? ` <span class="sc-context">${row.context}</span>` : ""}<span class="sc-sub">${esc(ivText)}${lvl}</span></p>`
     : `<p class="sc-value"><span class="sc-dash">—</span><span class="sc-sub">No measurement yet</span></p>`;
+  // A trade-off row draws both halves, so the scan never shows the good half alone.
+  const spark = (pts, label) =>
+    `<div class="sc-trend">${sparkline(`${row.name} trend${label ? ` (${label})` : ""}`, pts)}<span class="sc-trend-label">Last ${pts.length} versions${label ? `, ${esc(label)}` : ""}</span></div>`;
   const trend =
     measured && (row.trend ?? []).length
-      ? `<div class="sc-trend">${sparkline(`${row.name} trend${row.trendLabel ? ` (${row.trendLabel})` : ""}`, row.trend)}<span class="sc-trend-label">Last ${row.trend.length} versions${row.trendLabel ? `, ${esc(row.trendLabel)}` : ""}</span></div>`
+      ? `<div class="sc-trends">${spark(row.trend, row.trendLabel)}${row.trend2 ? spark(row.trend2, row.trend2Label) : ""}</div>`
       : "";
   const notes = [
     row.reason ? `<p class="sc-note">${row.reason}</p>` : "",
@@ -1339,7 +1352,21 @@ function verdictText(model, exp, metricName, label) {
       "no clear difference": "no clear difference from",
     }[c.verdict] ?? c.verdict;
   const iv = fmtInterval(c.interval);
-  return `${esc(label)}: ${esc(shortVersion(r.algorithm_id))} is ${esc(words)} ${esc(shortVersion(r.against))}${iv ? ` (the paired change ${fmt(c.effect)}, ${levelText(c.level)} interval ${iv})` : ""}.`;
+  const [v, a] = [esc(shortVersion(r.algorithm_id)), esc(shortVersion(r.against))];
+  const change = iv
+    ? ` (the paired change ${fmt(c.effect)}, ${levelText(c.level)} interval ${iv})`
+    : "";
+  // A guard can pass on its own rule (a floor) while the versions' intervals separate: say both,
+  // and never call a separated change "no clear difference".
+  const separates =
+    Array.isArray(c.interval) && (c.interval[0] > 0 || c.interval[1] < 0) && finite(c.effect);
+  if (c.verdict === "no clear difference" && separates) {
+    const rule = finite(c.floor)
+      ? `its guard checks only that it stays above ${fmt(c.floor, 1)}, which it does, so the arena's rule reads it as no clear difference`
+      : "the arena's rule still reads it as no clear difference";
+    return `${esc(label)}: ${v} is ${c.effect < 0 ? "lower" : "higher"} than ${a}${change}, and the interval excludes 0; ${rule}.`;
+  }
+  return `${esc(label)}: ${v} is ${esc(words)} ${a}${change}.`;
 }
 
 function tableHtml(caption, head, rows) {
@@ -1425,7 +1452,7 @@ export function scorecardPage(model) {
   out.push(
     "## The charts",
     "",
-    `Each chart puts the version on its own column, oldest on the left, the champion in bold.${rules} Hover a mark for its numbers, or open the table under the chart.`,
+    `Each chart puts the version on its own column, oldest on the left, the champion in bold.${rules} Hover a mark for its numbers, or open the table under the chart. Intervals are 80% where the scorecard computes them; where it shows an experiment's own record it keeps that record's level (95%, or higher when the experiment corrects for several comparisons), and says so.`,
     "",
   );
 
@@ -1455,7 +1482,7 @@ export function scorecardPage(model) {
     chartBlock(
       "chart-flaws",
       c["chart-flaws"],
-      `Recall at 2 by flaw type: k of n players found per version, six players per type. A filled dot means the type's 80% interval lies wholly at or above 0.80, a half-filled one no clear difference from 0.80, a hollow one wholly below. With six players a type found six times out of six still reads "no clear difference" (its interval starts at 0.78). ${expLink("EXP-0026")} (${issueLink(127)}) is the lever on missed mates.`,
+      `Recall at 2 by flaw type: k of n players found per version, six players per type. A filled dot means the type's 80% interval lies wholly at or above 0.80, a half-filled one no clear difference from 0.80, a hollow one wholly below. With six players a type found six times out of six still reads "no clear difference" (its interval starts at 0.78). ${expLink("EXP-0026")} (${issueLink(127)}) is the lever on missed mates. At phone width the matrix shows the last three versions; the table has them all.`,
       [],
       tableHtml(
         "The numbers",
@@ -1504,7 +1531,7 @@ export function scorecardPage(model) {
     chartBlock(
       "chart-trajectory",
       c["chart-trajectory"],
-      `Each point is a version: how often a player of constant strength was told "falling" at 120 games (across) against how often a real fall was caught (up), with 80% Wilson intervals as crosses, from ${expLink("EXP-0015")}'s registered seeds. Up and to the left is better. Versions with identical numbers share a point.`,
+      `Each point is a version: how often a player of constant strength was told "falling" at 120 games (across) against how often a real fall was caught (up), with 80% Wilson intervals as crosses, from ${expLink("EXP-0015")}'s registered seeds. Up and to the left is better. Versions with identical numbers share a point. EXP-0015 first ran on 4.0.1, so older versions have no point.`,
       [
         verdictText(model, "EXP-0015", "false_alarm_120", "False alarms at 120 games"),
         verdictText(model, "EXP-0015", "detection_100", "Detection of a 100-point fall"),
