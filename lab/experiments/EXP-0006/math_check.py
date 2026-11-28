@@ -24,6 +24,7 @@ import hashlib
 import itertools
 import json
 import math
+import re
 import sys
 from pathlib import Path
 
@@ -182,7 +183,7 @@ def score(c, e, theta, mu, n0, median, epl, peer, rule):
             "high_miss": (high < theta).astype(float),
             "low_miss": (low > theta).astype(float),
             "width": (high - low) / theta,
-            "mean": mean, "lam": s0 / (s0 + n), "n": n, **parts,
+            "mean": mean, "lam": s0 / (s0 + n), "n": n, "pvar": a * b / ((a + b) ** 2 * (a + b + 1)), **parts,
         }
     return out
 
@@ -544,20 +545,37 @@ def simulation(data, ps) -> None:
     mean_phi = {(k, g_): float(np.mean([data["challenger"][(k, g_, c_)]["phi"].mean() for c_ in rho1 if c_[2] == "none"]))
                 for k in KEYS for g_ in CHECKPOINTS}
     chi = 1 + stats.chi2.sf(29, 31) - stats.chi2.sf(29, 29)
-    check("R2(d) W1 at 30 games, no dispersion: replay E[phi] within 0.02 of the chi-square value 1.104 (approximate)",
-          abs(mean_phi[("W1", 30)] - chi) < 0.02, f"{mean_phi[('W1', 30)]:.4f} against {chi:.4f}")
+    check("R2(d) W1 at 30 games, no dispersion: replay E[phi] 1.088 against the chi-square value 1.104 (approximate)",
+          near(1.088, mean_phi[("W1", 30)], 3) and near(1.104, chi, 3), f"{mean_phi[('W1', 30)]:.4f} against {chi:.4f}")
     check("R2(c) W7.traps at 30 games: replay E[phi] within 0.005 of 30/29 = 1.0345",
           abs(mean_phi[("W7.traps", 30)] - 30 / 29) < 0.005, f"{mean_phi[('W7.traps', 30)]:.4f}")
     at30 = {k: mean_phi[(k, 30)] for k in KEYS}
     order = sorted(at30, key=at30.get, reverse=True)
-    check("R2 Finding 2: at 30 games the clamp widens W9b most and W7.traps least",
-          order[0] == "W9b" and order[-1] == "W7.traps", ", ".join(f"{k} {at30[k]:.3f}" for k in order))
-    check("R2 the mean phi falls from 30 to 120 games for W1, W4.missed, W9b",
-          all(mean_phi[(k, 30)] > mean_phi[(k, 60)] > mean_phi[(k, 120)] for k in ("W1", "W4.missed", "W9b")))
+    check("R2 Finding 2: at 30 games the widening is W9b 1.172 most, then W4.missed 1.094, W1 1.088, W5 1.082, W7.traps 1.035 least",
+          order == ["W9b", "W4.missed", "W1", "W5", "W7.traps"]
+          and all(near(qv, at30[k], 3) for k, qv in (("W9b", 1.172), ("W4.missed", 1.094), ("W1", 1.088), ("W5", 1.082), ("W7.traps", 1.035))),
+          ", ".join(f"{k} {at30[k]:.4f}" for k in order))
+    check("R2 the mean phi falls from 30 to 120 games for W1, W4.missed, W9b, W5; W7.traps is flat (1.035 at 30, 1.034 at 250)",
+          all(mean_phi[(k, 30)] > mean_phi[(k, 60)] > mean_phi[(k, 120)] for k in ("W1", "W4.missed", "W9b", "W5"))
+          and near(1.035, mean_phi[("W7.traps", 30)], 3) and near(1.034, mean_phi[("W7.traps", 250)], 3))
+
+    def chi_ex(v):
+        return 1 + stats.chi2.sf(v, v + 2) - stats.chi2.sf(v, v)
+
+    gcs = np.arange(2, 31)
+    w5 = float((stats.binom.pmf(gcs, 30, 0.4) * gcs / (gcs - 1)).sum() / stats.binom.pmf(gcs, 30, 0.4).sum())
+    w9 = float((stats.binom.pmf(gcs, 30, 1 / 3) * np.array([chi_ex(x_ - 1) for x_ in gcs])).sum() / stats.binom.pmf(gcs, 30, 1 / 3).sum())
+    check("R2 mechanisms at 30 games: W5 near E[G_c/(G_c-1)] = 1.098, W9b near the chi-square excess averaged over G_c = 1.191 (within 0.02)",
+          abs(mean_phi[("W5", 30)] - w5) < 0.02 and abs(mean_phi[("W9b", 30)] - w9) < 0.02 and near(1.098, w5, 3) and near(1.191, w9, 3),
+          f"{w5:.4f}, {w9:.4f}")
+    ex = [chi_ex(v) for v in range(1, 301)]
+    check("R2(d) the chi-square excess falls strictly in nu (grid nu = 1..300)", all(a_ > b_ for a_, b_ in zip(ex, ex[1:], strict=False)))
+    top = max(float(v["phi"].max()) for v in data["challenger"].values() if "phi" in v)
+    check("R2(d) the upper clamp at 10 never binds in the replay", top < MAX_DISP, f"largest phi {top:.2f}")
     dphi = [float(np.mean([data["challenger"][(k, g_, c_)]["phi"].mean() for c_ in cells_of(PRIMARY) if c_[2] == "de1.5"]))
             for k in ("W1", "W9b") for g_ in CHECKPOINTS]
-    check("R2(e) with de1.5, W1 and W9b mean phi within 0.06 of 1.5 at every checkpoint (primary cells)",
-          all(abs(x - 1.5) < 0.06 for x in dphi), ", ".join(f"{x:.3f}" for x in dphi))
+    check("R2(e) with de1.5, W1 and W9b mean phi 1.47 to 1.55 at every checkpoint (primary cells)",
+          near(1.47, min(dphi), 2) and near(1.55, max(dphi), 2), ", ".join(f"{x:.3f}" for x in dphi))
 
     # Result 3: the cap binds on every peer-key draw, and E[m] = lambda' mu + (1 - lambda') theta.
     worst, zmax, ncell, draws, free, sumc_ok = 0.0, 0.0, 0, 0, {}, True
@@ -582,6 +600,18 @@ def simulation(data, ps) -> None:
     check("R3 replay: cell means of m match lambda' mu + (1-lambda') theta (max |z| < 4.5)",
           zmax < 4.5, f"max |z| {zmax:.2f} over {ncell} key x checkpoint x cell means")
 
+    # Result 4, measured: across-player variance of m over the mean posterior variance, pooled over
+    # the 18 primary cells, against (1 - lambda') Dbar / mean phi.
+    gap4 = []
+    for k in KEYS:
+        for g_ in CHECKPOINTS:
+            vals = [data["challenger"][(k, g_, c_)] for c_ in cells_of(PRIMARY)]
+            obs = np.mean([v["mean"].var(ddof=1) / v["pvar"].mean() for v in vals])
+            pred = np.mean([(1 - v["lam"].mean()) * dbar(k, c_[2]) / v["phi"].mean() for v, c_ in zip(vals, cells_of(PRIMARY), strict=True)])
+            gap4.append(abs(obs - pred))
+    check("R4 measured: the variance ratio is within 0.10 of (1 - lambda') Dbar/phi for all 20 key x checkpoint",
+          max(gap4) <= 0.10, f"max gap {max(gap4):.3f}")
+
     # Result 5: the approximation against the replayed coverages and miss shares (challenger).
     prim = cells_of(PRIMARY)
     errs, errs_hi = [], []
@@ -602,6 +632,11 @@ def simulation(data, ps) -> None:
           and near(0.16, lam30[("champion", "W5")], 2) and near(0.16, lam30[("challenger", "W5")], 2))
     lean = all(c_["true_rate_above"] > c_["true_rate_below"] for c_ in ps["challenger"]["cells"] if c_["key"] != "W5")
     check("R5 the lean: truth above the range more often than below in all 16 peer-key coverages", lean)
+    hi30 = [c_["true_rate_above"] for c_ in ps["challenger"]["cells"] if c_["games"] == 30 and c_["key"] != "W5"]
+    check("R5 high-side misses at 30 games 0.131 to 0.173", near(0.131, min(hi30), 3) and near(0.173, max(hi30), 3))
+    lam_s, gs_ = sp.symbols("lam g", positive=True)
+    check("R5 lambda'/(1 - lambda') = 2/g at lambda' = 2/(g+2), so |b|/sigma = (2/g)(theta - mu) sqrt(n_eff/(theta(1-theta) Dbar))",
+          zero((lam_s / (1 - lam_s)).subs(lam_s, 2 / (gs_ + 2)) - 2 / gs_))
 
     # Result 6: credible implies the range lies wholly above the truth, at rho <= 1.
     ok = True
@@ -612,6 +647,9 @@ def simulation(data, ps) -> None:
     check("R6 replay: every credible estimate at rho <= 1 has its range wholly above the truth (both rules)", ok)
     allkg6 = [(k, g_) for k in KEYS for g_ in CHECKPOINTS]
     lm = {v: float(stat(data[v], "low_miss", allkg6, cells_of([1.0]))) for v in RULES}
+    lm_low = {v: float(stat(data[v], "low_miss", allkg6, cells_of([0.5, 1.0]))) for v in RULES}
+    check("R6 at rho <= 1 (the guard's scope) ranges wholly above the truth: champion 0.120, challenger 0.089",
+          near(0.120, lm_low["champion"], 3) and near(0.089, lm_low["challenger"], 3), f"{lm_low}")
     lmk = {k: float(stat(data["champion"], "low_miss", [(k, g_) for g_ in CHECKPOINTS], cells_of([1.0]))) for k in ("W4.missed", "W7.traps")}
     check("R6 ranges wholly above the truth at rho = 1: champion 0.059 (W4.missed, W7.traps 0.028), challenger 0.086",
           near(0.059, lm["champion"], 3) and near(0.086, lm["challenger"], 3) and all(near(0.028, x, 3) for x in lmk.values()))
@@ -630,15 +668,49 @@ def simulation(data, ps) -> None:
         dhat.append(np.abs(chat - 0.8).max())
         ships += np.quantile(dstar, 0.9875) <= TOL
     rate = ships / sims
-    check("R7 simulated false-ship rate at D = 0.07 is at most 0.0125 + 4 SE", rate <= 0.0125 + 4 * math.sqrt(0.0125 * 0.9875 / sims),
-          f"{rate:.4f}")
-    dhat = np.array(dhat)
-    check("R7 simulated E[D_hat] >= D (upward bias of the max)", dhat.mean() >= 0.07 - 4 * dhat.std(ddof=1) / math.sqrt(sims),
-          f"{dhat.mean():.5f}")
+    check("R7 simulated false-ship rate at D = 0.07 is 0.010, within 4 SE of 0.0125", near(0.010, rate, 3)
+          and abs(rate - 0.0125) <= 4 * math.sqrt(0.0125 * 0.9875 / sims), f"{rate:.4f}")
+    truth5 = np.array([0.73] * 5 + [0.80] * 15)
+    dh5 = np.abs(rng7.binomial(npl, np.tile(truth5, (4000, 1))) / npl - 0.8).max(1)
+    sd1 = math.sqrt(0.73 * 0.27 / npl)
+    zz = np.linspace(-8, 8, 16001)
+    emax5 = float(np.trapezoid(zz * 5 * stats.norm.pdf(zz) * stats.norm.cdf(zz) ** 4, zz))
+    check("R7 with 5 cells at D = 0.07, E[D_hat] - D = sd x E[max of 5 normals] (1.16 sd; closed form, within 4 SE)",
+          abs(dh5.mean() - (0.07 + sd1 * emax5)) < 4 * dh5.std(ddof=1) / math.sqrt(4000) and near(1.16, emax5, 2),
+          f"{dh5.mean() - 0.07:.5f} against {sd1 * emax5:.5f}")
     truth2 = np.full(20, 0.80)
     dh2 = np.abs(rng7.binomial(npl, np.tile(truth2, (4000, 1))) / npl - 0.8).max(1)
-    check("R7 at a true D of 0, E[D_hat] is about 2.2 SE above it (bias of the max of 20)",
-          dh2.mean() > 4 * math.sqrt(0.16 / npl) / 2, f"E[D_hat] {dh2.mean():.4f}, SE {math.sqrt(0.16 / npl):.4f}")
+    sd0 = math.sqrt(0.16 / npl)
+    zp = zz[zz >= 0]
+    emax20 = float(np.trapezoid(zp * 20 * 2 * stats.norm.pdf(zp) * (2 * stats.norm.cdf(zp) - 1) ** 19, zp))
+    check("R7 at a true D of 0, E[D_hat] = 0.0145 = sd x E[max of 20 half-normals] (2.2 sd)",
+          near(0.0145, dh2.mean(), 4) and abs(dh2.mean() - sd0 * emax20) < 4 * dh2.std(ddof=1) / math.sqrt(4000),
+          f"E[D_hat] {dh2.mean():.5f}, closed form {sd0 * emax20:.5f}")
+
+    # Result 8: two nulls at their margins. (a) the false-credible guard at a true difference of
+    # exactly 0.01: 9,600 players with differences in {-0.05, 0, 0.05} at about the pilot's SD and an
+    # 80% percentile bootstrap (multinomial resampling, exact for three values); (b) recall at 2,
+    # exactly, at a true difference of -0.10 (gain 0.05, the loss rate solving the mean).
+    rng8 = np.random.default_rng(8)
+    qp, qm = 0.2815, 0.0815
+    vals3 = np.array([0.05, 0.0, -0.05])
+    passes = 0
+    for _ in range(2000):
+        cnt = rng8.multinomial(9600, [qp, 1 - qp - qm, qm])
+        bc = rng8.multinomial(9600, cnt / 9600, size=1000)
+        passes += np.quantile(bc @ vals3 / 9600, 0.9) <= 0.01
+    rate8 = passes / 2000
+    check("R8(a) the false-credible guard at its margin passes about 0.10 of the time (within 4 SE)",
+          abs(rate8 - 0.10) <= 4 * math.sqrt(0.09 / 2000), f"{rate8:.4f}")
+    lose = (0.10 + 0.37 * 0.05) / 0.63
+    p4 = np.array([0.63 * (1 - lose), 0.37 * 0.05, 0.63 * lose, 0.37 * 0.95])
+    n11, n10, n01, n00 = tables(45)
+    pr = np.exp(gammaln(46) - gammaln(n11 + 1) - gammaln(n10 + 1) - gammaln(n01 + 1) - gammaln(n00 + 1)
+                + n11 * np.log(p4[0]) + n10 * np.log(p4[1]) + n01 * np.log(p4[2]) + n00 * np.log(p4[3]))
+    _, lo8, _ = newcombe(n11, n10, n01, n00, Z90)
+    pass8 = float((pr * (lo8 >= -0.10)).sum())
+    check("R8(b) Finding 4: recall at 2 at a true difference of -0.10 passes with exact probability 0.149, not 0.10",
+          near(0.149, pass8, 3) and pass8 > 0.10, f"{pass8:.4f}")
 
     # Result 9: the paired stratified bootstrap variance of the false-credible difference is the
     # plug-in (1/S^2) sum var_s(diff)/n_s; the unpaired one is larger.
@@ -652,8 +724,9 @@ def simulation(data, ps) -> None:
         unpaired += (a.var() + b.var()) / a.size
     plug, unpaired = plug / len(low) ** 2, unpaired / len(low) ** 2
     bs = float(ps["fc_boot"].std(ddof=1))
-    check("R9 paired bootstrap SD of the false-credible difference = plug-in SD (within 4 MC SE)",
-          abs(bs / math.sqrt(plug) - 1) < 4 / math.sqrt(2 * (B_BOOT - 1)), f"{bs:.6f} against {math.sqrt(plug):.6f}")
+    z9 = (bs / math.sqrt(plug) - 1) * math.sqrt(2 * (B_BOOT - 1))
+    check("R9 paired bootstrap SD of the false-credible difference = plug-in SD (z about 2.9, within 4 MC SE)",
+          abs(z9) < 4 and near(2.9, z9, 1), f"{bs:.6f} against {math.sqrt(plug):.6f}, z {z9:.2f}")
     check("R9 plug-in SD 0.000278, bootstrap 0.000290; pairing narrows it 2.37 times",
           near(0.000278, math.sqrt(plug), 6) and near(0.000290, bs, 6) and near(2.37, math.sqrt(unpaired / plug), 2),
           f"{math.sqrt(unpaired / plug):.3f}")
@@ -677,20 +750,24 @@ def simulation(data, ps) -> None:
               abs(ex_h - hold) < 4 * se and abs(tot - 1) < 1e-9, f"beyond exactly {ex_b:.5f}")
 
     # Result 11: Wilson with Bonferroni z for 4 over two pooled halves of 800 covers at least 1 - 0.05/4.
-    rng11 = np.random.default_rng(11)
-    x = rng11.binomial(800, 0.74, 40_000) + rng11.binomial(800, 0.79, 40_000)
-    lo, hi = wilson(x, 1600, Z4)
-    cov = float(np.mean((lo <= 0.765) & (0.765 <= hi)))
-    check("R11 pooled-halves Wilson coverage >= 0.9875 - 4 SE (conservative)",
-          cov >= 0.9875 - 4 * math.sqrt(0.9875 * 0.0125 / 40_000), f"{cov:.4f}")
+    covs11 = {}
+    xs11 = np.arange(1601)
+    lo11, hi11 = wilson(xs11, 1600, Z4)
+    for p1_, p2_ in ((0.765, 0.765), (0.74, 0.79), (0.6, 0.9)):
+        pmf = np.convolve(stats.binom.pmf(np.arange(801), 800, p1_), stats.binom.pmf(np.arange(801), 800, p2_))
+        pb = (p1_ + p2_) / 2
+        covs11[(p1_, p2_)] = float((pmf * ((lo11 <= pb) & (pb <= hi11))).sum())
+    check("R11 exact coverage of the pooled Wilson at z for 4 rises with the halves' gap (0.765/0.765, 0.74/0.79, 0.6/0.9)",
+          covs11[(0.6, 0.9)] > covs11[(0.74, 0.79)] >= covs11[(0.765, 0.765)] - 1e-12 and covs11[(0.6, 0.9)] > 0.9875,
+          ", ".join(f"{v:.5f}" for v in covs11.values()))
 
     # Result 12: the exact coverage of the Jeffreys 95% interval at n = 28, over p in [0.01, 0.5].
     grid = np.linspace(0.01, 0.5, 491)
     xs = np.arange(29)
     ivs = np.array([jeffreys(int(x_), 28) for x_ in xs])
     covs = [float((stats.binom.pmf(xs, 28, p_) * ((ivs[:, 0] <= p_) & (p_ <= ivs[:, 1]))).sum()) for p_ in grid]
-    check("R12 Jeffreys at n = 28: mean exact coverage over p in [0.01, 0.5] within 0.01 of 0.95",
-          abs(np.mean(covs) - 0.95) < 0.01, f"mean {np.mean(covs):.4f}, min {min(covs):.4f}")
+    check("R12 Jeffreys at n = 28: mean exact coverage 0.950, minimum 0.890 over p in [0.01, 0.5]",
+          near(0.950, float(np.mean(covs)), 3) and near(0.890, min(covs), 3), f"mean {np.mean(covs):.4f}, min {min(covs):.4f}")
 
 
 # ---- 3. numbers -------------------------------------------------------------------------------
@@ -878,18 +955,30 @@ def numbers(data, ps) -> None:
           sum(pc.values()) == 4245 and R["tier1"]["between_runs"] == {"mismatches": 0, "pilot_fields_compared": 800})
 
     # N4: the decision rule, re-applied to the recomputed statistics.
-    dec, holds, beyond = decide(ps, float(lo_rec := newcombe(28, 0, 0, 17, Z90)[1]), float(newcombe(28, 0, 0, 17, Z90)[2]), fails)
+    _, lo_rec, hi_rec = newcombe(rec["n11"], rec["n10"], rec["n01"], rec["n00"], Z90)
+    dec, holds, beyond = decide(ps, float(lo_rec), float(hi_rec), fails)
     check("N4 the section 9 rule gives ship; every guard holds, none wholly beyond",
           dec == "ship" == R["decision"] and holds == gr["holds"] and beyond == gr["wholly_beyond"], f"recall lo {lo_rec:.6f}")
     fx = R["fixed"]
     w1 = [c_ for c_ in ch["cells"] if c_["key"] == "W1"]
-    i13 = all(BAND[0] <= wilson(np.concatenate([data["challenger"][("W1", g_, c_)]["covered"] for c_ in cells_of(["issue13"])]).sum(), 1600, Z4)[0]
-              and wilson(np.concatenate([data["challenger"][("W1", g_, c_)]["covered"] for c_ in cells_of(["issue13"])]).sum(), 1600, Z4)[1] <= BAND[1]
-              for g_ in CHECKPOINTS)
-    check("N4 #13: W1's four within, the #13 cell not within at 30 games, all 20 within, so not fixed",
+    inside = {}
+    for g_ in CHECKPOINTS:
+        lo_, hi_ = wilson(np.concatenate([data["challenger"][("W1", g_, c_)]["covered"] for c_ in cells_of(["issue13"])]).sum(), 1600, Z4)
+        inside[g_] = bool(BAND[0] <= lo_ and hi_ <= BAND[1])
+    hang = next(p_ for p_ in pl if p_["name"] == "bench-hang")
+    hang80 = next(r_ for r_ in hang["candidate"] if r_["games"] == 80)["rank1"]
+    check("N4 #13: W1's four within; the #13 cell outside the band's test at 30 games only; bench-hang W1 first at 80; smoke 0.80 in [0.65, 0.95]; not fixed",
           all(classify(*c_["ci_bonferroni"]) == "within the band" for c_ in w1) == fx["w1_within_band"] is True
-          and i13 == fx["issue13_cell_within_band"] is False and fx["all_20_within_band"] is True
-          and fx["bench_hang_rank1_at_80"] == "W1" and fx["fixes_13"] is False)
+          and inside == {30: False, 60: True, 120: True, 250: True} and fx["issue13_cell_within_band"] is False
+          and fx["all_20_within_band"] is True and hang80 == "W1" == fx["bench_hang_rank1_at_80"]
+          and 0.65 <= smv["coverage"] <= 0.95 and fx["fixes_13"] is False)
+    c0 = next(p_ for p_ in pl if p_["name"] == "exp1-clean-0")
+    c0r = {r_["games"]: r_["rank1"] for r_ in c0["reference"]}
+    c0c = {r_["games"]: r_["rank1"] for r_ in c0["candidate"]}
+    check("N6 the pilot's new clean false alarm is exp1-clean-0, W9a at 120 games",
+          c0c[120] == "W9a" and c0r[120] is None)
+    check("N6 positive control parts 1,120 (clean), 2,233 (pilot), 892 (smoke)",
+          R["tier1"]["positive_control_moved_estimates"] == {"clean": 1120, "pilot": 2233, "smoke": 892})
 
     # N7: the numbers decision.md and summary.md quote, at their rounding.
     cells = {(v, c_["key"], c_["games"]): c_["coverage"] for v in RULES for c_ in ps[v]["cells"]}
@@ -960,41 +1049,62 @@ def numbers(data, ps) -> None:
           near(0.02, Z20 * math.sqrt(0.16 / 3600), 3))
     check("N8 section 5: five keys at most 0.01 each is at most 0.05 extra credible estimates a report (one in 20)",
           near(0.05, 5 * 0.01, 6))
-    holds_l = {(L, Gn): float(newcombe(28 - L, Gn, L, 17 - Gn, Z90)[1]) >= -0.10 for L in range(6) for Gn in range(4) if L >= Gn}
-    check("N8 section 5: recall guard holds at 2 losses, fails at 3, with no gains",
-          holds_l[(2, 0)] and not holds_l[(3, 0)] and holds_l[(1, 0)] and holds_l[(0, 0)])
-    check("N8 Finding 3: net loss 2 holds at 3 lost and 1 gained, fails at 4 lost and 2 gained",
-          holds_l[(3, 1)] and not holds_l[(4, 2)] and not holds_l[(5, 3)])
+    lows = {(L, Gn): float(newcombe(28 - L, Gn, L, 17 - Gn, Z90)[1]) for L in range(9) for Gn in range(9) if Gn <= 17 and L <= 28}
+    check("N8 section 5: recall guard holds at 2 losses (-0.0837), fails at 3 (-0.1136), with no gains",
+          near(-0.0837, lows[(2, 0)], 4) and near(-0.1136, lows[(3, 0)], 4) and lows[(1, 0)] >= -0.10 and lows[(0, 0)] >= -0.10)
+    check("N8 Finding 3: net 2 holds at 3 lost 1 gained (-0.0999, a near-tie), fails at 4 lost 2 gained (-0.1124); net 0 fails at 8 and 8 (-0.1122)",
+          near(-0.0999, lows[(3, 1)], 4) and lows[(3, 1)] >= -0.10 and near(-0.1124, lows[(4, 2)], 4) and near(-0.1122, lows[(8, 8)], 4))
     ex = {n: exact_guard(n, 0.2, 0.05, False, 0.10)[0] for n in (23, 40, 60, 80)}
     quoted = {23: 0.49, 40: 0.68, 60: 0.81, 80: 0.88}
-    check("N8 section 6: clean-alarm guard holds 0.49, 0.68, 0.81, 0.88 at 23, 40, 60, 80 players (exact, within MC error of 4,000)",
-          all(abs(ex[n] - quoted[n]) <= 0.005 + 4 * math.sqrt(ex[n] * (1 - ex[n]) / 4000) for n in ex),
+    check("N8 section 6: clean-alarm guard holds 0.49, 0.68, 0.81, 0.88 at 23, 40, 60, 80 (exact 0.485, 0.676, 0.820, 0.886; the quotes within MC error of 4,000)",
+          all(abs(ex[n] - quoted[n]) <= 0.005 + 4 * math.sqrt(ex[n] * (1 - ex[n]) / 4000) for n in ex)
+          and all(near(qv, ex[n], 3) for n, qv in ((23, 0.485), (40, 0.676), (60, 0.820), (80, 0.886))),
           ", ".join(f"{n}: {ex[n]:.4f}" for n in ex))
     rh = exact_guard(45, 0.63, 0.05, True, 0.10)[0]
-    check("N8 section 6: recall at 2 holds 0.88 at no change (exact law, within MC error of 4,000)",
-          abs(rh - 0.88) <= 0.005 + 4 * math.sqrt(rh * (1 - rh) / 4000), f"{rh:.4f}")
+    check("N8 section 6: recall at 2 holds 0.88 at no change (exact 0.874; the quote within MC error of 4,000)",
+          abs(rh - 0.88) <= 0.005 + 4 * math.sqrt(rh * (1 - rh) / 4000) and near(0.874, rh, 3), f"{rh:.4f}")
     sdp = P["pilot"]["sd"]
     norm_power = float(stats.norm.cdf((0.01 - P["pilot"]["false_credible_worse_by"]) / sdp["fc"] - Z90))
-    check("N8 Result 13: normal approximation of the profile rule's power 0.886 against the replicates' 0.872 (within 0.03)",
-          abs(norm_power - P["profile_rule"]["ship"]) < 0.03, f"{norm_power:.4f}")
-    check("N8 section 6: whole rule 0.87 x 0.88 x 0.9 about 0.69; deviation 3: 0.3727 = 0.872 x 0.8755 x 0.48825",
-          near(0.69, 0.872 * 0.8755 * 0.9, 2) and near(0.3727, 0.872 * 0.8755 * (1953 / 4000), 4) and near(0.4883, 1953 / 4000, 4)
-          and near(0.3727, P["ship_power_approx"], 4))
+    ship_rep = P["profile_rule"]["ship"]
+    zgap = (norm_power - ship_rep) / math.sqrt(ship_rep * (1 - ship_rep) / 2000)
+    check("N8 Result 13: normal approximation 0.886 against the replicates' 0.872, 1.9 binomial SE apart; primary slack 5.7 - 2.24 = 3.5 SD",
+          near(0.886, norm_power, 3) and near(1.9, zgap, 1)
+          and near(3.5, (TOL - P["pilot"]["D_challenger"]) / P["pilot"]["sd"]["D"] - Z9875, 1), f"{norm_power:.4f}, z {zgap:.2f}")
+    rec_hold = P["tier1_no_change"]["recall_holds"]
+    clean_hold = 1953 / 4000  # the simulated 0.4883 unrounded (R10(c) reproduces the simulation)
+    check("N8 section 6: whole rule 0.87 x 0.88 x 0.9 about 0.69 (0.9 is section 6's assumed smoke pass rate); deviation 3: 0.3727",
+          near(0.69, ship_rep * rec_hold * 0.9, 2) and near(0.3727, ship_rep * rec_hold * clean_hold, 4)
+          and near(P["tier1_no_change"]["clean_alarm_holds"], clean_hold, 4) and near(0.3727, P["ship_power_approx"], 4))
     check("N8 section 6: the 80% interval of the false-credible difference about 0.001 wide at the pilot's SE",
           near(0.001, 2 * Z90 * sdp["fc"], 3), f"{2 * Z90 * sdp['fc']:.5f}")
-    p200 = {dlt: float(stats.norm.cdf((0.01 - dlt) / (2 * sdp["fc"]) - Z90)) for dlt in (0.0089, 0.0093)}
-    check("N8 section 6: at 200 a cell the guard's power is about one half at the pilot's 0.0093 (0.47), 0.73 at 0.0089",
-          near(0.47, p200[0.0093], 2) and near(0.73, p200[0.0089], 2))
+    dev = json.loads((HERE / "dev" / "dev-results.json").read_text(encoding="utf-8"))["variants"]
+    dev_fc = dev["dev:games=2,ess,disp"]["false_credible"] - dev["champion"]["false_credible"]
+    pil_fc = P["pilot"]["false_credible_worse_by"]
+    p200 = {k: float(stats.norm.cdf((0.01 - dlt) / (2 * sdp["fc"]) - Z90)) for k, dlt in (("pilot", pil_fc), ("dev", dev_fc))}
+    check("N8 section 6: at 200 a cell the guard's power is about one half at the pilot's difference (0.485), 0.72 at the development's 0.0089",
+          near(0.485, p200["pilot"], 3) and near(0.72, p200["dev"], 2) and near(0.0089, dev_fc, 4), f"{p200}")
     pw = {se: float(stats.norm.cdf(0.02 / se - Z9875)) for se in (0.008, 0.016, sdp["D"], 2 * sdp["D"])}
     check("N8 Finding 1: at a true D of 0.05 the primary passes 0.16 at SE 0.016 (50 a cell) and 0.60 at SE 0.008 (200)",
           near(0.16, pw[0.016], 2) and near(0.60, pw[0.008], 2), f"pilot SE {sdp['D']}: {pw[sdp['D']]:.2f}; doubled: {pw[2 * sdp['D']]:.2f}")
-    nstar = 200 * (0.008 / (0.02 / (Z9875 + float(stats.norm.ppf(0.8))))) ** 2
-    check("N8 Finding 1: 80% power at a true D of 0.05 needs about 300 a cell at the quoted SE", 280 < nstar < 320, f"{nstar:.0f}")
+    se_need = 0.02 / (Z9875 + float(stats.norm.ppf(0.8)))
+    nstar = 200 * (0.008 / se_need) ** 2
+    npil = 200 * (sdp["D"] / se_need) ** 2
+    check("N8 Finding 1: 80% power at a true D of 0.05 needs SE 0.0065: about 300 a cell at the quoted SE, about 150 at the pilot's; pilot 0.91 at 200, 0.33 at 50",
+          near(0.0065, se_need, 4) and 295 < nstar < 310 and 140 < npil < 155 and near(0.91, pw[sdp["D"]], 2) and near(0.33, pw[2 * sdp["D"]], 2),
+          f"{nstar:.0f}, {npil:.0f}")
     ksd = 3.0233 * math.sqrt(0.16 / 1600)
     check("N8 section 6: the #13 cell's Bonferroni half-width about 0.025 (z for 4: 0.0250; z for 20: 0.030)",
           near(0.025, Z4 * math.sqrt(0.16 / 1600), 3), f"z20 would give {ksd:.4f}")
-    check("N8 section 3: dev D 0.69 against 0.05, so Delta about 0.64",
-          near(0.64, 0.6928 - 0.050, 2))
+    check("N8 section 3: dev D 0.69 against 0.05, so Delta about 0.64; 180,000 development computations (15 rules x 30 cells x 100 x 4)",
+          near(0.69, dev["champion"]["D"], 2) and near(0.05, dev["dev:games=2,ess,disp"]["D"], 2)
+          and near(0.64, dev["champion"]["D"] - dev["dev:games=2,ess,disp"]["D"], 2) and len(dev) * 30 * 100 * 4 == 180_000,
+          f"{len(dev)} rules")
+    check("N7 compute: 100% of the budget, cap 150%",
+          R["compute"]["actual"] == R["compute"]["budget"] and R["compute"]["cap"] == 1.5)
+    lean_dir = HERE.parents[1] / "lean" / "Rematch"
+    lean_src = "".join(f.read_text(encoding="utf-8") for f in lean_dir.glob("*.lean")) if lean_dir.is_dir() else ""
+    check("N9 the cited Lean theorems exist: bonferroni, beta_binomial_posterior",
+          re.search(r"theorem\s+bonferroni\b", lean_src) is not None and re.search(r"theorem\s+beta_binomial_posterior\b", lean_src) is not None)
 
 
 def power_numbers() -> None:
