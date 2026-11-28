@@ -109,23 +109,29 @@ describe("the favicon set", () => {
 });
 
 describe("the icons by size", () => {
-  // 16 px is pixel art on a 16 px grid (whole-unit rectangles, so a tab draws it without blur).
-  // From 32 px up it's the fine line drawing (the pixel figure read as a cartoon at 32/48).
+  // 16 px is pixel art on a 16 px grid (whole-unit rectangles, so a tab draws it without blur): the
+  // boy and his 3x3 board, without dad's hand, which read as the boy waving at that size (see the
+  // brand README). The 32 px favicon is that icon at exactly 2x (the owner's pick, 2026-11-28: a
+  // 32 px pixel hand read as a sword, and the mid mark smears at 32). From 48 px up (favicon 48,
+  // apple-touch, manifest) every icon is the mid mark, the drawing the header shows.
   it("rematch-icon-16.svg sits on a 16 px grid, ink only", () => {
     const svg = readFileSync(join(BRAND, "rematch-icon-16.svg"), "utf8");
     expect(svg).toContain('viewBox="0 0 16 16"');
     expect(svg).toContain('fill="currentColor"');
-    expect(svg).not.toMatch(/#[0-9a-f]{3,6}(?![0-9a-z])/i);
+    expect(svg).not.toMatch(/<mask|#[0-9a-f]{3,6}(?![0-9a-z])/i);
+    expect(svg).toContain("<title>Rematch: a boy with his chess board (16 px grid)</title>");
     const ds = [...svg.matchAll(/ d="([^"]+)"/g)].map((m) => m[1] ?? "");
     expect(ds.length).toBeGreaterThan(0);
     for (const d of ds) expect(d).toMatch(/^(M\d+ \d+h\d+v1h-\d+z)+$/);
   });
 
-  it("rematch-icon.svg is the fine line drawing, in currentColor", () => {
-    const svg = readFileSync(join(BRAND, "rematch-icon.svg"), "utf8");
-    expect(svg).toContain('viewBox="0 0 32 32"');
-    expect(svg).toContain('fill="currentColor"');
-    expect(svg).toMatch(/ d="[^"]*[Cc]/);
+  it("draws the 32 px favicon as the 16 px icon at 2x, 48 px and up from the mid mark", () => {
+    expect(existsSync(join(BRAND, "rematch-icon.svg"))).toBe(false);
+    const script = readFileSync(join(WEB, "scripts/brand-assets.ts"), "utf8");
+    expect(script).not.toContain("rematch-icon.svg");
+    expect(script).toContain(
+      "size === 48 ? tile(48, 0.03, 0.18, markMid) : tile(size, 0, 0.18, icon16, true)",
+    );
   });
 });
 

@@ -28,8 +28,8 @@ const ROOT = join(WEB, "../..");
 const BRAND = join(ROOT, "packages/ui/assets/brand");
 const FONTS = join(WEB, "src/app/fonts");
 
-const icon = readFileSync(join(BRAND, "rematch-icon.svg"), "utf8");
-// The tab icon is drawn on a 16 px grid of its own, so a browser tab shows it without blur.
+// The tab icon is drawn on a 16 px grid of its own, so a browser tab shows it without blur, and
+// the 32 px favicon is the same drawing at 2x. From 48 px up every icon is the mid mark.
 const icon16 = readFileSync(join(BRAND, "rematch-icon-16.svg"), "utf8");
 const mark = readFileSync(join(BRAND, "rematch-mark.svg"), "utf8");
 const markMid = readFileSync(join(BRAND, "rematch-mark-mid.svg"), "utf8");
@@ -58,7 +58,7 @@ const FACES = `
 const sized = (svg: string, attrs: string) => svg.replace("<svg", `<svg ${attrs}`);
 
 /** The icon on an opaque paper tile, `inset` of the side left around it, corners `radius`. */
-const tile = (size: number, inset: number, radius: number, source = icon, crisp = false) => `
+const tile = (size: number, inset: number, radius: number, source: string, crisp = false) => `
 <body style="margin:0;background:transparent">
 <div style="width:${size}px;height:${size}px;background:${BRAND_PAPER};color:${BRAND_INK};border-radius:${radius * size}px;display:grid;place-items:center">
 ${sized(source, `width="${Math.round(size * (1 - 2 * inset))}" height="${Math.round(size * (1 - 2 * inset))}"${crisp ? ' shape-rendering="crispEdges"' : ""}`)}
@@ -81,26 +81,29 @@ async function main() {
       await page.close();
       return png;
     };
-    // The tab icon fallback: at 16 px the pixel drawing, filling the tile on whole pixels; from
-    // 32 px the fine line drawing, with a little air round it.
+    // The tab icon fallback: at 16 and 32 px the 16 px pixel drawing (at 1x and exactly 2x),
+    // filling the tile on whole pixels; at 48 px the mid mark, with a little air round it.
     const ico = [];
     for (const size of [16, 32, 48])
       ico.push({
         size,
         png: await shot(
-          size === 16 ? tile(16, 0, 0.18, icon16, true) : tile(size, 0.03, 0.18),
+          size === 48 ? tile(48, 0.03, 0.18, markMid) : tile(size, 0, 0.18, icon16, true),
           size,
           size,
           true,
         ),
       });
     write(join(WEB, "src/app/favicon.ico"), icoFile(ico));
-    // iOS rounds the corners itself; the manifest icons keep the maskable safe zone.
-    write(join(WEB, "src/app/apple-icon.png"), await shot(tile(180, 0.14, 0), 180, 180, false));
+    // The mid mark fills about 80% of the tile; iOS rounds the corners itself.
+    write(
+      join(WEB, "src/app/apple-icon.png"),
+      await shot(tile(180, 0.1, 0, markMid), 180, 180, false),
+    );
     for (const size of [192, 512]) {
       write(
         join(WEB, `public/icon-${size}.png`),
-        await shot(tile(size, 0.18, 0), size, size, false),
+        await shot(tile(size, 0.1, 0, markMid), size, size, false),
       );
     }
     write(
