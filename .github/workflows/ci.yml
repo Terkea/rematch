@@ -37,8 +37,8 @@ jobs:
     env:
       COMPOSE: docker compose -p ci-ts
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
       - name: Check npm release age (7 days) and exact pins
@@ -131,7 +131,7 @@ jobs:
       COMPOSE_FILE: docker-compose.yml:docker-compose.e2e.yml:docker-compose.e2e-prod.yml
       COMPOSE: docker compose -p ci-e2e --profile e2e
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # A production server refuses the public dev secret, so this run makes its own. It is
       # masked, and it signs only this run's throwaway sessions. It comes before every compose
       # command: compose interpolates docker-compose.e2e-prod.yml even for `build`, and that file
@@ -152,7 +152,7 @@ jobs:
       - name: Web logs
         if: failure()
         run: $COMPOSE logs --no-color web fakes
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: playwright-report-production
@@ -169,7 +169,7 @@ jobs:
       COMPOSE_FILE: docker-compose.yml:docker-compose.e2e.yml
       COMPOSE: docker compose -p ci-e2e-fakes --profile e2e
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Build the images
         run: $COMPOSE build deps web fakes
       - name: Start web (next dev) and the fakes
@@ -181,7 +181,7 @@ jobs:
       - name: Web logs
         if: failure()
         run: $COMPOSE logs --no-color web fakes
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: playwright-report-fakes
@@ -197,7 +197,7 @@ jobs:
       LANE: "0"
       COMPOSE: docker compose -p ci-rust
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Build the Rust dev image
         run: $COMPOSE build rust-dev
       # ADR 0042: rust-dev mounts external cache volumes (registry, git, sccache) that compose
@@ -205,7 +205,7 @@ jobs:
       - name: Create the shared Rust cache volumes
         run: sh scripts/rust-cache-init.sh
       # Publish dates never change, so the crates.io answers are cached between runs.
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: backend/target/crate-age-cache
           key: crate-age-${{ hashFiles('backend/Cargo.lock', 'backend/Dockerfile') }}
@@ -213,7 +213,7 @@ jobs:
       # ADR-R2-12/22: under IN_DOCKER=1 the real-table tests fail without the 3-4-5 Syzygy
       # tables, as locally. They are fixed data, so they are cached by their pinned manifest and
       # fetched (SHA-256 verified per file) only on a miss.
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         id: syzygy
         with:
           path: data/syzygy
@@ -260,7 +260,7 @@ jobs:
     env:
       COMPOSE: docker compose -p ci-baseline-schema
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Diff the Drizzle and sqlx schemas
         run: sh backend/scripts/check-baseline-schema.sh
       - name: Stop the stack
@@ -274,7 +274,7 @@ jobs:
     env:
       COMPOSE: docker compose -p ci-schema-drift
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Regenerate the Drizzle schema from db/migrations
         run: sh scripts/db/generate-drizzle-schema.sh
       - name: Fail on drift
