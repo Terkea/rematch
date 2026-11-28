@@ -1,0 +1,20 @@
+# The lab's machine-checked lemmas (ADR 0118). Lean and mathlib are pinned to the
+# dated v4.36.0 tags (2026-11-16); lake-manifest.json pins every package by commit.
+name = "rematch"
+defaultTargets = ["Rematch", "RematchTest"]
+
+[leanOptions]
+autoImplicit = false
+
+[[require]]
+name = "mathlib"
+scope = "leanprover-community"
+git = "https://github.com/leanprover-community/mathlib4"
+rev = "v4.36.0"
+
+[[lean_lib]]
+name = "Rematch"
+
+# Asserts that every theorem uses only propext, Classical.choice and Quot.sound.
+[[lean_lib]]
+name = "RematchTest"
