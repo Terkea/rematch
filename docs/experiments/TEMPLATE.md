@@ -12,6 +12,11 @@ such as the fixes a critic asks for, stay visible in git and are listed in revie
 
 The skills in .claude/skills/science/ say how to fill each section: hypothesis-generation (2),
 statistical-power (6), experimental-design (7), statistical-analysis, statsmodels and pymc (8).
+
+The maths goes in its own file, lab/experiments/EXP-NNNN/math.md, from MATH-TEMPLATE.md next to
+this one, with a math_check.py that verifies it (ADR 0118). Its sections 1 to 4 (notation, model,
+estimators, derivations and proofs) are committed before the freeze; sections 5 and 6 (numbers,
+assumptions that can fail) with the decision.
 Delete these comments when you fill the file.
 -->
 
