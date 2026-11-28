@@ -7,6 +7,10 @@ lab/experiments/EXP-NNNN/
   preregistration.md   from docs/experiments/TEMPLATE.md, committed before anything runs
   analysis.py          the single entry point: python analysis.py --out DIR
   inputs.sha256        "<sha256>  <path from this folder>" for every input it reads
+  math.md              the maths, from docs/experiments/MATH-TEMPLATE.md: notation, model,
+                       estimators, numbered results with full proofs, numbers, assumptions
+  math_check.py        checks math.md in the lab image (sympy, a seeded simulation, every
+                       quoted number recomputed); from lab/templates/math_check.py
   results.json         the numbers, the algorithm_id they ran on and the compute budget
                        against the actual (canonical JSON)
   figures/             the figures, made from results.json's data
@@ -18,13 +22,19 @@ lab/experiments/EXP-NNNN/
 
 ## The order of commits
 
-CI checks the first three against git (`python -m rematch_lab.experiments check --history`).
+CI checks the registration and the results against git (`python -m rematch_lab.experiments check --history`).
 
 1. `preregistration.md`, `analysis.py` and `inputs.sha256`, with the sha256 of `analysis.py` in section 10 (`python -m rematch_lab.experiments hash EXP-NNNN`). The pull request is reviewed before the experiment runs.
-2. `review.md`, part one: a fresh critic reads the pre-registration with the `scientific-critical-thinking` and `peer-review` skills, looking for p-hacking room, leakage, pseudoreplication, an effect size picked to pass, and a decision rule that cannot fail. Fixes are made in the pre-registration, in their own commit before any result, and `review.md` lists each edit.
-3. `results.json` and `figures/`, from one run of the frozen `analysis.py`, in a commit after the registration. From this commit on, sections 0 to 10 of the pre-registration and `analysis.py` are frozen.
-4. `review.md`, part two: the same review of the result (overclaiming, deviations, diagnostics).
-5. `decision.md`, the line in `lab/findings.md`, and, for a shipped change, the entry in `algorithm/CHANGELOG.md` with the EXP id, and an ADR.
+2. `math.md` sections 1 to 4 (notation, model, estimators, derivations and proofs) and `math_check.py`, before the freeze tag (`exp-nnnn-freeze`) and before any result ([the template](../../docs/experiments/MATH-TEMPLATE.md), ADR 0118).
+3. `review.md`, part one: a fresh critic reads the pre-registration with the `scientific-critical-thinking` and `peer-review` skills, looking for p-hacking room, leakage, pseudoreplication, an effect size picked to pass, and a decision rule that cannot fail. The critic also checks every proof in `math.md`, re-derives the key results without reading it, and runs `math_check.py`. Fixes are made in the pre-registration, in their own commit before any result, and `review.md` lists each edit.
+4. `results.json` and `figures/`, from one run of the frozen `analysis.py`, in a commit after the registration. From this commit on, sections 0 to 10 of the pre-registration and `analysis.py` are frozen.
+5. `review.md`, part two: the same review of the result (overclaiming, deviations, diagnostics).
+6. `math.md` sections 5 and 6 (every quoted number recomputed, the assumptions that can fail), with `math_check.py` checking the numbers against `results.json`.
+7. `decision.md`, the line in `lab/findings.md`, and, for a shipped change, the entry in `algorithm/CHANGELOG.md` with the EXP id, and an ADR.
+
+## The maths
+
+`python -m rematch_lab.experiments check` reports a `[math]` problem when an experiment that is frozen, running or has results lacks `math.md` with the six headings and sections 1 to 4 filled, when a decided one lacks sections 5 and 6, or when `math_check.py` (run in the experiment folder) does not exit 0. With `REMATCH_MATH_RULE=warn`, the default until every experiment has its maths, they are printed as warnings; `REMATCH_MATH_RULE=fail` makes them problems (ADR 0118).
 
 ## What `analysis.py` may do
 

@@ -14,7 +14,9 @@ nothing else. `check` enforces what CI needs:
    checkout's git-ignored `data/`), such as a pinned snapshot of the Lichess puzzle database. When
    it is present it must match; when it is absent, as in CI, the check says so and does not rerun
    the experiment, since its answer cannot be reproduced without its data.
-4. Deterministic: two runs give byte-identical `results.json`. For an experiment whose results
+4. Deterministic: two runs give byte-identical `results.json`. Only an experiment whose
+   `results.json` is committed is rerun; without one the check says "not rerun: no results
+   committed", since running `analysis.py` would start the experiment itself. For one whose results
    ran on the current algorithm (`algorithm_id`), the rerun also equals the committed file. Once
    the algorithm moves on, a decided experiment stays live (ADR 0109): `rematch_lab.arena`
    re-runs it on its schedule against the champion, so this check does not rerun it twice more;
@@ -29,6 +31,12 @@ nothing else. `check` enforces what CI needs:
 6. Closed unrun (the kill rule, ADR 0107): an experiment with a `decision.md` and no
    `results.json` was closed before it ran. Its value case and inputs are still checked; it is
    never run.
+7. The maths (ADR 0118, the `[math]` problems): `math.md` has the six headings of
+   docs/experiments/MATH-TEMPLATE.md (`MATH_SECTIONS`), with sections 1 to 4 filled once the
+   experiment is frozen (its `exp-nnnn-freeze` tag), running or has results, and all six once it
+   has a `decision.md`; and `math_check.py`, run in the experiment folder, exits 0.
+   `REMATCH_MATH_RULE=warn` (the default until every experiment is backfilled) prints them as
+   warnings; `REMATCH_MATH_RULE=fail` makes them problems.
 
     python -m rematch_lab.experiments check [--history] [EXP-0001 ...]
     python -m rematch_lab.experiments hash EXP-0001    # print analysis.py's sha256
@@ -383,6 +391,147 @@ def input_problems(exp: Path) -> list[str]:
     return problems
 
 
+def in_git(exp: Path) -> bool:
+    inside = subprocess.run(
+        ["git", "-C", str(exp), "rev-parse", "--is-inside-work-tree"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return inside.returncode == 0 and inside.stdout.strip() == "true"
+
+
+def results_committed(exp: Path) -> bool:
+    """`results.json` is here and, in a git checkout, tracked: a run's fresh output is not."""
+    if not (exp / "results.json").is_file():
+        return False
+    if not in_git(exp):
+        return True
+    tracked = subprocess.run(
+        ["git", "-C", str(exp), "ls-files", "--error-unmatch", "results.json"],
+        capture_output=True,
+        check=False,
+    )
+    return tracked.returncode == 0
+
+
+# ---- the maths (ADR 0118, docs/experiments/MATH-TEMPLATE.md) --------------------------------
+
+#: The headings of math.md, exactly as docs/experiments/MATH-TEMPLATE.md has them.
+MATH_SECTIONS = (
+    "## 1. Notation",
+    "## 2. Model",
+    "## 3. Estimators",
+    "## 4. Derivations and proofs",
+    "## 5. Numbers",
+    "## 6. Assumptions that can fail",
+)
+#: Due once the experiment is frozen (its `exp-nnnn-freeze` tag) or has results.
+MATH_BEFORE_RUN = (1, 2, 3, 4)
+#: Due with the decision.
+MATH_ALL = (1, 2, 3, 4, 5, 6)
+MATH_RULES = ("warn", "fail")
+MATH_CHECK_TIMEOUT = 1800
+COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
+
+
+def math_rule() -> str:
+    """`REMATCH_MATH_RULE`: warn (the default until the backfill is done) or fail."""
+    rule = os.environ.get("REMATCH_MATH_RULE", "warn").strip() or "warn"
+    if rule not in MATH_RULES:
+        raise SystemExit(f"REMATCH_MATH_RULE is {rule!r}; it is one of {', '.join(MATH_RULES)}")
+    return rule
+
+
+def freeze_tag(exp: Path) -> str:
+    return f"{exp.name.lower()}-freeze"
+
+
+def frozen(exp: Path) -> bool:
+    """The experiment's freeze tag exists in its git repository."""
+    if not in_git(exp):
+        return False
+    tags = subprocess.run(
+        ["git", "-C", str(exp), "tag", "-l", freeze_tag(exp)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return tags.stdout.strip() == freeze_tag(exp)
+
+
+def math_due(exp: Path) -> tuple[int, ...]:
+    """The math.md sections due now: all six with a decision, 1 to 4 once frozen or run."""
+    if (exp / "decision.md").is_file():
+        return MATH_ALL
+    running = summary_meta(exp).get("status") in ("running", "decided")
+    if running or (exp / "results.json").is_file() or frozen(exp):
+        return MATH_BEFORE_RUN
+    return ()
+
+
+def math_sections(text: str) -> dict[int, str]:
+    """The body of each heading of MATH_SECTIONS found in `text`, comments removed."""
+    lines = text.replace("\r\n", "\n").split("\n")
+    marks = [
+        (i, MATH_SECTIONS.index(line.rstrip()) + 1)
+        for i, line in enumerate(lines)
+        if line.rstrip() in MATH_SECTIONS
+    ]
+    out = {}
+    for k, (start, n) in enumerate(marks):
+        end = marks[k + 1][0] if k + 1 < len(marks) else len(lines)
+        out[n] = COMMENT.sub("", "\n".join(lines[start + 1 : end])).strip()
+    return out
+
+
+def run_math_check(exp: Path) -> str | None:
+    """Runs math_check.py in the experiment folder; the failure, or None when it exits 0."""
+    env = {**os.environ, "PYTHONPATH": str(LAB_ROOT), "PYTHONHASHSEED": "0", "MPLBACKEND": "Agg"}
+    try:
+        done = subprocess.run(
+            [sys.executable, "-P", "math_check.py"],
+            cwd=exp,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=MATH_CHECK_TIMEOUT,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return f"math_check.py ran past {MATH_CHECK_TIMEOUT} s"
+    if done.returncode == 0:
+        return None
+    tail = " | ".join((done.stderr or done.stdout).strip().splitlines()[-5:])
+    return f"math_check.py exited {done.returncode}: {tail}"
+
+
+def math_problems(exp: Path) -> list[str]:
+    """The `math` problems: math.md has the six headings with the due ones filled, and
+    math_check.py exits 0. A math_check.py is run whenever there is one."""
+    due = math_due(exp)
+    problems = []
+    md = exp / "math.md"
+    if due and not md.is_file():
+        problems.append(f"{exp.name}: [math] no math.md (docs/experiments/MATH-TEMPLATE.md)")
+    elif md.is_file() and due:
+        found = math_sections(md.read_text(encoding="utf-8"))
+        for n, heading in enumerate(MATH_SECTIONS, start=1):
+            if n not in found:
+                problems.append(f'{exp.name}: [math] math.md has no "{heading}"')
+            elif n in due and not found[n]:
+                problems.append(f'{exp.name}: [math] "{heading}" of math.md is empty')
+    check_file = exp / "math_check.py"
+    if not check_file.is_file():
+        if due:
+            problems.append(f"{exp.name}: [math] no math_check.py")
+        return problems
+    failure = run_math_check(exp)
+    if failure:
+        problems.append(f"{exp.name}: [math] {failure}")
+    return problems
+
+
 def check(exp: Path, *, history: bool = False, algorithm_id: str | None = None) -> list[str]:
     """The problems with one experiment; empty means it passes."""
     problems = []
@@ -394,6 +543,12 @@ def check(exp: Path, *, history: bool = False, algorithm_id: str | None = None) 
     text = (exp / "preregistration.md").read_text(encoding="utf-8")
     problems += value_case_problems(exp, text)
     problems += metadata_problems(exp)
+    maths = math_problems(exp)
+    if math_rule() == "fail":
+        problems += maths
+    else:
+        for p in maths:
+            print(f"warning: {p} (REMATCH_MATH_RULE=warn; ADR 0118)")
     problems += input_problems(exp)
     committed = exp / "results.json"
     if not committed.exists() and (exp / "decision.md").is_file():
@@ -429,6 +584,10 @@ def check(exp: Path, *, history: bool = False, algorithm_id: str | None = None) 
                 print(f"{exp.name}: ran on {ran_on}, the cli is {algorithm_id}; not live")
     if moved_on:
         return problems
+    if not results_committed(exp):
+        # Running it here would start the experiment itself, before its results are due.
+        print(f"{exp.name}: not rerun: no results committed")
+        return problems
     absent = missing_external(exp)
     if absent:
         print(f"{exp.name}: not rerun, its external input is not here ({', '.join(absent)})")
@@ -438,7 +597,7 @@ def check(exp: Path, *, history: bool = False, algorithm_id: str | None = None) 
         second = run_once(exp, Path(b))
     if first != second:
         problems.append(f"{exp.name}: two runs gave different results.json")
-    if committed.exists() and committed.read_bytes() != first:
+    if committed.read_bytes() != first:
         problems.append(f"{exp.name}: the rerun differs from the committed results.json")
     return problems
 
