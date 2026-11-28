@@ -1,0 +1,43 @@
+name: Lean
+# The lab's machine-checked lemmas (ADR 0118 and its Amendment 1): builds lab/lean with Lean 4
+# and mathlib at the pinned tags, in the toolchain stage of lab/lean/Dockerfile, and fails on any
+# broken proof, `sorry` or non-standard axiom (lake build runs RematchTest/Axioms.lean). Runs on
+# pull requests that touch lab/lean and every Sunday. Mathlib's packages and prebuilt oleans
+# (.lake/packages, several GB) are cached on the manifest and the toolchain. Pinned by commit
+# SHA, read-only token, no secrets.
+on:
+  pull_request:
+    paths:
+      - lab/lean/**
+      - .github/workflows/lean.yml
+  push:
+    branches: [main]
+    paths:
+      - lab/lean/**
+  schedule:
+    - cron: "17 5 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lean-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lean:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: lab/lean/.lake/packages
+          key: lean-packages-${{ hashFiles('lab/lean/lake-manifest.json', 'lab/lean/lean-toolchain') }}
+      - name: Build the toolchain image (elan, checksum-verified; the pinned Lean)
+        run: docker build --target toolchain -t rematch-lean:toolchain lab/lean
+      - name: lake exe cache get, then lake build (proofs and the axiom check)
+        run: |
+          docker run --rm --user "$(id -u):$(id -g)" -v "$PWD/lab/lean:/lean" rematch-lean:toolchain \
+            sh -c "lake exe cache get && lake build"
