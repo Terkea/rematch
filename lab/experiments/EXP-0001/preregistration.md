@@ -99,4 +99,7 @@ The budgets, in games because the seconds a game depend on the machine: the smok
 
 ## 11. Deviations
 
-None.
+None during the run. Two findings from the maths audit (2026-11-28, ADR 0118), recorded after the decision; sections 0 to 10, `analysis.py` and `results.json` are unchanged:
+
+1. **The smoke coverage tolerance is one of two lattice points.** Under section 8's own model, the 0.8 quantile of churn-only coverage growth is 4/60 (0.067), not the committed 0.05. A 2,000-suite run returns 0.05 with probability 0.41. The property section 8 states in words still holds for 0.05: churn alone exceeds it 0.202 of the time at the pilot's coverage. `math.md`, Finding 1.
+2. **At the installed baseline the coverage rule is two-sided.** The tolerance was calibrated at the pilot's coverage (0.575). `bench/baseline.json` holds coverage 0.8, so the CI rule (`backend/crates/bench/src/results.rs`, `|is − 0.8| > |was − 0.8| + t`) becomes `|is − 0.8| > 0.05`. Under churn alone, that fails 0.19 of the time with interval flips and 0.40 to 0.71 with the player flips the tolerance was registered with. That is up to 3.5 times the intended 0.20. Recalibrating the rule at the baseline is a rule change, so it is not made here. It is filed as EXP-0033. `math.md`, Finding 2.
