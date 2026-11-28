@@ -1,6 +1,6 @@
 # Vendored science skills
 
-Nine skills from **K-Dense** Scientific Agent Skills, pinned to one upstream commit and read in full before they were copied. They guide the experiments in `lab/` (ADR 0106); the lab itself drives the Rust algorithm and never re-implements it.
+Ten skills from **K-Dense** Scientific Agent Skills, pinned to one upstream commit and read in full before they were copied. They guide the experiments in `lab/` (ADR 0106); the lab itself drives the Rust algorithm and never re-implements it.
 
 - Source: https://github.com/K-Dense-AI/scientific-agent-skills
 - Commit: `c21d13b3cc2894680229ba9959a53281acb9200e` (committed 2026-11-23T09:18:26Z)
@@ -19,8 +19,9 @@ Nine skills from **K-Dense** Scientific Agent Skills, pinned to one upstream com
 | `scientific-critical-thinking` | 1.5 | MIT | the critic's review of a pre-registration and its result |
 | `peer-review` | 2.4 | MIT | the same review, written as a structured report |
 | `hypothesis-generation` | 2.4 | MIT | H0 and H1, rival explanations, discriminating predictions |
+| `sympy` | 1.5 | BSD-3-Clause (SymPy's) | symbolic checks of every derivation in an experiment's `math.md` (ADR 0118); vendored 2026-11-28 from the same commit, read in full by a fresh reviewer |
 
-The licence column is the skill's own `license:` field. The pymc, statsmodels and scikit-learn skills declare the licence of the library they document; the skill text is K-Dense's work under the repository's MIT licence. Each skill keeps its front matter unchanged apart from the `compatibility` line.
+The licence column is the skill's own `license:` field. The pymc, statsmodels, scikit-learn and sympy skills declare the licence of the library they document; the skill text is K-Dense's work under the repository's MIT licence. Each skill keeps its front matter unchanged apart from the `compatibility` line.
 
 ## What was read
 
