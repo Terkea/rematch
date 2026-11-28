@@ -17,6 +17,10 @@ lab/experiments/EXP-NNNN/
   review.md            the critic's review of the pre-registration and of the result
   decision.md          ship, reject or need more data, and a "## Next" of roadmap issues
   summary.md           the site's summary; once decided, live, rerun and the cost of one run
+  plain.md             once decided (required from now on): the experiment in plain words for a
+                       chess player, 150 to 350 words: bottom line, what we asked, why it
+                       matters, what we found, what changed, how it helps improve Rematch,
+                       what we still don't know; the site shows it first, as "In plain words"
   arena.py             once decided: the comparison rule the arena uses (ADR 0109)
 ```
 
@@ -30,7 +34,7 @@ CI checks the registration and the results against git (`python -m rematch_lab.e
 4. `results.json` and `figures/`, from one run of the frozen `analysis.py`, in a commit after the registration. From this commit on, sections 0 to 10 of the pre-registration and `analysis.py` are frozen.
 5. `review.md`, part two: the same review of the result (overclaiming, deviations, diagnostics).
 6. `math.md` sections 5 and 6 (every quoted number recomputed, the assumptions that can fail), with `math_check.py` checking the numbers against `results.json`.
-7. `decision.md`, the line in `lab/findings.md`, and, for a shipped change, the entry in `algorithm/CHANGELOG.md` with the EXP id, and an ADR.
+7. `decision.md`, `plain.md`, the line in `lab/findings.md`, and, for a shipped change, the entry in `algorithm/CHANGELOG.md` with the EXP id, and an ADR.
 
 ## The maths
 

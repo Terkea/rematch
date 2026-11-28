@@ -48,6 +48,19 @@ describe("experiments", () => {
     );
     expect(experimentPage(exps[0] as never)).not.toContain("The maths");
   });
+  it('puts plain.md first as "In plain words", its title dropped, headings demoted, escaped', () => {
+    expect(exps[1]?.files).toMatchObject({ plain: true });
+    expect(exps[0]?.files).toMatchObject({ plain: false });
+    const page = experimentPage(exps[1] as never);
+    const plain = page.indexOf("## In plain words");
+    expect(plain).toBeGreaterThan(-1);
+    expect(plain).toBeLessThan(page.indexOf("- A second bullet"));
+    expect(page).toContain("### What we asked");
+    expect(page).not.toContain("# EXP-9001 in plain words");
+    expect(page).toContain("with a &lt;tag> to escape");
+    expect(page).toContain("blob/main/lab/experiments/EXP-9001/decision.md");
+    expect(experimentPage(exps[0] as never)).not.toContain("In plain words");
+  });
   it("builds the maths page from math.md, its links rewritten and its comments dropped", () => {
     const text = readFileSync(join(FIXTURE, "experiments", "EXP-9001", "math.md"), "utf8");
     const page = mathPage(exps[1] as never, text);
