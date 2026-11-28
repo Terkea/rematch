@@ -854,8 +854,9 @@ export function dotChart(c) {
   }
   if (c.band) parts.push(text(left + pw - 4, y(c.band.lo) + 14, c.band.label, "kc-label", "end"));
   const off = c.series.length > 1 ? Math.min(8, step / 6) : 0;
-  // "not run" sits halfway between the two middle gridlines, never on one.
-  const mt = Math.max(0, Math.floor((c.ticks.length - 1) / 2) - (c.ticks.length % 2 ? 1 : 0));
+  // "not run" sits halfway between two gridlines, never on one.
+  // The band just above the middle, clear of a target line and its label low on the left.
+  const mt = Math.max(0, Math.floor((c.ticks.length - 1) / 2));
   const missingY = (y(c.ticks[mt] ?? d0) + y(c.ticks[mt + 1] ?? d1)) / 2 + 4;
   c.series.forEach((s, si) => {
     const dx = (si - (c.series.length - 1) / 2) * off * 2;

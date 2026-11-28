@@ -610,6 +610,12 @@ dialog {
   .sc-measure {
     gap: calc(var(--spacing) * 3);
   }
+
+  /* The trend's label wraps to the sparkline's width, so the value keeps the room. */
+  .sc-trend-label {
+    max-width: calc(var(--spacing) * 28);
+    text-align: end;
+  }
 }
 
 /* Charts: drawn on a sheet, so each mark's 2px ring is the sheet (the halo rule). */
