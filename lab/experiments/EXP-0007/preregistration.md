@@ -129,4 +129,8 @@ Measurement, per tag. This departs from ADR 0106's measurement rule (a 95% inter
 
 ## 11. Deviations
 
-None.
+From the maths audit (2026-11-28, ADR 0118), recorded after the decision; sections 0 to 10, `analysis.py` and `results.json` are unchanged and no decision moves (`math.md`, Findings):
+
+1. `decision.md` quotes theme shares over all tagged puzzles as shares of false positives. The false-positive-only shares can be up to about twice as large, and `hangingPiece`'s "largest" two themes are not its largest.
+2. Section 6's "linearised coverage at least 0.994 for f ≥ 0.005" is 0.9615 at f = 0.005 (`smotheredMate`); the claim holds from f ≥ 0.01.
+3. `decision.md` cites "fully sampled cells"; no audience cell is sampled in full (the largest fraction is 0.45).
