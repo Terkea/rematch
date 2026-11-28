@@ -35,8 +35,8 @@ nothing else. `check` enforces what CI needs:
    docs/experiments/MATH-TEMPLATE.md (`MATH_SECTIONS`), with sections 1 to 4 filled once the
    experiment is frozen (its `exp-nnnn-freeze` tag), running or has results, and all six once it
    has a `decision.md`; and `math_check.py`, run in the experiment folder, exits 0.
-   `REMATCH_MATH_RULE=warn` (the default until every experiment is backfilled) prints them as
-   warnings; `REMATCH_MATH_RULE=fail` makes them problems.
+   `REMATCH_MATH_RULE=fail` (the default since every experiment was backfilled, 2026-11-28) makes them problems; `REMATCH_MATH_RULE=warn` prints them as
+   warnings, for local drafting only.
 
     python -m rematch_lab.experiments check [--history] [EXP-0001 ...]
     python -m rematch_lab.experiments hash EXP-0001    # print analysis.py's sha256
@@ -436,8 +436,8 @@ COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
 
 
 def math_rule() -> str:
-    """`REMATCH_MATH_RULE`: warn (the default until the backfill is done) or fail."""
-    rule = os.environ.get("REMATCH_MATH_RULE", "warn").strip() or "warn"
+    """`REMATCH_MATH_RULE`: fail (the default) or warn (local drafting only)."""
+    rule = os.environ.get("REMATCH_MATH_RULE", "fail").strip() or "fail"
     if rule not in MATH_RULES:
         raise SystemExit(f"REMATCH_MATH_RULE is {rule!r}; it is one of {', '.join(MATH_RULES)}")
     return rule
