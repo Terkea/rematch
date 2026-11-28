@@ -99,4 +99,7 @@ Whatever the primary shows, a confirmatory margin whose Bonferroni interval lies
 
 ## 11. Deviations
 
-None.
+None during the run. From the maths audit (2026-11-28, ADR 0118), recorded after the decision; sections 0 to 10, `analysis.py` and `results.json` are unchanged and no classification or decision moves (`math.md`, Findings):
+
+1. Section 6's power statements were loose. A coverage of 0.72 lands outside the band with probability above 0.9 only at a player variance of 0.16; at the worst case (0.2016) it is 0.838. A true 0.78 passes with 100 players a cell 0.56 of the time, not "two times in three".
+2. Rounding: W5 compressed at 250 games is 0.8047 (quoted 0.81 in `decision.md` and `review.md`); z₂₁ = 3.038 (quoted 3.03); the Wilson half-width is 0.0552 (quoted "about 0.056").
