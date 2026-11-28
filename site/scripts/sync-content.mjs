@@ -8,10 +8,21 @@
 //   else from the seed files in .github/settings (roadmap-data.mjs, ADR 0099);
 // - the "How it works" page, from the README's marked section, so the two never drift, and the
 //   landing page's summary of it (the overview and each stage's title and first sentence).
+// - the Engine scorecard (kpi-charts.mjs), from lab/leaderboard.json and the bench history when one
+//   exists (`BENCH_HISTORY`, else bench/history.json; `--bench-fixture` uses the test fixture);
+// - each experiment's figures, copied to public/lab-figures/.
 // - the Experiments pages (lab/experiments/EXP-*/summary.md), the Progress page (docs/progress.md)
 //   and the landing page's "Latest from the lab" strip.
 // Everything written here is git-ignored and regenerated on every build.
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join, posix, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadSeed } from "../../scripts/roadmap/roadmap-lib.mjs";
@@ -24,6 +35,7 @@ import {
   slugOf,
   titleOf,
 } from "./content-lib.mjs";
+import { buildScorecard, loadBenchHistory, writeScorecard } from "./kpi-charts.mjs";
 import {
   algorithmMathPage,
   experimentPage,
@@ -164,7 +176,16 @@ function writeLab() {
   rmSync(outDir, { recursive: true, force: true });
   mkdirSync(outDir, { recursive: true });
   const edit = `${GITHUB_BLOB.replace("/blob/", "/edit/")}`;
+  const figDir = join(SITE, "public", "lab-figures");
+  rmSync(figDir, { recursive: true, force: true });
   for (const e of exps) {
+    for (const f of e.figures) {
+      mkdirSync(join(figDir, e.slug), { recursive: true });
+      copyFileSync(
+        join(ROOT, "lab", "experiments", e.folder, "figures", f.file),
+        join(figDir, e.slug, f.file),
+      );
+    }
     writeFileSync(
       join(outDir, `${e.slug}.md`),
       frontmatter({
@@ -235,10 +256,40 @@ function writeAlgorithmMath() {
   return true;
 }
 
-export function sync() {
+/** Where the bench history is read from: `BENCH_HISTORY`, bench/history.json, or the fixture. */
+function benchHistoryPath(fixture) {
+  if (fixture) return join(SITE, "test", "fixtures", "bench-history.json");
+  if (process.env.BENCH_HISTORY) return resolve(process.env.BENCH_HISTORY);
+  return join(ROOT, "bench", "history.json");
+}
+
+/** The Engine scorecard page (/docs/scorecard/), its SVGs and src/data/generated/scorecard.json. */
+function writeScorecardPage({ fixture = false } = {}) {
+  const lab = join(ROOT, "lab");
+  const model = buildScorecard(loadLeaderboard(lab), loadBenchHistory(benchHistoryPath(fixture)), {
+    champion: championId(),
+    changelog: readFileSync(join(ROOT, "algorithm", "CHANGELOG.md"), "utf8"),
+    baseline: JSON.parse(readFileSync(join(ROOT, "bench", "baseline.json"), "utf8")),
+  });
+  const body = writeScorecard(join(SITE, "src", "data", "generated"), model);
+  writeFileSync(
+    join(OUT_DOCS, "scorecard.md"),
+    frontmatter({
+      title: "Engine scorecard",
+      description:
+        "Whether Rematch is a good engine: every KPI with its value, 80% interval, n, target and status, the unmeasured ones included, and a chart per KPI across algorithm versions.",
+      editUrl: `${GITHUB_BLOB.replace("/blob/", "/edit/")}/site/scripts/kpi-charts.mjs`,
+      tableOfContents: { maxHeadingLevel: 3 },
+    }) + body,
+  );
+  return model.rows.length;
+}
+
+export function sync({ benchFixture = false } = {}) {
   writeTokens();
   writeAlgorithmMath();
   const experiments = writeLab();
+  writeScorecardPage({ fixture: benchFixture });
   writeHowItWorksSummary();
   writeHowItWorks();
   const decisions = syncCollection({
@@ -267,7 +318,7 @@ export function sync() {
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
-  const n = sync();
+  const n = sync({ benchFixture: process.argv.includes("--bench-fixture") });
   console.log(
     `site content: ${n.decisions} decisions, ${n.research} research notes, ${n.experiments} experiments, tokens (${relative(ROOT, join(SITE, "src/styles/generated/tokens.css"))})`,
   );
