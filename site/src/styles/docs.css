@@ -493,12 +493,13 @@ dialog {
   line-height: var(--text-sm--line-height);
 }
 
+/* Value on the left, trend in its own right-hand column at every width: a long value wraps
+   inside its column, so the sparkline never drops below it. */
 .sc-measure {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: calc(var(--spacing) * 3) calc(var(--spacing) * 6);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: calc(var(--spacing) * 4);
 }
 
 .sl-markdown-content .sc-measure > * {
@@ -536,10 +537,11 @@ dialog {
   color: var(--color-ink-soft);
 }
 
+/* A trade-off row stacks its two sparklines in the same column, labels on one right edge. */
 .sc-trends {
-  display: flex;
-  flex-wrap: wrap;
-  gap: calc(var(--spacing) * 6);
+  display: grid;
+  justify-items: end;
+  gap: calc(var(--spacing) * 3);
 }
 
 .sc-trend {
@@ -605,8 +607,8 @@ dialog {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .sc-trend {
-    justify-items: start;
+  .sc-measure {
+    gap: calc(var(--spacing) * 3);
   }
 }
 
@@ -680,10 +682,15 @@ dialog {
   font-size: var(--text-xs);
 }
 
+/* "not run" sits between gridlines on a sheet halo, so no line strikes it through. */
 .kc-missing {
   fill: var(--color-ink-faint);
   font-size: var(--text-xs);
   text-anchor: middle;
+  stroke: var(--color-sheet);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+  paint-order: stroke;
 }
 
 .kc-grid {

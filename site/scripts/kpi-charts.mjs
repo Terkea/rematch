@@ -534,7 +534,7 @@ export function buildScorecard(board, history = null, opts = {}) {
     const prev = previousWith(data, champion, (d) => d.trajectory);
     const cmp = champion ? recordOf(board, "EXP-0015", champion)?.comparison?.detection_100 : null;
     const fa = statusFor(t.fa.interval, { kind: "max", value: 0.1 });
-    const lower = cmp?.verdict === "worse";
+    const lower = changeReading(cmp) === "lower";
     rows.push({
       id: "d4",
       group: "drivers",
@@ -854,6 +854,9 @@ export function dotChart(c) {
   }
   if (c.band) parts.push(text(left + pw - 4, y(c.band.lo) + 14, c.band.label, "kc-label", "end"));
   const off = c.series.length > 1 ? Math.min(8, step / 6) : 0;
+  // "not run" sits halfway between the two middle gridlines, never on one.
+  const mt = Math.max(0, Math.floor((c.ticks.length - 1) / 2) - (c.ticks.length % 2 ? 1 : 0));
+  const missingY = (y(c.ticks[mt] ?? d0) + y(c.ticks[mt + 1] ?? d1)) / 2 + 4;
   c.series.forEach((s, si) => {
     const dx = (si - (c.series.length - 1) / 2) * off * 2;
     const shape = s.shape ?? (si ? "square" : "circle");
@@ -862,7 +865,7 @@ export function dotChart(c) {
       if (!p || !finite(p.value)) {
         if (si === 0)
           parts.push(
-            `<g><title>${esc(`${shortVersion(c.versions[i])}: not run on this version`)}</title>${text(cx(i), top + ph / 2, "not run", "kc-missing")}</g>`,
+            `<g><title>${esc(`${shortVersion(c.versions[i])}: not run on this version`)}</title>${text(cx(i), missingY, "not run", "kc-missing")}</g>`,
           );
         return;
       }
@@ -1340,33 +1343,46 @@ function rowHtml(row) {
   return `<li class="sc-row sc-${row.tier}" id="kpi-${row.id}"><div class="sc-head"><h3 class="sc-name">${esc(row.name)}</h3><span class="sc-tier sc-tier-${row.tier}">${TIER_TEXT[row.tier]}</span>${measured ? `<span class="sc-status sc-status-${row.status}">${STATUS_TEXT[row.status]}</span>` : ""}</div><p class="sc-question">${esc(row.question)}</p><div class="sc-measure">${value}${trend}</div><dl class="sc-facts"><div><dt>Based on</dt><dd>${row.basis ?? "—"}</dd></div><div><dt>Target</dt><dd>${esc(row.target)}</dd></div></dl>${notes}</li>`;
 }
 
-function verdictText(model, exp, metricName, label) {
+/**
+ * How a paired change reads, from its interval alone: "higher" or "lower" when the interval
+ * excludes 0, "no clear difference" only when it holds 0. Null without an interval.
+ * @returns {"higher" | "lower" | "no clear difference" | null}
+ */
+export function changeReading(c) {
+  if (!c || !Array.isArray(c.interval) || !c.interval.every(finite)) return null;
+  const [lo, hi] = c.interval;
+  if (lo > 0) return "higher";
+  if (hi < 0) return "lower";
+  return "no clear difference";
+}
+
+/**
+ * The arena's comparison of the champion with the version before it, in words derived from the
+ * interval. A guard that passes on a floor while the change excludes 0 says so in its own clause.
+ */
+export function verdictText(model, exp, metricName, label) {
   if (!model.champion) return "";
   const r = recordOf(model.board, exp, model.champion);
   const c = r?.comparison?.[metricName];
   if (!r || !c || !r.against || r.against === r.algorithm_id) return "";
-  const words =
-    {
-      better: "better than",
-      worse: "worse than",
-      "no clear difference": "no clear difference from",
-    }[c.verdict] ?? c.verdict;
-  const iv = fmtInterval(c.interval);
   const [v, a] = [esc(shortVersion(r.algorithm_id)), esc(shortVersion(r.against))];
-  const change = iv
-    ? ` (the paired change ${fmt(c.effect)}, ${levelText(c.level)} interval ${iv})`
-    : "";
-  // A guard can pass on its own rule (a floor) while the versions' intervals separate: say both,
-  // and never call a separated change "no clear difference".
-  const separates =
-    Array.isArray(c.interval) && (c.interval[0] > 0 || c.interval[1] < 0) && finite(c.effect);
-  if (c.verdict === "no clear difference" && separates) {
-    const rule = finite(c.floor)
-      ? `its guard checks only that it stays above ${fmt(c.floor, 1)}, which it does, so the arena's rule reads it as no clear difference`
-      : "the arena's rule still reads it as no clear difference";
-    return `${esc(label)}: ${v} is ${c.effect < 0 ? "lower" : "higher"} than ${a}${change}, and the interval excludes 0; ${rule}.`;
+  const reading = changeReading(c);
+  if (!reading) {
+    // No interval (a rule's verdict, such as a count): name the rule's verdict as the rule's.
+    return `${esc(label)}: ${v} against ${a} has no interval to read; its registered rule finds ${c.verdict === "better" ? "it better" : c.verdict === "worse" ? "it worse" : "no change"}.`;
   }
-  return `${esc(label)}: ${v} is ${esc(words)} ${a}${change}.`;
+  const change = `the paired change ${fmt(c.effect)}, ${levelText(c.level)} interval ${fmtInterval(c.interval)}`;
+  if (reading === "no clear difference") {
+    return `${esc(label)}: ${v} is no clear difference from ${a} (${change}, which holds 0).`;
+  }
+  let text = `${esc(label)}: ${v} is ${reading} than ${a} (${change}, which excludes 0)`;
+  if (finite(c.floor)) {
+    const now = r.metrics?.[metricName]?.value;
+    const before = recordOf(model.board, exp, r.against)?.metrics?.[metricName]?.value;
+    const moved = finite(now) && finite(before) ? ` (${fmt(before)} to ${fmt(now)})` : "";
+    text += `. The arena's guard passed only because it checks a floor of ${fmt(c.floor, 1)}, which ${v} clears${moved}`;
+  }
+  return `${text}.`;
 }
 
 function tableHtml(caption, head, rows) {
@@ -1403,11 +1419,12 @@ function trajectoryNarrative(model, t) {
   const det = r?.comparison?.detection_100;
   const fa = r?.comparison?.false_alarm_120;
   const exp = model.decisions[now.short];
+  const reading = changeReading(det);
   const lost =
-    det?.verdict === "worse"
+    reading === "lower"
       ? ` The paired change, ${fmt(det.effect)} with ${levelText(det.level)} interval ${fmtInterval(det.interval)}, excludes 0: this is a real loss of detection, the price of the fewer false alarms.`
-      : det
-        ? ` The paired change, ${fmt(det.effect)}, is no clear difference.`
+      : reading
+        ? ` The paired change, ${fmt(det.effect)} with ${levelText(det.level)} interval ${fmtInterval(det.interval)}, ${reading === "higher" ? "excludes 0, upwards" : "holds 0: no clear difference"}.`
         : "";
   return `The rule that shipped in ${esc(now.short)}${exp ? `, decided by ${expLink(exp)},` : ""} cut the share of constant-strength players told "falling" at 120 games from ${fmt(before.trajectory.fa.value)} to ${fmt(now.trajectory.fa.value)}${fa ? ` (paired change ${fmt(fa.effect)}, ${levelText(fa.level)} interval ${fmtInterval(fa.interval)})` : ""}. It also catches a 100-point fall ${fmt(now.trajectory.d100.value)} of the time, down from ${fmt(before.trajectory.d100.value)}.${lost} Both halves belong in any report of this change.`;
 }
@@ -1535,12 +1552,7 @@ export function scorecardPage(model) {
       [
         verdictText(model, "EXP-0015", "false_alarm_120", "False alarms at 120 games"),
         verdictText(model, "EXP-0015", "detection_100", "Detection of a 100-point fall"),
-        verdictText(
-          model,
-          "EXP-0015",
-          "detection_200",
-          "Detection of a 200-point fall (its guard has a floor of 0.5)",
-        ),
+        verdictText(model, "EXP-0015", "detection_200", "Detection of a 200-point fall"),
       ],
       tableHtml(
         "The numbers",

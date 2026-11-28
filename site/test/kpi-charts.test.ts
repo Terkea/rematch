@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   arenaVersions,
   buildScorecard,
+  changeReading,
   charts,
   decisionsFromChangelog,
   fmt,
@@ -17,6 +18,7 @@ import {
   sparkline,
   statusFor,
   validateHistory,
+  verdictText,
   wilson,
   writeScorecard,
 } from "../scripts/kpi-charts.mjs";
@@ -184,10 +186,67 @@ describe("the scorecard from the real leaderboard", () => {
   it("never calls a change whose interval excludes 0 no clear difference", () => {
     // EXP-0015's 200-point guard passes on its floor, but the versions' interval separates.
     expect(page).toContain(
-      "Detection of a 200-point fall (its guard has a floor of 0.5): 6.0.0 is lower than 5.0.0",
+      "Detection of a 200-point fall: 6.0.0 is lower than 5.0.0 (the paired change −0.130, 80% interval [−0.15, −0.11], which excludes 0). The arena's guard passed only because it checks a floor of 0.5, which 6.0.0 clears (0.978 to 0.848).",
     );
-    expect(page).toContain("the interval excludes 0");
     expect(page).not.toContain("6.0.0 is no clear difference from 5.0.0 (the paired change −0.130");
+  });
+  it("derives every verdict's words from its interval, for every comparison on the board", () => {
+    const records = board.records.filter(
+      (r: { algorithm_id: string; against: string | null }) =>
+        r.algorithm_id === champion && r.against && r.against !== champion,
+    );
+    expect(records.length).toBeGreaterThan(0);
+    for (const r of records) {
+      for (const [name, c] of Object.entries(
+        r.comparison as Record<string, { interval: [number, number] | null }>,
+      )) {
+        const text = verdictText(m, r.experiment, name, name) as string;
+        const reading = changeReading(c);
+        if (reading === "higher" || reading === "lower") {
+          expect(text, `${r.experiment} ${name}`).not.toContain("no clear difference");
+          expect(text, `${r.experiment} ${name}`).toContain(`is ${reading} than`);
+        } else if (reading === "no clear difference") {
+          expect(text, `${r.experiment} ${name}`).toContain("no clear difference");
+        }
+      }
+    }
+  });
+  it("reads a rule's 'no clear difference' by the interval when the two disagree", () => {
+    // A hand-written verdict that contradicts its own interval: the interval wins.
+    const fake = structuredClone(board);
+    const rec = fake.records.find(
+      (r: { experiment: string; algorithm_id: string }) =>
+        r.experiment === "EXP-0001" && r.algorithm_id === champion,
+    );
+    rec.comparison.recall_at_2 = {
+      effect: 0.1,
+      interval: [0.02, 0.18],
+      level: 0.8,
+      verdict: "no clear difference",
+    };
+    const fm = buildScorecard(fake, null, { champion, changelog, baseline });
+    expect(verdictText(fm, "EXP-0001", "recall_at_2", "Recall")).toMatch(
+      /is higher than .* which excludes 0/,
+    );
+    rec.comparison.recall_at_2 = {
+      effect: -0.2,
+      interval: [-0.3, 0.1],
+      level: 0.8,
+      verdict: "worse",
+    };
+    expect(verdictText(fm, "EXP-0001", "recall_at_2", "Recall")).toContain("no clear difference");
+  });
+  it("never writes 'no clear difference' beside an interval that excludes 0, anywhere on the page", () => {
+    for (const p of [page, scorecardPage(withFixture())]) {
+      const sentences = p.replace(/<[^>]+>/g, " ").split(/(?<=[.;])\s+/);
+      for (const s of sentences.filter((x) => /no clear difference/.test(x))) {
+        for (const iv of s.matchAll(/\[(−?\d+\.\d+), (−?\d+\.\d+)\]/g)) {
+          const lo = Number((iv[1] ?? "").replace("−", "-"));
+          const hi = Number((iv[2] ?? "").replace("−", "-"));
+          expect(lo <= 0 && hi >= 0, s).toBe(true);
+        }
+      }
+    }
   });
   it("draws both halves of the trajectory trade-off in the D4 row", () => {
     const d4 = page.match(/<li class="sc-row sc-synthetic" id="kpi-d4"[\s\S]*?<\/li>/)?.[0] ?? "";
