@@ -265,6 +265,32 @@ def select_games(cohort: dict[str, Any]) -> dict[tuple[str, str], list[tuple[str
     return out
 
 
+class _Count:
+    """A key's events and opportunities in one side's game."""
+
+    __slots__ = ("events", "opportunities")
+
+    def __init__(self, events: int, opportunities: int) -> None:
+        self.events = events
+        self.opportunities = opportunities
+
+
+class _Side:
+    """The fields of an observed side that `E9.month_measures` reads, and nothing else. The run
+    holds millions of sides until it keeps the first ones by game key; the full response objects
+    did not fit in memory (section 11, deviation 3). Only the eight keys of section 4 are kept,
+    under their canonical names, so `month_measures` reads exactly the same numbers."""
+
+    __slots__ = ("accuracy", "moves", "blunders", "keys")
+
+    def __init__(self, s: Any) -> None:
+        self.accuracy = s.accuracy
+        self.moves = s.moves
+        self.blunders = s.blunders
+        self.keys = {k: _Count(s.keys[k].events, s.keys[k].opportunities)
+                     for k in E9.KEYS if k in s.keys}
+
+
 def observe_all(cohort: dict[str, Any], budget: Budget | None, lo: float, hi: float,
                 read: int, kept: int) -> tuple[dict, dict[str, Any]]:
     """Per (player, window), the first `read` games by game key through `cli lab observe`; of
@@ -290,7 +316,7 @@ def observe_all(cohort: dict[str, Any], budget: Budget | None, lo: float, hi: fl
             mt = meta[og.id]
             for s in og.sides:
                 observed[(mt["sides"][s.color], mt["window"])].append(
-                    (E9.game_key(mt["id"]), mt["id"], (s, mt["elos"][s.color])))
+                    (E9.game_key(mt["id"]), mt["id"], (_Side(s), mt["elos"][s.color])))
 
     def batches() -> Any:
         batch: list[ObserveGame] = []
