@@ -88,6 +88,9 @@ def git(cwd: Path, *args: str) -> None:
 @pytest.fixture(autouse=True)
 def lab_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(experiments, "EXPERIMENTS", tmp_path)
+    # The fixtures here test the other rules and carry no math.md; the maths rule's own tests
+    # set or clear REMATCH_MATH_RULE themselves (ADR 0118).
+    monkeypatch.setenv("REMATCH_MATH_RULE", "warn")
 
 
 def test_a_deterministic_experiment_passes(tmp_path: Path) -> None:
@@ -158,7 +161,7 @@ run_minutes: 1
 
 
 def test_results_from_an_older_algorithm_are_left_to_the_arena(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     exp = make(tmp_path)
     (exp / "results.json").write_text(
@@ -315,7 +318,9 @@ def test_results_past_the_cap_or_without_a_budget_fail(tmp_path: Path) -> None:
     assert experiments.compute_problems(exp, text, fine) == []
 
 
-def test_an_experiment_closed_unrun_is_never_run(tmp_path: Path) -> None:
+def test_an_experiment_closed_unrun_is_never_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """The kill rule: a decision.md with no results.json closes an experiment before it runs."""
     exp = make(tmp_path, ANALYSIS.replace('random.Random(seed("EXP-9999", "draws"))', "random"))
     (exp / "decision.md").write_text("# closed unrun\n", encoding="utf-8")
@@ -513,16 +518,16 @@ def test_at_the_freeze_sections_1_to_4_are_due_and_5_6_wait_for_the_decision(
     assert len(problems) == 2 and all("is empty" in p for p in problems)
 
 
-def test_the_math_rule_warns_by_default_and_fails_when_asked(
+def test_the_math_rule_fails_by_default_and_warns_only_when_asked(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     exp = make(tmp_path)
     (exp / "decision.md").write_text("# closed unrun\n", encoding="utf-8")
     monkeypatch.delenv("REMATCH_MATH_RULE", raising=False)
+    assert any("[math] no math.md" in p for p in experiments.check(exp))
+    monkeypatch.setenv("REMATCH_MATH_RULE", "warn")
     assert experiments.check(exp) == []
     assert "warning: EXP-9999: [math] no math.md" in capsys.readouterr().out
-    monkeypatch.setenv("REMATCH_MATH_RULE", "fail")
-    assert any("[math] no math.md" in p for p in experiments.check(exp))
     monkeypatch.setenv("REMATCH_MATH_RULE", "maybe")
     with pytest.raises(SystemExit):
         experiments.check(exp)

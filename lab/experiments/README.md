@@ -34,7 +34,7 @@ CI checks the registration and the results against git (`python -m rematch_lab.e
 
 ## The maths
 
-`python -m rematch_lab.experiments check` reports a `[math]` problem when an experiment that is frozen, running or has results lacks `math.md` with the six headings and sections 1 to 4 filled, when a decided one lacks sections 5 and 6, or when `math_check.py` (run in the experiment folder) does not exit 0. With `REMATCH_MATH_RULE=warn`, the default until every experiment has its maths, they are printed as warnings; `REMATCH_MATH_RULE=fail` makes them problems (ADR 0118).
+`python -m rematch_lab.experiments check` reports a `[math]` problem when an experiment that is frozen, running or has results lacks `math.md` with the six headings and sections 1 to 4 filled, when a decided one lacks sections 5 and 6, or when `math_check.py` (run in the experiment folder) does not exit 0. They fail the check (`REMATCH_MATH_RULE=fail`, the default since every experiment has its maths); `REMATCH_MATH_RULE=warn` prints them as warnings while drafting (ADR 0118).
 
 ## What `analysis.py` may do
 
