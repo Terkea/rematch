@@ -117,3 +117,10 @@ On a ship: `PriorRule::CHALLENGER` becomes production's rule as `algo-2.0.0` (a 
 ## 11. Deviations
 
 1. 2026-11-24, after the results: section 9 cites "ADR 0110"; that ADR is now 0111 (`docs/decisions/0111-prior-rule-variants-and-the-80-percent-ranges.md`), renumbered after a clash on main. Nothing in the analysis changes.
+
+From the maths audit (2026-11-28, ADR 0118), recorded after the decision; sections 0 to 10, `analysis.py` and `results.json` are unchanged and the decision stands (`math.md`, Findings):
+
+1. Section 6's "about 50 a cell" for the primary is wrong: power there is 0.16, and 80% needs about 150 to 300 a cell.
+2. Section 2's "widens most for keys with one chance a game" is wrong: W7.traps widens least and W9b most.
+3. Section 5's "holds with up to 2 net losses" holds only without gains: 4 lost and 2 gained fails.
+4. Recall's Tier 1 guard has an exact level of 0.149 at its margin, not 0.10.
