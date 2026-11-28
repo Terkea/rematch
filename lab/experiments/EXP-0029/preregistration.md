@@ -184,4 +184,4 @@ Stage 2 is out of scope at its price (section 6). This departs from ADR 0106's m
 
 ## 11. Deviations
 
-None.
+1. **An unplanned start of the confirmatory run, stopped unread (2026-11-28).** To check `inputs.sha256` after the sizing step, the coordinator ran `python -m rematch_lab.experiments check EXP-0029`. That command reruns `analysis.py --out` twice into temporary folders whenever the external inputs are present, even with no `results.json` committed. It started one run at 11:09 UTC, before the sizing commit. The coordinator stopped it at 11:47 UTC, after about 13 CPU-minutes. Its temporary folder was deleted with the container and nobody read any output. No exposure, outcome or estimate was seen. The 13 CPU-minutes count against the 25 CPU-hour cap. The inputs were then checked with `input_problems` alone: all 24 cohort files match, and `power.json`'s checksum was updated for its `sizing` block, as section 10 plans. The lab check's habit of rerunning an experiment that has no committed results is a tooling issue, filed separately. It does not change this design.

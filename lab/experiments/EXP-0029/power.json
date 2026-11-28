@@ -394,6 +394,126 @@
       "w": 0.6
     }
   },
+  "sizing": {
+    "algorithm_id": "algo-6.0.0+f40a2b27677a",
+    "decision": {
+      "bias": {
+        "W4.allowed": -0.1235,
+        "W4.missed": -0.0857,
+        "W5": -0.2368,
+        "W6": -0.2036,
+        "W7.prep": -0.1162,
+        "W7.traps": -0.143,
+        "W9a": -0.0216,
+        "W9b": -0.0442,
+        "accuracy": -0.3011
+      },
+      "cap": [
+        144,
+        120
+      ],
+      "k": 2.8498,
+      "memory_ratio": {
+        "0.97": 0.1048,
+        "0.98": 0.1651
+      },
+      "run": true,
+      "tried": [
+        {
+          "below": {
+            "W4.allowed": 1.0,
+            "W5": 1.0,
+            "W6": 1.0,
+            "W7.traps": 1.0,
+            "W9a": 1.0
+          },
+          "cap": [
+            144,
+            120
+          ],
+          "control_holds": 0.9985,
+          "cpu_hours": 15.276,
+          "fits": true,
+          "k": 2.8498,
+          "observe_games": 3622022.0,
+          "ok": true,
+          "single": {
+            "W4.allowed": 1.0,
+            "W4.missed": 0.993,
+            "W5": 1.0,
+            "W6": 1.0,
+            "W7.prep": 1.0,
+            "W7.traps": 1.0,
+            "W9a": 1.0,
+            "W9b": 0.5464
+          },
+          "w": 0.6,
+          "wall_hours": 14.6075
+        }
+      ],
+      "w": 0.6
+    },
+    "measured": {
+      "april_share": {
+        "0.97": -0.0913,
+        "0.98": -0.133
+      },
+      "caps": {
+        "144/120": {
+          "E_inv_min_kept": 0.0169,
+          "E_min_read": 75.9397
+        },
+        "72/60": {
+          "E_inv_min_kept": 0.0199,
+          "E_min_read": 58.4089
+        },
+        "96/80": {
+          "E_inv_min_kept": 0.018,
+          "E_min_read": 66.711
+        }
+      },
+      "counts": {
+        "f1_and_f2": 23848,
+        "f1_eligible": 41177,
+        "history": 154609,
+        "into_f2": {
+          "activity:high": {
+            "f1": 13734,
+            "f2": 10234
+          },
+          "activity:low": {
+            "f1": 13690,
+            "f2": 6226
+          },
+          "activity:mid": {
+            "f1": 13753,
+            "f2": 7388
+          },
+          "band:B0": {
+            "f1": 790,
+            "f2": 350
+          },
+          "band:B1": {
+            "f1": 8602,
+            "f2": 4438
+          },
+          "band:B2": {
+            "f1": 18824,
+            "f2": 10957
+          },
+          "band:B3": {
+            "f1": 12961,
+            "f2": 8103
+          }
+        },
+        "with_outcome": 19120
+      },
+      "density": 0.59,
+      "density_observed": 0.6958,
+      "sd_ratio": 1.1471,
+      "streaming_cpu_hours": 2.887
+    }
+  },
   "stage2": {
     "cpu_hours": 13363.6627,
     "games_per_player": 240,

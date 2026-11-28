@@ -3,10 +3,33 @@
 82d941f1ca6db506667e25bcd90aad407256d139f2d07feb8d1d703ea0492186  ../EXP-0009/results.json
 4a58393749d8cca37f09cf0b7056511a99615546d55ea8003daaca5b3083346f  dev/exp09_activity.json
 cda9158e3305f6a5e0d027e988bd4d2db43a79b96660669291544ffe8d9b3357  power.py
-36f1c50ddbce578e2da932d6db8b53a0e586caebd707e0fc6c428ca6f6a7f998  power.json
+5bbdfacd1e8400b201598adcd2e0ce9aa6334b0baa327f04e76b3cfb503f8290  power.json
 0428fe8152268aea90ee0d3561ad62aa7faf18c9f471400c3558bbd649650de7  sizing-fixture.json
 # EXP-0009's frozen analysis, imported for the definitions that are the same.
 b7c6f6e50da02955c5066d0b8ecdcd83f5cb3aca8bb4a3acf2333bf90c8856e8  ../EXP-0009/analysis.py
-# The cohort (ADR 0114): external, in the data directory, git-ignored. Stage 2 replaces this
-# placeholder with each verified file's checksum before the sizing step (section 7).
-0000000000000000000000000000000000000000000000000000000000000000  external:exp29-cohort/2025-09/meta.json
+# The cohort (ADR 0114): external, in the data directory, git-ignored; each file's checksum,
+# taken after the streaming and before the sizing step (section 7).
+610b577c9e119ff13e11c64a433d8f81e2593672cf112403c122ae0fcdffc994  external:exp29-cohort/2025-09/meta.json
+50bff966ccca8c7e15da92dcb03c0f0161e441ac186cb006121dcfcfe673315b  external:exp29-cohort/2025-09/players.jsonl
+37ce2eccf34882681168187c52568018ec739cfb6245d4a53f90bef7f7b38e5c  external:exp29-cohort/2025-10/meta.json
+38860d808d87652b3a4de466f358bcf49afb8c3b47fff4121cc56d469426d8cb  external:exp29-cohort/2025-10/players.jsonl
+70944e1829d77f53aaf928f42c8f98b51be3152b216c376cc7ef667666d887e2  external:exp29-cohort/2025-10/games.jsonl
+b4da3c461480d174ff404db468f0b9246d9d0c0e73db8229ea02978cab8e41db  external:exp29-cohort/2025-11/meta.json
+ac59cc07452bc10f13ee5627ac07d03804663d5e9241ad8f839851c2b9f3dfa8  external:exp29-cohort/2025-11/players.jsonl
+7ebab27b7d034900c028b237c64b8c483c2bb2c43749b7fe6f6cf5f05598e252  external:exp29-cohort/2025-11/games.jsonl
+aade9c73cb00df7febd4c71b6a2178dd714c28ac78bcf3ac91af54cf411b3cf0  external:exp29-cohort/2025-12/meta.json
+3ca2384f47f0881e90d40f2d87b54c733d01020b802bc3f805ed9b0519c7a810  external:exp29-cohort/2025-12/players.jsonl
+2fe65c9343e1a21abe77d78e81777290ae2e1e5c3a57071950ce91f83d14a421  external:exp29-cohort/2025-12/games.jsonl
+33f71e42a63721f50d559579d2cf234b8718ba7f43c2be70edc305cc6f8a4ec3  external:exp29-cohort/2026-01/meta.json
+1052e4670455174090cd88106f56e917bcdeba57934a7825fd6c986afb6d4394  external:exp29-cohort/2026-01/players.jsonl
+106d46ecb93b84eebf6a7a73e29d0d647cb8a09dac81f1276ae29b39b4401ad3  external:exp29-cohort/2026-01/games.jsonl
+a331f2361d5a86e8015d0d24906c913431d64fc1d5ecd46709f4489289a74071  external:exp29-cohort/2026-02/meta.json
+51864e949874fb5fe6f9cf31f777ca2032fa857c09dc77656287830de89b822b  external:exp29-cohort/2026-02/players.jsonl
+a72271fa78aaa2c3fcb7c5d701c52864f2d196efc74b50558acf433512ef17c1  external:exp29-cohort/2026-02/games.jsonl
+b8d8768beceae99c6d3d42181abb6da9b00513273371a608473d81954a43d87e  external:exp29-cohort/2026-03/meta.json
+c3ef2fcb902ad7eaa1432c7c005fc47833cee97dae6d28ae25d83276f0dc18bd  external:exp29-cohort/2026-03/players.jsonl
+4a8bb99c8204a703b73fac4cc1e58e76feecf37ee385c8d7114dd4f0329f3d4c  external:exp29-cohort/2026-03/games.jsonl
+4582446f625efd700e2602589bd4e90baa1a0ddc3e7f50a11bbe209c5184d99b  external:exp29-cohort/2026-04/meta.json
+363f4fdf228673dadbdc1d386d0429f74a853af128c065061b12ed46bdd85973  external:exp29-cohort/2026-04/players.jsonl
+acb4a26e8deade118186b0bf2ee17402a4e097517cfb2a3173fcc7207815745d  external:exp29-cohort/2026-06/meta.json
+547b9e0b2528016ee2aed6dc4cedbd26e239b8ce755604dcf88c9ff3a35b282a  external:exp29-cohort/2026-06/players.jsonl
