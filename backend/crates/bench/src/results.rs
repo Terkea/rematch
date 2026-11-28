@@ -1,11 +1,12 @@
 //! What a run records, the scorers (a) to (e), the Markdown scorecard and the baseline check.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
 use crate::flaws::{Tally, Unit};
 use crate::generate::GeneratedGame;
+use crate::kpi::{self, KmStep, Kpi, Unit as KpiUnit};
 
 /// A ranked weakness of the CoachingInput.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -189,9 +190,13 @@ pub struct Metrics {
     /// (b) Share of (flawed player, checkpoint) target intervals holding the true rate.
     pub coverage: Option<f64>,
     pub coverage_samples: usize,
-    /// (c) Flawed players whose top-1 weakness's drills include one for their flaw.
+    /// (c) Flawed players whose top-1 weakness's drills include one for their flaw. Not a KPI
+    /// (ADR 0119): it equals recall at 1 when every rankable key has a drill, which
+    /// `every_rankable_key_has_a_drill` holds.
     pub plan_hit_rate: f64,
-    /// (d) Mean games to first top-2 detection over detected players.
+    /// (d) Mean games to first top-2 detection over detected players. Deprecated (ADR 0119): it
+    /// leaves out the players never detected; `kpis["km_median_games"]` replaces it. Kept in
+    /// the JSON for one version.
     pub mean_games_to_detection: Option<f64>,
     /// (e) Same rows and clock gave the same weaknesses, for every player.
     pub deterministic: bool,
@@ -230,6 +235,13 @@ pub struct Scorecard {
     pub thresholds: Thresholds,
     pub verdicts: Verdicts,
     pub cases: Vec<Case>,
+    /// Every Tier 1 KPI as `{value, interval, level, n}` at 80% (ADR 0119, `kpi::kpis`), keyed
+    /// by the names of the bench history's `run-record-v1`. Synthetic players only.
+    #[serde(default)]
+    pub kpis: BTreeMap<String, Kpi>,
+    /// The Kaplan–Meier curves of "not yet detected", pooled (`all`) and per flaw type.
+    #[serde(default)]
+    pub km_curves: BTreeMap<String, Vec<KmStep>>,
 }
 
 /// The clean controls' mean raw rate of `key` at their last checkpoint (0 without controls).
@@ -281,6 +293,61 @@ fn note(c: &Checkpoint, key: &str) -> Option<String> {
             None => "not ranked: no exemplar".to_owned(),
         }
     })
+}
+
+/// One [`KpiUnit`] per player with a checkpoint: what the KPIs of ADR 0119 read. The hit, the
+/// detection, the coverage flags and the plan hit are read exactly as [`score`] reads them.
+pub fn units(players: &[PlayerResult]) -> Vec<KpiUnit> {
+    let mut out = Vec::new();
+    for p in players {
+        let Some(last) = p.last() else { continue };
+        let jaccard = p
+            .perturbed
+            .as_ref()
+            .map(|q| jaccard(&last.top(2), &q.top(2)));
+        let Some(f) = &p.flaw else {
+            out.push(KpiUnit {
+                player: p.name.clone(),
+                flaw: None,
+                hit2: false,
+                detected_at: None,
+                last_games: last.games,
+                covered: Vec::new(),
+                jaccard,
+                flagged: !last.top(3).is_empty(),
+                plan_hit: false,
+            });
+            continue;
+        };
+        let key = f.target_key.as_str();
+        let truth = p.tally.truth(f.rate, clean_base(players, key));
+        let covered = p
+            .checkpoints
+            .iter()
+            .filter_map(|c| Some((truth?, c.estimate(key)?)))
+            .map(|(t, e)| e.low <= t && t <= e.high)
+            .collect();
+        out.push(KpiUnit {
+            player: p.name.clone(),
+            flaw: Some(f.id.clone()),
+            hit2: last.rank_of(key).is_some_and(|r| r <= 2),
+            detected_at: p
+                .checkpoints
+                .iter()
+                .find(|c| c.rank_of(key).is_some_and(|r| r <= 2))
+                .map(|c| c.games),
+            last_games: last.games,
+            covered,
+            jaccard,
+            flagged: false,
+            plan_hit: last.ranked.first().is_some_and(|r| {
+                r.drills
+                    .iter()
+                    .any(|d| f.expected_drills.iter().any(|x| x == d))
+            }),
+        });
+    }
+    out
 }
 
 /// Scores a run.
@@ -394,6 +461,9 @@ pub fn score(suite: &str, nodes: u64, players: &[PlayerResult]) -> Scorecard {
     let recall = metrics.recall_at_2 >= t.recall_at_2_min;
     let clean_ok = metrics.clean_top1_false_alarms <= t.clean_top1_false_alarms_max;
     let coverage_ok = cov.is_some_and(|c| (t.coverage_min..=t.coverage_max).contains(&c));
+    let u = units(players);
+    let kpis = kpi::kpis(&u, metrics.deterministic);
+    let km_curves = kpi::km_curves(&u);
     Scorecard {
         suite: suite.to_owned(),
         nodes,
@@ -406,6 +476,8 @@ pub fn score(suite: &str, nodes: u64, players: &[PlayerResult]) -> Scorecard {
             pass: recall && clean_ok && coverage_ok,
         },
         cases,
+        kpis,
+        km_curves,
     }
 }
 
@@ -427,7 +499,7 @@ pub fn markdown(s: &Scorecard) -> String {
     let t = &s.thresholds;
     let mut out = String::new();
     out.push_str(&format!(
-        "# Benchmark scorecard: {} suite\n\nStockfish at {} nodes per search. Tier 1 (synthetic players). Method: `docs/benchmark.md`.\n\n",
+        "# Benchmark scorecard: {} suite\n\nStockfish at {} nodes per search. Tier 1: every number here is synthetic, measured on simulated players with injected flaws, not on real ones. Method: `docs/benchmark.md`; what the KPIs mean: ADR 0119.\n\n",
         s.suite, s.nodes
     ));
     out.push_str("| Score | Value | Threshold | Result |\n|---|---|---|---|\n");
@@ -461,11 +533,11 @@ pub fn markdown(s: &Scorecard) -> String {
         yes(s.verdicts.coverage)
     ));
     out.push_str(&format!(
-        "| (c) Top weakness's drills train the flaw | {} | – | – |\n",
+        "| (c) Top weakness's drills train the flaw (not a KPI) | {} | – | – |\n",
         pct(m.plan_hit_rate)
     ));
     out.push_str(&format!(
-        "| (d) Mean games to a top-2 detection | {} | – | – |\n",
+        "| (d) Mean games to a top-2 detection (deprecated: the KM median below) | {} | – | – |\n",
         m.mean_games_to_detection
             .map_or("–".to_owned(), |g| format!("{g:.0}"))
     ));
@@ -485,6 +557,9 @@ pub fn markdown(s: &Scorecard) -> String {
             "not all met"
         }
     ));
+    if !s.kpis.is_empty() {
+        out.push_str(&kpi_table(&s.kpis));
+    }
     out.push_str("| Player | Flaw (rate) | Target | True rate | Estimate [80%] | Rank | Top 3 | Drills hit | Games to detect | Note |\n|---|---|---|---|---|---|---|---|---|---|\n");
     for c in &s.cases {
         let flaw = match (&c.flaw, c.rate) {
@@ -512,6 +587,31 @@ pub fn markdown(s: &Scorecard) -> String {
             c.note.clone().unwrap_or_default(),
         ));
     }
+    out
+}
+
+/// The KPI table of the scorecard: each KPI with its 80% interval and n, labelled synthetic.
+fn kpi_table(k: &BTreeMap<String, Kpi>) -> String {
+    let mut out = String::from(
+        "## KPIs (synthetic, ADR 0119)\n\n| KPI | Tier | Value | 80% interval | n | Note |\n|---|---|---|---|---|---|\n",
+    );
+    for (name, m) in k {
+        let digits = if name.starts_with("km_median_games") || name.starts_with("flaw_types") {
+            0
+        } else {
+            3
+        };
+        let v = m.value.map_or("–".to_owned(), |x| format!("{x:.digits$}"));
+        let iv = m.interval.map_or("–".to_owned(), |[l, h]| {
+            format!("[{l:.digits$}, {h:.digits$}]")
+        });
+        out.push_str(&format!(
+            "| {name} | synthetic | {v} | {iv} | {} | {} |\n",
+            m.n,
+            m.note.clone().unwrap_or_default()
+        ));
+    }
+    out.push('\n');
     out
 }
 
@@ -798,6 +898,96 @@ mod tests {
         within.recall_at_2 = 0.4;
         within.coverage = Some(0.9);
         assert!(regressions(&b, &within).is_empty());
+    }
+
+    #[test]
+    fn the_kpis_read_the_pooled_metrics_unchanged() {
+        let cp = |games, rank: Option<u32>| Checkpoint {
+            games,
+            ranked: rank
+                .map(|r| vec![ranked("W4.missed", r, &["mate_patterns"])])
+                .unwrap_or_default(),
+            estimates: vec![est("W4.missed", 10.0, 20.0, 0.4, 0.6)],
+            benchmark_players: Some(12),
+        };
+        let players = vec![
+            player(
+                "a",
+                Some(("miss_mate", 0.5, "W4.missed")),
+                vec![cp(30, None), cp(60, Some(1))],
+                all(20),
+            ),
+            player(
+                "b",
+                Some(("miss_mate", 0.5, "W4.missed")),
+                vec![cp(30, None), cp(60, None)],
+                all(20),
+            ),
+            player("c", None, vec![cp(60, Some(1))], Tally::default()),
+        ];
+        let s = score("smoke", 1000, &players);
+        let k = &s.kpis;
+        assert_eq!(k["recall_at_2"].value, Some(s.metrics.recall_at_2));
+        assert_eq!(k["coverage"].value, s.metrics.coverage);
+        assert_eq!(k["coverage"].n, s.metrics.coverage_samples);
+        assert_eq!(k["plan_hit_rate"].value, Some(s.metrics.plan_hit_rate));
+        assert_eq!(k["top2_jaccard"].value, s.metrics.top2_agreement);
+        assert_eq!(
+            k["clean_false_weakness"].value.unwrap() * s.metrics.clean_players as f64,
+            s.metrics.clean_top1_false_alarms as f64
+        );
+        // One detected at 60, one censored at 60: the median is 60, the old mean 60 too.
+        assert_eq!(k["km_median_games"].value, Some(60.0));
+        assert_eq!(s.metrics.mean_games_to_detection, Some(60.0));
+        assert_eq!(s.km_curves["all"].len(), 1);
+        let md = markdown(&s);
+        assert!(md.contains("every number here is synthetic"), "{md}");
+        assert!(
+            md.contains("| recall_at_2_macro | synthetic | 0.500 |"),
+            "{md}"
+        );
+    }
+
+    /// Plan hit is not a KPI (ADR 0119): with a drill for every rankable key, the top weakness
+    /// always has drills, and a flaw ranked first gets its own. This test is what replaces it.
+    #[test]
+    fn every_rankable_key_has_a_drill() {
+        use ai::output::drills::drills_for;
+        for k in profile_core::constants::RANKABLE {
+            let key = k.as_str();
+            let (id, variant) = match key.split_once('.') {
+                Some((i, v)) => (i, Some(v)),
+                None => (key, None),
+            };
+            let drills = drills_for(id, variant);
+            assert!(
+                drills.iter().any(|d| d.as_str() != "own_game_analysis"),
+                "{key} has no drill of its own: {drills:?}"
+            );
+        }
+        for (id, rate) in [
+            ("hang", 0.05),
+            ("miss_mate", 0.5),
+            ("opening_blunder", 0.3),
+            ("low_clock_blunder", 0.25),
+            ("no_convert", 0.5),
+        ] {
+            let f = crate::flaws::flaw(id, rate).expect("a flaw");
+            let key = f.target_key();
+            let (tid, variant) = match key.split_once('.') {
+                Some((i, v)) => (i, Some(v)),
+                None => (key, None),
+            };
+            let drills: Vec<&str> = drills_for(tid, variant)
+                .iter()
+                .map(|d| d.as_str())
+                .collect();
+            assert!(
+                f.expected_drills().iter().any(|d| drills.contains(d)),
+                "{id}: none of {:?} in {drills:?}",
+                f.expected_drills()
+            );
+        }
     }
 
     #[test]
