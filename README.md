@@ -62,7 +62,7 @@ Rematch suggests the weakness that costs you most and sets a target over your ne
 
 ### What changed since your peak
 
-Your rating line with the peak marked, then the games around the peak against your last games: rating, accuracy, blunders per game, score and your top weaknesses. Each measure but the rating is called better or worse only when the evidence separates. The rating's change is shown as a number with no verdict, because the rule told 44% to 78% of simulated players whose strength never changed that their rating was falling ([EXP-0015](lab/experiments/EXP-0015/decision.md)).
+Your rating line with the peak marked, then your first games against your last games, 30 of each (half your games each when you have fewer than 60): rating, accuracy, blunders per game, score and your top weaknesses. Each measure is called better or worse only when the evidence separates. For the rating, that means the two averages differ by more than a 30-game average of your rating wanders on its own. A rating carries most of its error from one game to the next, so the range counts that memory ([ADR 0117](docs/decisions/0117-a-trajectory-verdict-that-counts-the-ratings-memory.md)). On 2,000 simulated players whose strength never changed, at each of 60, 120 and 250 games, it said "falling" to 10.3% to 11.7% of them, against 44% to 78% for the rule it replaced ([EXP-0030](lab/experiments/EXP-0030/decision.md), [EXP-0015](lab/experiments/EXP-0015/decision.md)). On real Lichess players whose rating looked settled it flagged 36% either way, against the model's 20%, so its rate on real players is not known yet. The peak is stated as a plain fact, never as the change.
 
 <picture><source media="(prefers-color-scheme: dark)" srcset="site/public/shots/trajectory-dark.webp"><img src="site/public/shots/trajectory-light.webp" width="760" alt="A rating trajectory: the line rising to a peak and falling below where it started, with the first 30 and the last 30 games shaded."></picture>
 
@@ -108,18 +108,28 @@ A Rust worker imports your chess.com games and analyses every position with Stoc
 
 The styleguide's sample game is a real Lichess blitz game, so here is what the pipeline does to its 28th move, White's 28. Nd2??
 
-1. Before the move Stockfish gives White +271 centipawns. That is a win chance of 73.06%. After Nd2 it is −111, or 39.92%.
-2. The drop is ΔW = 33.14 points. Anything from 15 up is a blunder, so the move is marked `??` and the review draws a red ring on d2.
-3. The move's accuracy is 22.2 on the 0 to 100 scale, and it pulls the game accuracy down through the harmonic mean, which punishes one bad move more than an average would.
-4. ΔW ≥ 15 makes it a "decisive" move, and the win chance before it was within 40 points of 50, so it was an "eligible" chance for the per-move weaknesses. If the engine's refutation wins at least two pawns within three plies, it is one event of W1, "Leaving pieces hanging", in that game's counts.
+1. Before the move Stockfish gives White +271 centipawns. That is a win chance of $W(271) = 73.06$%. After Nd2 it is −111, or $W(-111) = 39.92$%.
+2. The drop is $\Delta W = 73.06 - 39.92 = 33.14$ points. Anything from 15 up is a blunder, so the move is marked `??` and the review draws a red ring on d2.
+3. The move's accuracy is $103.17 e^{-0.0435 \cdot 33.14} - 2.17 = 22.2$ on the 0 to 100 scale, and it pulls the game accuracy down through the harmonic mean, which punishes one bad move more than an average would.
+4. $\Delta W \ge 15$ makes it a "decisive" move, and the win chance before it was within 40 points of 50, so it was an "eligible" chance for the per-move weaknesses. If the engine's refutation wins at least two pawns within three plies, it is one event of W1, "Leaving pieces hanging", in that game's counts.
 5. Because it is judged a blunder and the engine's best move differs from the one played, it becomes a trainer item, unless a hash of the game and ply puts it in the 20% held back to measure whether drilling works.
+
+### The maths
+
+The main formulas below have a short reason under them and a link to its full proof. The proofs live in three places, and none is checked only by its author: a script, Lean or a second reviewer checks each one ([ADR 0118](docs/decisions/0118-the-maths-is-written-proved-and-checked.md)):
+
+- [`algorithm/MATH.md`](algorithm/MATH.md) proves the current algorithm, `algo-6.0.0`, in 14 results (A1 to A14), from the win chance to the trainer. It then takes every version in the changelog and shows, as maths, what it changed and which experiment decided it. Its [Findings](algorithm/MATH.md#findings) list where the code and its documentation disagreed; three of them were in this README, and are fixed.
+- Every experiment has a `math.md` with the same six headings: notation, model, estimators, proofs, every quoted number recomputed, and the assumptions that can fail. There are ten so far, from [EXP-0001](lab/experiments/EXP-0001/math.md) to [EXP-0030](lab/experiments/EXP-0030/math.md). For a new experiment the first four sections are committed before it is frozen, so the maths can't be fitted to the result.
+- The lemmas many experiments lean on (Holm's and Bonferroni's error control, Beta-binomial conjugacy, the rating-memory luck share, the window-mean covariance) are proved in Lean 4 with mathlib in [`lab/lean/`](lab/lean/README.md). `lake build` checks every line, and a test fails the build on a `sorry` or any axiom past mathlib's standard three.
+
+How it is checked: each file has a `math_check.py` that runs in the lab image. It reads every constant from the Rust and TypeScript sources, checks each derivation symbolically with sympy, simulates each probabilistic claim from a fixed seed and wants it within 4 standard errors, recomputes the production code's golden outputs from the formulas to $10^{-9}$, and recomputes every number quoted, this README's worked example included. `algorithm/MATH.md`'s runs 94 checks. Then a fresh agent that has the code but not the proofs re-derives the key results blind, and a second one reviews the file as a hostile referee. Where they disagreed, the file says what was corrected.
 
 <details>
 <summary>Import: chess.com only, public data, kept in sync</summary>
 
 Rematch reads your public chess.com games from the monthly archives, newest first, and checks every linked account for new games every 30 minutes.
 
-- Source: The public Published-Data API at `https://api.chess.com/pub/player`. The importer reads `/games/archives`, then walks the monthly archives newest first and normalises each game ([`chesscom.rs`](backend/crates/platforms/src/chesscom.rs)). Time classes come from `base + 40 × increment`: under 180 s is bullet, under 480 s blitz, under 1500 s rapid, else classical ([`time_control.rs`](backend/crates/chess-core/src/time_control.rs)). Daily games keep chess.com's own class.
+- Source: The public Published-Data API at `https://api.chess.com/pub/player`. The importer reads `/games/archives`, then walks the monthly archives newest first and normalises each game ([`chesscom.rs`](backend/crates/platforms/src/chesscom.rs)). Time classes come from $\text{base} + 40 \times \text{increment}$ seconds: under 180 s is bullet, under 480 s blitz, under 1500 s rapid, else classical ([`time_control.rs`](backend/crates/chess-core/src/time_control.rs)). Daily games keep chess.com's own class.
 - Rate limits: Each platform has one serial HTTP client: one request at a time. A 429 waits 60 s and retries up to 3 times, and a circuit breaker opens after 5 consecutive outages (5xx, timeouts, transport errors; never a 404 or a 429) for 60 s ([`client.rs`](backend/crates/platforms/src/client.rs), [`breaker.rs`](backend/crates/platforms/src/breaker.rs)). The User-Agent is the fixed string `rematch/0.1 (+https://github.com/Terkea/rematch)`. No request carries an email address ([ADR 0043](docs/decisions/0043-no-email-in-outbound-requests.md)).
 - Sync: A recurring `sync-accounts` job runs every 5 minutes, a sixth of the 30-minute interval, and enqueues an incremental import for the accounts that are due, the longest-waiting first. The linked accounts are spread over the interval, so chess.com never gets them in one burst ([ADR 0076](docs/decisions/0076-recurring-account-sync.md), [`sync.rs`](backend/crates/analysis/src/jobs/sync.rs)).
 - Ownership: Anyone may link a public username and see its engine analysis. The AI report and the coach need a verified link: you put a short code anywhere in your chess.com profile's location field, and the server reads it back ([ADR-WEB-5](docs/decisions/ADR-WEB-5-chesscom-verification.md), [ADR-FIX-N-1](docs/decisions/ADR-FIX-N-1-unverified-links-see-analysis-only.md)).
@@ -134,7 +144,7 @@ Stockfish 19 searches every position at a fixed 1 million nodes, so the same pos
 
 #### The engine
 
-The engine is **Stockfish 19**, the official `stockfish-linux-x86-64-universal` build, downloaded in the Docker build and checked against a pinned SHA-256 ([`backend/Dockerfile`](backend/Dockerfile)). At start the worker reads the engine's banner and refuses anything that isn't Stockfish 19. The pool runs `min(cores − 2, 8)` engines (at least 1; `WORKER_POOL_SIZE` overrides it), starts two at a time because each cold start loads the NNUE net, replaces a crashed engine and retries its search once ([`pool.rs`](backend/crates/engine/src/pool.rs), [`start.rs`](backend/crates/worker/src/start.rs)).
+The engine is **Stockfish 19**, the official `stockfish-linux-x86-64-universal` build, downloaded in the Docker build and checked against a pinned SHA-256 ([`backend/Dockerfile`](backend/Dockerfile)). At start the worker reads the engine's banner and refuses anything that isn't Stockfish 19. The pool runs $\min(\text{cores} - 2, 8)$ engines (at least 1; `WORKER_POOL_SIZE` overrides it), starts two at a time because each cold start loads the NNUE net, replaces a crashed engine and retries its search once ([`pool.rs`](backend/crates/engine/src/pool.rs), [`start.rs`](backend/crates/worker/src/start.rs)).
 
 #### The protocol
 
@@ -150,38 +160,48 @@ Every constant, protocol, prompt set and model above is named in one generated f
 
 We use the Lichess formulas, not chess.com's unpublished ones ([ADR 0008](docs/decisions/0008-lichess-win-percent-classification.md), [`score.rs`](backend/crates/chess-core/src/score.rs)):
 
-```text
-cp = the mover's centipawns, clamped to ±1000
-chances = 2 / (1 + exp(−0.00368208 · cp)) − 1
-W = 50 + 50 · chances
-ΔW = max(0, W_before − W_after)
+```math
+c(x) = \frac{2}{1 + e^{-k x}} - 1, \qquad W(x) = 50 + 50\,c(x), \qquad \Delta W = \max(0,\ W_{\text{before}} - W_{\text{after}}), \qquad k = 0.00368208
 ```
 
-Any mate counts as ±1000. `chances` runs from −1 to 1, `W` is the win chance from 0 to 100, and ΔW is measured from the mover's side. So +100 is about 59%, and +300 about 75%.
+Here $x$ is the mover's centipawns, clamped to $[-1000, 1000]$, and any mate counts as $\pm 1000$. The chances $c$ run from −1 to 1, $W$ is the win chance from 0 to 100, and $\Delta W$ is measured from the mover's side. So +100 is about 59%, and +300 about 75%.
+
+What follows: with $u = e^{-kx}$, $c = (1 - u)/(1 + u) = \tanh(kx/2)$ and $W = 100/(1 + u)$, a logistic curve. Swapping sides sends $u$ to $1/u$, so $W(-x) = 100 - W(x)$ and the two players' win chances always add to 100. Near equality one centipawn is worth $W'(0) = 25k = 0.092$ points, and the clamp keeps $W$ between 2.46 and 97.54. [Proof: A1 in `algorithm/MATH.md`](algorithm/MATH.md#a1-win-chance-from-an-evaluation).
 
 #### Judgements
 
-A drop in `chances` of at least 0.3 is a blunder, 0.2 a mistake and 0.1 an inaccuracy ([`judgement.rs`](backend/crates/chess-core/src/judgement.rs)). On the 0 to 100 scale that is ΔW ≥ 15, 10 and 5. Mates get their own rule, as on Lichess: walking into a forced mate is a blunder unless you were already lost by more than 700 cp (mistake) or 999 cp (inaccuracy), and letting a forced mate of your own slip is judged by how good the position still is afterwards, with the same 700 and 999 cut-offs.
+A drop in the chances $c$ of at least 0.3 is a blunder, 0.2 a mistake and 0.1 an inaccuracy ([`judgement.rs`](backend/crates/chess-core/src/judgement.rs)). On the 0 to 100 scale that is $\Delta W \ge 15$, 10 and 5, exactly: $W_{\text{before}} - W_{\text{after}} = 50(c_{\text{before}} - c_{\text{after}})$, so a drop of 0.3 in $c$ is a drop of 15 in $W$ ([A2](algorithm/MATH.md#a2-judgements)). Mates get their own rule, as on Lichess: walking into a forced mate is a blunder unless you were already lost by more than 700 cp (mistake) or 999 cp (inaccuracy), and letting a forced mate of your own slip is judged by how good the position still is afterwards, with the same 700 and 999 cut-offs.
 
 #### Accuracy per move
 
 Per-move accuracy is Lichess's curve:
 
-```text
-accuracy = 103.1668100711649 · exp(−0.04354415386753951 · ΔW)
- − 3.166924740191411 + 1
+```math
+a(d) = \operatorname{clamp}\big(A\,e^{-\kappa d} - B + 1,\ 0,\ 100\big), \qquad d = \Delta W,\quad A = 103.1668100711649,\quad \kappa = 0.04354415386753951,\quad B = 3.166924740191411
 ```
 
-It is clamped to [0, 100], and a move that lost nothing scores 100.
+A move that lost nothing scores 100.
+
+What the curve does: its slope is $-A\kappa e^{-\kappa d} < 0$, so more loss never scores more. Solving $A e^{-\kappa d} - B + 1 = 100$ and $= 0$ gives the two ends,
+
+```math
+d_{100} = \frac{1}{\kappa}\ln\frac{A}{99 + B} = 0.2237, \qquad d_0 = \frac{1}{\kappa}\ln\frac{A}{B - 1} = 88.72,
+```
+
+so a move that loses up to 0.2237 points still scores 100 (that is the "+1"), and one that loses 88.72 points or more scores 0. [Proof: A3](algorithm/MATH.md#a3-accuracy-per-move).
 
 #### Accuracy per game
 
-Game accuracy is a port of lila's `AccuracyPercent.gameAccuracy` ([ADR-FIX-C-1](docs/decisions/ADR-FIX-C-1-lila-accuracy-and-pre-game-ratings.md), [`game_accuracy.rs`](backend/crates/chess-core/src/game_accuracy.rs)). It averages two means of the per-move accuracies:
+Game accuracy is a port of lila's `AccuracyPercent.gameAccuracy` ([ADR-FIX-C-1](docs/decisions/ADR-FIX-C-1-lila-accuracy-and-pre-game-ratings.md), [`game_accuracy.rs`](backend/crates/chess-core/src/game_accuracy.rs)). It averages two means of the per-move accuracies $a_1, \dots, a_m$:
 
-- a volatility-weighted mean: each move is weighted by the standard deviation of White's win chance over a sliding window of `clamp(moves / 10, 2, 8)` positions, clamped to [0.5, 12], so moves in sharp positions count more;
-- a harmonic mean, with each move floored at 1, so a single 0 can't zero the game.
+```math
+\mathrm{GA} = \frac12\Big(\frac{\sum_i v_i a_i}{\sum_i v_i} + \frac{m}{\sum_i 1/\max(1, a_i)}\Big).
+```
 
-The result is `(weighted + harmonic) / 2`. Opening, middlegame and endgame accuracy use the same formula on each phase's slice of the game. The opening lasts at least 20 and at most 30 plies ([`phase.rs`](backend/crates/chess-core/src/phase.rs)). The expected score uses pre-game ratings. chess.com doesn't publish them, so the player's pre-game rating is the rating after their previous rated game in the same time class.
+- The first half is volatility-weighted: $v_i$ is the standard deviation of White's win chance over a sliding window of $\operatorname{clamp}(\lfloor M/10 \rfloor, 2, 8)$ positions in a game of $M$ moves, clamped to $[0.5, 12]$, so moves in sharp positions count more.
+- The second half is a harmonic mean, with each move floored at 1, so a single 0 can't zero the game.
+
+Why one bad move hurts: every $a_i \le 100$, so one move at 1 or less makes $\sum_i 1/\max(1, a_i) \ge 1 + (m - 1)/100$, and the harmonic half is at most $100m/(m + 99)$: 28.8 in a game of 40 moves. The game accuracy still lies between the worst move and the best (floored at 1), since the weighted half is a convex combination and a harmonic mean sits between the minimum and the arithmetic mean. [Proof: A4](algorithm/MATH.md#a4-accuracy-per-game). Opening, middlegame and endgame accuracy use the same formula on each phase's slice of the game. The opening lasts at least 20 and at most 30 plies ([`phase.rs`](backend/crates/chess-core/src/phase.rs)). The expected score uses pre-game ratings. chess.com doesn't publish them, so the player's pre-game rating is the rating after their previous rated game in the same time class.
 
 #### Scheduling
 
@@ -276,27 +296,51 @@ Some rules that keep the counts honest:
 <details>
 <summary>Rates and uncertainty: the prior, the 80% range, the seeded bootstrap</summary>
 
-Each rate is a Beta posterior with an 80% range, pulled towards your peers' rate until your own games outweigh it.
+Each rate is a Beta posterior with an 80% range, pulled towards your peers' rate by no more than two of your own games' worth of evidence.
 
 #### A rate per chance is a Beta posterior
 
-The posterior comes from [`posterior.rs`](backend/crates/profile-core/src/stats/posterior.rs) ([ADR-R2-5](docs/decisions/ADR-R2-5-posterior-priority-conventions.md)):
+The posterior comes from [`priority.rs`](backend/crates/profile-core/src/stats/priority.rs) and [`posterior.rs`](backend/crates/profile-core/src/stats/posterior.rs) ([ADR-R2-5](docs/decisions/ADR-R2-5-posterior-priority-conventions.md), [ADR 0111](docs/decisions/0111-prior-rule-variants-and-the-80-percent-ranges.md)). Take your $g$ games of the last 183 days; game $t$ is $a_t$ days old and has $c_t$ chances and $e_t$ events of one weakness. Then
 
-```text
-weight = 0.5^(age_days / 60)
-posterior = Beta(n0 · μ + k, n0 · (1 − μ) + n − k)
-range = the 10% and 90% quantiles of the posterior
+```math
+w_t = 2^{-a_t/60}, \qquad k = \sum_t w_t e_t, \qquad n = \sum_t w_t c_t, \qquad \hat p = k/n, \qquad n_{\text{eff}} = \frac{n^2}{\sum_t w_t^2 c_t},
 ```
 
-Games older than 183 days are left out. Here k and n are the weighted events and chances, μ is the peer rate (a flat Beta(1, 1) prior when there are no peers, and for W5, whose comparison is the evaluation's prediction rather than a population of players), and n0 is the prior strength in chances: W1 300, W2 100, W3 60, W4 40, W5 and W6 30, W7 40, W8 80, W9a 30, W9b 40, W9c 60, W10 600, W11 300. The range is an equal-tailed 80% interval.
+```math
+\tilde n = \frac{n_{\text{eff}}}{\varphi}, \qquad \tilde k = \hat p\,\tilde n, \qquad s_0 = \min\Big(n_0,\ \frac{2\tilde n}{g}\Big), \qquad \theta \mid \text{data} \sim \operatorname{Beta}\big(s_0\mu + \tilde k,\ s_0(1 - \mu) + \tilde n - \tilde k\big).
+```
 
-The prior pulls a thin record towards what players like you do. Ten chances can't move a W10 rate far from the peer rate (n0 = 600); a few hundred can. Every interval in the product is 80%, because 95% ranges on 30 games are so wide they say nothing.
+In words:
 
-- Confidence is P(your true rate > the peer rate). A weakness is "Costing you games" only when its timeline state is active, emerging or relapsed, that confidence is at least 0.7 and it is ranked (priority above 0); otherwise it goes to "Worth watching" ([ADR 0084](docs/decisions/0084-costing-state-and-peer-comparison-agree.md), [ADR 0101](docs/decisions/0101-weakness-ranking-floor-and-baselines.md)). With no event in the window, confidence is 0: we never claim certainty about something that never happened.
-- Priority = excess × trainability × confidence, where the excess is the expected points lost per game above the peers' rate and trainability is a per-band table ([`constants.rs`](backend/crates/profile-core/src/constants.rs)). Fewer than 30 games, no peers or no event means priority 0, so nothing is ranked on thin evidence.
+- $n_{\text{eff}}$ is what the weighted record is worth in plain chances: weighting by age makes it carry less than its raw total.
+- $\varphi$, between 1 and 10, measures how much more your games vary from one to the next than a fixed rate would explain, and discounts the evidence by it.
+- $\mu$ is the peers' pooled rate, the prior's centre. With no peers, and for W5, whose comparison is the evaluation's prediction rather than a population of players, the prior is the flat $\operatorname{Beta}(1, 1)$.
+- $s_0$ is the prior's weight. It is worth two of your games' chances, never more than the key's cap $n_0$: W1 300, W2 100, W3 60, W4 40, W5 and W6 30, W7 40, W8 80, W9a 30, W9b 40, W9c 60, W10 600, W11 300.
+- The range is the posterior's 10% and 90% quantiles, an equal-tailed 80% interval.
+
+Why the peers' say stays small: the posterior mean is $\lambda\mu + (1 - \lambda)\hat p$ with $\lambda = s_0/(s_0 + \tilde n)$. That share grows with $s_0$, so it is largest when the two-games cap binds:
+
+```math
+\lambda \le \frac{2\tilde n/g}{2\tilde n/g + \tilde n} = \frac{2}{g + 2}.
+```
+
+The peers hold at most 6.25% of the say at 30 games, 3.2% at 60, 1.6% at 120 and 0.8% at 250, however many chances a key has per game, and pull the estimate towards themselves by that share of the gap. For the lab's `lab-hangs` player, W1 over 60 games has $\tilde n = 2885.42$, so $s_0 = 2 \cdot 2885.42/60 = 96.18$, not 300, and $\lambda = 2/62$. With unit weights and $\varphi = 1$ this is the textbook Beta-binomial update, proved in Lean (`Rematch.beta_binomial_posterior`). [Proof: A5](algorithm/MATH.md#a5-the-rate-per-chance-the-posterior), and in full in [EXP-0006's maths](lab/experiments/EXP-0006/math.md#4-derivations-and-proofs).
+
+This is the rule since `algo-2.0.0`. Before it, the prior held $n_0$ chances whatever your record and the counts were the weighted sums. That gave W4.missed's peers 59% of the say at 30 games and ranges too narrow around a biased centre ([EXP-0002's maths](lab/experiments/EXP-0002/math.md#4-derivations-and-proofs)). EXP-0006 measured the capped rule's 80% ranges covering the truth 75% to 85% of the time on all 20 key × size cells ([the decision](lab/experiments/EXP-0006/decision.md)). The timeline below keeps the older form, $\operatorname{Beta}(n_0\mu + k,\ n_0(1 - \mu) + n - k)$, on a segment's unweighted counts. Every interval in the product is 80%, because 95% ranges on 30 games are so wide they say nothing.
+
+- Confidence is $P(\theta > \nu \mid \text{data}) = 1 - F(\nu)$, the posterior's chance that your true rate $\theta$ is above the peers' median rate $\nu$. A weakness is "Costing you games" only when its timeline state is active, emerging or relapsed, that confidence is at least 0.7 and it is ranked (priority above 0); otherwise it goes to "Worth watching" ([ADR 0084](docs/decisions/0084-costing-state-and-peer-comparison-agree.md), [ADR 0101](docs/decisions/0101-weakness-ranking-floor-and-baselines.md)). With no event in the window, confidence is 0: we never claim certainty about something that never happened.
+- Priority is the excess times trainability times confidence. The excess is the expected points lost per game above the peers' rate, and trainability $\tau$ is a per-band table ([`constants.rs`](backend/crates/profile-core/src/constants.rs)). With $\hat m$ the posterior mean, $\epsilon$ the band's expected points lost per event and $G$ games in the window:
+
+  ```math
+  \text{excess} = \max(0,\ \hat m - \nu)\cdot\frac{\sum_t c_t}{G}\cdot\epsilon, \qquad \text{priority} = \text{excess}\cdot\tau\cdot\text{confidence}.
+  ```
+
+  By linearity, a player at rate $\theta$ loses $\theta \cdot (\text{chances a game}) \cdot \epsilon$ points a game to this weakness, so the excess is the plug-in estimate of what you lose beyond a player at the peer rate ([A7](algorithm/MATH.md#a7-the-excess-the-priority-and-w5s-benchmark)). Fewer than 30 games, no peers or no event means priority 0, so nothing is ranked on thin evidence.
 - The ranking floor: A weakness ranks only when its 80% range lies entirely above the peer rate and its excess is at least 0.02 points per game, one game's result in 50 (`RANK_MIN_EXCESS_PER_GAME` in [`priority.rs`](backend/crates/profile-core/src/stats/priority.rs), [ADR 0101](docs/decisions/0101-weakness-ranking-floor-and-baselines.md)). Below it the rate, its range and its confidence are still shown, but its priority is 0: not enough evidence yet. A clean record can rank nothing, and then the overview, the report and the coach say that nothing stands out. On the first benchmark run the clean control's blunders on a low clock (11 in 846 chances against a peer rate of 0.008, range 0.0075 to 0.018) ranked first; the floor stops that.
-- W5 is compared with the evaluation: Your opponents' conversions in games against you are your own saves seen from the other side, so W5 has no peer rate. A winning episode starts at W ≥ 85, and the win chance is the expected score, so the evaluation expects such a position to lose 0.15 of a point. W5's benchmark is the failure rate that loses exactly that, 0.15 divided by your own points lost per failure (half a point for a draw, one for a loss), and its excess is the points per game you lose from winning positions beyond that prediction. The prediction is not a prior, so W5's rate keeps the flat Beta(1, 1) (`model_baseline` in [`priority.rs`](backend/crates/profile-core/src/stats/priority.rs)). It applies to the all-games estimate only; the colour pages compare each colour with its own peers. The win-chance curve was fitted to strong players' results, so this is a stricter standard for a club player than a peer rate would be. We don't know yet how many club players it flags; Tier 2 of the benchmark will measure it.
-- The timeline: A Bayesian online change-point detector (hazard 1/200) and a CUSUM find when a rate shifted, which gives the states (emerging, active, improving, resolved, relapsed) ([ADR-R2-6](docs/decisions/ADR-R2-6-timeline-detector-and-states.md)).
+
+  What the floor guarantees: the range's lower end $L$ is at most the 10% quantile $q_{0.1}$, so a ranked weakness has $F(\nu) < F(q_{0.1}) = 0.1$ and a confidence above 0.9, always past the 0.7 gate. If the model were exactly right, then averaged over players drawn from the prior, fewer than one in ten ranked weaknesses would have a true rate at or below the peers' median. The shipped rule only approximates that model. On EXP-0006's simulated players it raised the share of credible estimates for players at or below their peers' rate by 0.0089 over the old rule, inside the registered margin of 0.01. [Proof: A6](algorithm/MATH.md#a6-the-80-range-the-ranking-floor-and-the-false-weakness-guard).
+- W5 is compared with the evaluation: Your opponents' conversions in games against you are your own saves seen from the other side, so W5 has no peer rate. A winning episode is three own moves in a row at $W \ge 85$, and the win chance is the expected score, so the evaluation expects such a position to lose at most 0.15 of a point. W5's benchmark is the failure rate that loses exactly that much, $\nu_5 = \min(0.15/e,\ 1)$ with $e$ your own points lost per failure (half a point for a draw, one for a loss). Its excess, $e\theta - 0.15$ an episode times your episodes a game, is the points you lose from winning positions beyond that allowance. Because 0.15 is the most the evaluation allows rather than its exact prediction, the excess is a lower bound on what you lose beyond the prediction, and W5 flags less often than a rule using each position's own win chance would ([A7](algorithm/MATH.md#a7-the-excess-the-priority-and-w5s-benchmark)). The prediction is not a prior, so W5's rate keeps the flat Beta(1, 1) (`model_baseline` in [`priority.rs`](backend/crates/profile-core/src/stats/priority.rs)). It applies to the all-games estimate only; the colour pages compare each colour with its own peers. The win-chance curve was fitted to strong players' results, so this is a stricter standard for a club player than a peer rate would be. We don't know yet how many club players it flags; Tier 2 of the benchmark will measure it.
+- The timeline: A Bayesian online change-point detector (hazard $H = 1/200$) and a CUSUM find when a rate shifted, which gives the states (emerging, active, improving, resolved, relapsed) ([ADR-R2-6](docs/decisions/ADR-R2-6-timeline-detector-and-states.md)). The detector keeps a probability for every possible length of the current run. Game $t$ updates each by the Beta-binomial chance of its $k_t$ events in $n_t$ chances, $\binom{n_t}{k_t}B(a + k_t,\ b + n_t - k_t)/B(a, b)$, where $\operatorname{Beta}(a, b)$ is that run's posterior, and a change is confirmed only when at least 0.8 of the mass sits on runs shorter than 50 games (fewer early in a segment), the rate moved by at least 15% and the key has its minimum evidence since the change. With no evidence at all that mass is $1 - (1 - H)^{50} = 0.2217$, so the prior alone never confirms a change ([A9](algorithm/MATH.md#a9-the-timeline-change-points)). The CUSUM adds each game's log-likelihood ratio of a rate 1.5 times the segment's against the segment's own, and alarms at 4. With a known level, the average wait for a false alarm is at least $e^4 \approx 55$ games ([A10](algorithm/MATH.md#a10-the-timeline-cusum-alarms)).
 - Means (accuracy, blunders per game) get a percentile bootstrap: 1,000 resamples with seed 1 in the Rust KPI snapshots, 2,000 in the web's filtered stats. Counts like the score use a Wilson interval.
 - Stable ranges: The web's bootstrap used to index rows in database order and put ids in its seed, so the same games could give a slightly different range on another load. It now sorts the values and seeds mulberry32 from an FNV-1a hash of the metric name and the sorted values ([`bootstrap.ts`](apps/web/src/server/stats/bootstrap.ts)). Same games, same range, every time.
 
@@ -310,7 +354,7 @@ Rematch prints no number until it has the evidence, and says how much more it ne
 |---|---|
 | Accuracy, blunders per game, score on any page | 10 games: `KPI_MIN_GAMES` in [`stats/constants.ts`](apps/web/src/server/stats/constants.ts) |
 | Each colour's numbers, for you and for the coach | 10 games with that colour: `MIN_COLOR_GAMES` in [`limits.rs`](backend/crates/coaching-input/src/limits.rs) |
-| A weakness ranked at all | 30 games in the 6-month window, a peer rate (or for W5 the evaluation's prediction) and one event: `MIN_GAMES` in [`priority.rs`](backend/crates/profile-core/src/stats/priority.rs) |
+| A weakness ranked at all | 30 games in the 6-month window, a peer rate (or for W5 the evaluation's allowance of 0.15) and one event: `MIN_GAMES` in [`priority.rs`](backend/crates/profile-core/src/stats/priority.rs) |
 | A weakness ranked rather than "not enough evidence yet" | its 80% range entirely above the peer rate, and at least 0.02 points per game above it: `RANK_MIN_EXCESS_PER_GAME` in [`priority.rs`](backend/crates/profile-core/src/stats/priority.rs), [ADR 0101](docs/decisions/0101-weakness-ranking-floor-and-baselines.md) |
 | A weakness rate called sufficient | its key's chances: W5 and W6 15, W9a 20, W3, W4, W7 and W9b 40, W8 50, W9c 60, W1, W2 and W11 1,000, W10 1,500: `min_evidence` in [`constants.rs`](backend/crates/profile-core/src/constants.rs) |
 | A peer rate shown | 10 distinct opponents, and at least the chances your own rate needs: `LOW_SAMPLE_PLAYERS` in [`reference_aggregate.rs`](backend/crates/profile/src/reference_aggregate.rs), [ADR 0081 Amendment 1](docs/decisions/0081-peer-benchmark-pooled-rate.md) |
@@ -355,7 +399,7 @@ Every number is split into your White and your Black games, and two periods are 
 
 - The colour split: Every profile build computes everything three times: both colours, your White games, your Black games. A colour is compared only with peers who had that colour: your Black games give the White peers. A combined reference is never applied to one colour ([ADR 0082](docs/decisions/0082-colour-split-profile-rows.md)). The change-point timeline stays on both colours, because splitting it would halve the evidence behind every change.
 - Filters and period comparison: One URL contract for time class (rapid first), format such as `10+0`, colour, dates and a comparison: this month against last month, the last 30 days against the 30 before, your newest 50 games against the 50 before, or two custom ranges ([ADR 0083](docs/decisions/0083-filters-and-period-comparison.md)). A shared link always shows the same games.
-- When a change is called ([`compare.ts`](apps/web/src/server/stats/compare.ts)). Both sides need 10 games. A rate is better or worse when P(better) from the two Beta posteriors (10,000 seeded Monte Carlo draws) is at least 0.8 and the means differ by at least 15% relative to the earlier side. A mean is better or worse when the bootstrap 80% interval of the difference excludes 0. Anything else is "No clear change". The posterior maths is a line-by-line TypeScript port of the Rust, checked against a Rust-written fixture to 1e-9.
+- When a change is called ([`compare.ts`](apps/web/src/server/stats/compare.ts)). Both sides need 10 games. A rate is better or worse when $P(\theta_{\text{now}} < \theta_{\text{then}})$, or its mirror, is at least 0.8 under the two Beta posteriors and the means differ by at least 15% relative to the earlier side. The probability is the share of 10,000 seeded Monte Carlo draws, an average of 10,000 coin flips with chance $P$, so its standard error is $\sqrt{P(1 - P)/10^4} \le 0.005$, and the fixed seed gives the same number every time ([A8](algorithm/MATH.md#a8-comparisons-between-two-posteriors)). A mean is better or worse when the bootstrap 80% interval of the difference excludes 0. Anything else is "No clear change". The posterior maths is a line-by-line TypeScript port of the Rust, checked against a Rust-written fixture to 1e-9.
 
 </details>
 
@@ -381,9 +425,23 @@ Your rating line with its peak marked, and your first games set against your las
 From your rated games in one time class, each with its pre-game rating ([ADR 0089](docs/decisions/0089-rating-trajectory-and-then-vs-now.md)):
 
 - Peak: the first game with your highest rating, or your current rating if it is higher still.
-- Windows: `W = min(30, floor(n / 2))` games each. "Then" is your first W rated games, "now" your last W. Since `algo-6.0.0` no window sits on the peak, a maximum of the rating's own ups and downs.
+- Windows: $W = \min(30, \lfloor n/2 \rfloor)$ games each, from $n$ rated games. "Then" is your first $W$ rated games, "now" your last $W$. Since `algo-6.0.0` no window sits on the peak, a maximum of the rating's own ups and downs.
 - Then against now: rating, accuracy, blunders per game and score, by the period-comparison rules, plus your top three ranked weaknesses as events per chance in each window, under the prior behind the stored estimate.
 - The rating's range counts its memory ([ADR 0117](docs/decisions/0117-a-trajectory-verdict-that-counts-the-ratings-memory.md)): a rating carries most of its error over from one game to the next, so 30 ratings in a row are not 30 separate results. The 80% range of the difference comes from how far your own rating moves each game. On 2,000 simulated players whose strength never changed it said "falling" or "rising" to about one in ten each way (EXP-0030); the bootstrap it replaced, hidden in `algo-5.0.0` ([ADR 0116](docs/decisions/0116-hide-the-trajectory-rating-verdict.md)), said "falling" to 44% to 78%.
+
+  In short: we work out how much two 30-game averages of your rating would differ by chance alone, and call a change only past that. The maths: read your rating's error as mean-reverting, $e_{t+1} = \varphi e_t + \varepsilon_t$, so errors $h$ games apart have covariance $\sigma^2\varphi^{h}$ (this $\varphi$ is the rating's memory, not the dispersion of the rates above). Both are estimated from your own steps: with $s$ the root mean square of the changes between consecutive pre-game ratings and $q = \ln 10/400$,
+
+  ```math
+  \hat a = \min(qs/2,\ 1), \qquad \hat\varphi = 1 - \hat a, \qquad \hat\sigma^2 = \frac{s^2}{\hat a(2 - \hat a)}.
+  ```
+
+  The change is $D = \bar r_{\text{now}} - \bar r_{\text{then}}$. Summing the covariances over every pair of games, within a window and across the two, gives its variance exactly,
+
+  ```math
+  V = \sigma^2\Big(\frac{S(m_A)}{m_A^2} + \frac{S(m_B)}{m_B^2} - \frac{2C}{m_A m_B}\Big), \qquad S(m) = \frac{m(1 + \varphi)}{1 - \varphi} - \frac{2\varphi(1 - \varphi^m)}{(1 - \varphi)^2},
+  ```
+
+  where $m_A = m_B = W$ are the window sizes and $C = \varphi^{\ell}(1 - \varphi^{m_A})(1 - \varphi^{m_B})/(1 - \varphi)^2$ is the cross-window term, with $\ell = n - 2W + 1$ the lag between the last "then" game and the first "now" game. The weights on $D$ sum to 0, so your true strength cancels. "Falling" needs $D + 1.2816\sqrt{V} < 0$ and "rising" $D - 1.2816\sqrt{V} > 0$. With Gaussian innovations and known parameters, each happens to a player who never changed with probability exactly $\Phi(-1.2816) = 0.10$. In 20,000 simulated players at 120 games the variance of $D$ came out at 0.986 of $V$, and with the parameters estimated from each player's own steps "falling" came out at 0.105. [Proof: A12](algorithm/MATH.md#a12-the-trajectorys-rating-verdict-memory-halves), and in full in [EXP-0030's maths](lab/experiments/EXP-0030/math.md#4-derivations-and-proofs).
 - The words: "Clearly worse" only with that verdict, and for the rating it means the rating moved by more than its own wander, not why. The headline compares the two averages and states the peak as a plain fact ("averaged 1,492 over your last 30 games, down from 1,560 over your first 30 (−68). It is 1,488 now. Your highest was 1,610, in April 2026."), and a clearly worse measure is named as the likeliest place to look, never as the cause.
 
 The web and the coach compute it with the same seeds and stream; a shared fixture checks every window and number to 1e-9.
@@ -456,10 +514,10 @@ From [ADR 0090](docs/decisions/0090-missed-moments-trainer.md) and [`train/model
 - Items are your own moves at a W4.missed, W3.shallow, W3.deep or W7.traps example, or any move judged a blunder, with a stored engine move different from yours. Positions already decided (W ≥ 97 before and ≥ 90 after) are dropped, and so is an answer that is a free capture, unless it is a missed mate.
 - Grading without an engine: The accepted moves are stored with the item: the best move, plus each MultiPV line within 5 win-chance points of it, or, when the best move mates in n, any mate in n + 1 or less. The server grades; the answer never reaches the page before you move.
 - The attempt: Play a move, then say "Sure" or "A guess", then see the verdict about the move, with the engine line as numbered arrows on the board.
-- Spacing: Each right answer in a row is due again after 1, 3, 7, 21, then 60 days; a miss resets the streak and comes back tomorrow. A "clean pass" is a right, sure answer at least 7 days after the previous attempt, and three of them retire the item, so a lucky guess can't. Only the first attempt of a day changes the schedule. Days are calendar days in your own time zone, which the browser sends in the `ci_tz` cookie (UTC without it).
+- Spacing: Each right answer in a row is due again after 1, 3, 7, 21, then 60 days; a miss resets the streak and comes back tomorrow. A "clean pass" is a right, sure answer at least 7 days after the previous attempt, and three of them retire the item, so a lucky guess can't. An item you get right and sure every time retires at its sixth attempt, on day $1 + 3 + 7 + 21 + 60 = 92$: only the gaps of 7, 21 and 60 days are long enough to count. Only the first attempt of a day changes the schedule. Days are calendar days in your own time zone, which the browser sends in the `ci_tz` cookie (UTC without it).
 - Sessions: Up to 12 items: due ones first, then new ones while fewer than 10 were introduced today, never past 24 attempts a day. Sources are interleaved and the motif isn't named before you answer.
-- The holdout: `fnv1a("holdout:<game>:<ply>") % 100 < 20` puts about 20% of positions aside, decided once, never served.
-- "Is it working?" Per source, your rate per chance in games since your first drill of it against before; and the motifs you drilled against the motifs only held-out items have. Below 30 chances on a side it says "Too early to tell", and it claims a change only when the two 80% Wilson ranges don't overlap.
+- The holdout: $\operatorname{fnv1a}(\texttt{holdout:}\langle\text{game}\rangle\texttt{:}\langle\text{ply}\rangle) \bmod 100 < 20$ puts about 20% of positions aside, decided once, never served. If the hash were uniform the share would be $20\lceil 2^{32}/100\rceil/2^{32} = 0.200000000186$, because $2^{32}$ leaves 96 spare values that fall on residues 0 to 95.
+- "Is it working?" Per source, your rate per chance in games since your first drill of it against before; and the motifs you drilled against the motifs only held-out items have. Below 30 chances on a side it says "Too early to tell", and it claims a change only when the two 80% Wilson ranges don't overlap. That is stricter than it looks: two ranges of half-width $z\sqrt{p(1-p)/n}$ miss each other when the rates differ by more than $2z\sqrt{p(1-p)/n}$, and the difference has standard deviation $\sqrt2\sqrt{p(1-p)/n}$. So with nothing changed they miss with probability about $2(1 - \Phi(\sqrt2 \cdot 1.2816)) = 0.070$, a test at 7%, and 0.070 by exact enumeration at 30 against 30 chances and a rate of 0.2 ([A14](algorithm/MATH.md#a14-the-trainer)).
 
 </details>
 
@@ -468,8 +526,14 @@ From [ADR 0090](docs/decisions/0090-missed-moments-trainer.md) and [`train/model
 
 One weakness a week, with a target rate over your next 10 to 40 games and a verdict only once there are 10 chances.
 
-- A target ([ADR 0091](docs/decisions/0091-weekly-focus-and-goal.md), [`focus/goal.ts`](apps/web/src/server/focus/goal.ts)): your current rate less a meaningful step, either a quarter fewer or the peer median, whichever is the easier goal. The peer median counts only when it is at least 10% below your rate. It is rounded to a tenth of a percentage point and always computed on the server.
-- N games: 20 by default; pick 10, 20, 30 or 40. Progress is read live from your first N analysed games after you set it: k of n chances, the rate with its 80% range. Under 10 chances: "Too early to tell: X more chances". From 10: "On track" or "Not yet". When the N-th game exists, the focus closes as met, not met, or inconclusive.
+- A target ([ADR 0091](docs/decisions/0091-weekly-focus-and-goal.md), [`focus/goal.ts`](apps/web/src/server/focus/goal.ts)): your current rate less a meaningful step, either a quarter fewer or the peer median, whichever is the easier goal. The peer median counts only when it is at least 10% below your rate. It is rounded to a tenth of a percentage point and always computed on the server. With $b$ your rate, $\pi$ the peer median and $\operatorname{tenth}$ that rounding:
+
+  ```math
+  T = \begin{cases} \operatorname{tenth}(\pi) & \text{if } \pi \le 0.9\,b \text{ and } \operatorname{tenth}(\pi) > \operatorname{tenth}(0.75\,b),\\ \operatorname{tenth}(0.75\,b) & \text{otherwise.}\end{cases}
+  ```
+
+  Rounding moves a value by at most 0.0005, so the target is strictly below your rate whenever $b > 0.005$. At rates of 0.5% or less the rounding can remove the step, and below 0.000667 the quarter-fewer target rounds to 0; that goes to EXP-0011, the weekly-target experiment in [the evaluation plan](docs/evaluation.md), rather than a hand fix ([A13](algorithm/MATH.md#a13-the-weekly-focus-target-and-verdict), [Finding 2](algorithm/MATH.md#findings)).
+- N games: 20 by default; pick 10, 20, 30 or 40. Progress is read live from your first N analysed games after you set it: k of n chances, the rate with its 80% range. Under 10 chances: "Too early to tell: X more chances". From 10: "On track" or "Not yet". The verdict reads the rate itself, not its range, so it is a progress cue, not a claim: a player whose true rate stays at 20% (target 15%) is "On track" with probability $P(\operatorname{Bin}(10, 0.2) \le 1) = 0.376$ after 10 chances and $P(\operatorname{Bin}(20, 0.2) \le 3) = 0.411$ after 20. When the N-th game exists, the focus closes as met, not met, or inconclusive.
 - The suggestion is the top weakness under "Costing you games" with priority above 0.
 - The overview reads top to bottom: where you are (the trajectory card), this week's focus, one "Practise today: N positions due" button that runs the trainer's own session rules, how you're doing with White and Black, then the details ([ADR 0092](docs/decisions/0092-focused-overview.md)).
 
@@ -480,7 +544,7 @@ One weakness a week, with a target rate over your next 10 to 40 games and a verd
 
 Postgres holds the job queue and every computed fact, and the Next.js app reads them directly.
 
-- Postgres is the queue ([ADR 0032](docs/decisions/0032-postgres-job-queue.md), [`queue.rs`](backend/crates/queue/src/queue.rs)). One `jobs` table. Workers claim with `FOR UPDATE SKIP LOCKED`, so twenty workers never claim the same job. Each claim writes a lease token, and a worker whose lease expired can't write a late result. A failed job is retried after `5 s · 2^(attempt − 1)` and dead after 3 attempts; shutdown or an open circuit releases a job without using an attempt. Dedupe keys among live jobs (`import:<account>`, `analyse:<game>`) keep one import per account. Enqueue sends `pg_notify('jobs', kind)`, runners `LISTEN` and also poll, so a lost notification costs only latency. Analysis jobs heartbeat every 10 s, and a reconciler every 300 s re-queues what a crash left behind.
+- Postgres is the queue ([ADR 0032](docs/decisions/0032-postgres-job-queue.md), [`queue.rs`](backend/crates/queue/src/queue.rs)). One `jobs` table. Workers claim with `FOR UPDATE SKIP LOCKED`, so twenty workers never claim the same job. Each claim writes a lease token, and a worker whose lease expired can't write a late result. A failed job is retried after $5 \cdot 2^{a - 1}$ seconds at attempt $a$ and dead after 3 attempts; shutdown or an open circuit releases a job without using an attempt. Dedupe keys among live jobs (`import:<account>`, `analyse:<game>`) keep one import per account. Enqueue sends `pg_notify('jobs', kind)`, runners `LISTEN` and also poll, so a lost notification costs only latency. Analysis jobs heartbeat every 10 s, and a reconciler every 300 s re-queues what a crash left behind.
 - Events to the browser: The worker writes user events and `pg_notify('user_events', …)` in the same transaction; each web process holds one `LISTEN` and streams server-sent events with replay, with polling as the fallback ([ADR 0034](docs/decisions/0034-user-events-listen-notify.md), [ADR-WEB-8](docs/decisions/ADR-WEB-8-sse-delivery.md)).
 - Migrations own the schema: Plain SQL in `db/migrations/`, applied by sqlx; the web's Drizzle types are generated from the database ([ADR 0033](docs/decisions/0033-sql-migrations-own-the-schema.md)).
 - Redis is still in the Compose stack, but today only the web's health check talks to it. The queue moved to Postgres when the backend moved to Rust ([ADR 0030](docs/decisions/0030-rust-backend.md)).
