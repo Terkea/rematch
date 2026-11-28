@@ -11,7 +11,7 @@
 // - the Experiments pages (lab/experiments/EXP-*/summary.md), the Progress page (docs/progress.md)
 //   and the landing page's "Latest from the lab" strip.
 // Everything written here is git-ignored and regenerated on every build.
-import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, posix, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadSeed } from "../../scripts/roadmap/roadmap-lib.mjs";
@@ -25,11 +25,13 @@ import {
   titleOf,
 } from "./content-lib.mjs";
 import {
+  algorithmMathPage,
   experimentPage,
   experimentsIndex,
   labStrip,
   loadExperiments,
   loadLeaderboard,
+  mathPage,
   parseProgress,
   progressPage,
 } from "./lab-lib.mjs";
@@ -171,6 +173,19 @@ function writeLab() {
         editUrl: `${edit}/lab/experiments/${e.folder}/summary.md`,
       }) + experimentPage(e),
     );
+    if (e.files.math) {
+      // The experiment's maths (ADR 0118), at /docs/experiments/<slug>/math/.
+      mkdirSync(join(outDir, e.slug), { recursive: true });
+      const text = readFileSync(join(ROOT, "lab", "experiments", e.folder, "math.md"), "utf8");
+      writeFileSync(
+        join(outDir, e.slug, "math.md"),
+        frontmatter({
+          title: `${e.id}: the maths`,
+          description: `The notation, model, estimators, proofs and numbers of ${e.id}.`,
+          editUrl: `${edit}/lab/experiments/${e.folder}/math.md`,
+        }) + mathPage(e, text),
+      );
+    }
   }
   writeFileSync(
     join(outDir, "index.md"),
@@ -201,8 +216,28 @@ function writeLab() {
   return exps.length;
 }
 
+/** algorithm/MATH.md, when it exists, as /docs/algorithm/math/ (ADR 0118). */
+function writeAlgorithmMath() {
+  const outDir = join(OUT_DOCS, "algorithm");
+  rmSync(outDir, { recursive: true, force: true });
+  const src = join(ROOT, "algorithm", "MATH.md");
+  if (!existsSync(src)) return false;
+  mkdirSync(outDir, { recursive: true });
+  const edit = `${GITHUB_BLOB.replace("/blob/", "/edit/")}`;
+  writeFileSync(
+    join(outDir, "math.md"),
+    frontmatter({
+      title: "The algorithm's maths",
+      description: "Every quantity the algorithm computes, derived and proved, version by version.",
+      editUrl: `${edit}/algorithm/MATH.md`,
+    }) + algorithmMathPage(readFileSync(src, "utf8")),
+  );
+  return true;
+}
+
 export function sync() {
   writeTokens();
+  writeAlgorithmMath();
   const experiments = writeLab();
   writeHowItWorksSummary();
   writeHowItWorks();

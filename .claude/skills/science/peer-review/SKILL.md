@@ -9,7 +9,9 @@ metadata:
   skill-author: K-Dense Inc.
 ---
 
-> **Rematch vendoring note.** Vendored unmodified from K-Dense-AI/scientific-agent-skills at commit c21d13b (2026-11-23), except as listed here; see ../SOURCE.md. Removed: the upstream install step (run the code in the lab container, `lab/`, which pins the packages) and the instruction to fetch the citation record from arXiv over the network. The bundled CLIs are standard-library only and make no network calls (read before vendoring). In Rematch the material under review is our own pre-registrations and results, which the maintainer authorises; the manuscript-confidentiality rules still apply to anything that is not ours.
+> **Rematch vendoring note.** Vendored unmodified from K-Dense-AI/scientific-agent-skills at commit c21d13b (2026-11-23), except as listed here; see ../SOURCE.md. Removed: the upstream install step (run the code in the lab container, `lab/`, which pins the packages) and the instruction to fetch the citation record from arXiv over the network. The bundled CLIs are standard-library only and make no network calls (read before vendoring). In Rematch the material under review is our own pre-registrations and results, which the maintainer authorises; the manuscript-confidentiality rules still apply to anything that is not ours. Added: the Rematch maths note below (ADR 0118).
+
+> **Rematch: the critic's maths checklist (ADR 0118).** On every review of an experiment, before the run and after it: (1) check every proof in `math.md`, line by line, against the model it states and the code it cites; (2) re-derive the key results blind, from the pre-registration, `analysis.py` and `power.py` without reading `math.md`, then compare and list each disagreement in `review.md`; (3) run `math_check.py` in the lab container and confirm it exits 0, that its simulation tests the model the proof assumes, and that it recomputes every number the decision quotes. A proof that is right about the wrong model is a finding.
 
 # Peer Review
 

@@ -9,7 +9,9 @@ metadata:
   skill-author: K-Dense Inc.
 ---
 
-> **Rematch vendoring note.** Vendored unmodified from K-Dense-AI/scientific-agent-skills at commit c21d13b (2026-11-23), except as listed here; see ../SOURCE.md. Removed: the upstream install step (run the code in the lab container, `lab/`, which pins the packages) and the instruction to fetch the citation record from arXiv over the network. The lab pins pingouin, SciPy, statsmodels, PyMC and ArviZ at the versions this skill targets (`lab/pyproject.toml`); seaborn is not in the lab.
+> **Rematch vendoring note.** Vendored unmodified from K-Dense-AI/scientific-agent-skills at commit c21d13b (2026-11-23), except as listed here; see ../SOURCE.md. Removed: the upstream install step (run the code in the lab container, `lab/`, which pins the packages) and the instruction to fetch the citation record from arXiv over the network. The lab pins pingouin, SciPy, statsmodels, PyMC and ArviZ at the versions this skill targets (`lab/pyproject.toml`); seaborn is not in the lab. Added: the Rematch maths note below (ADR 0118).
+
+> **Rematch: do the maths (ADR 0118).** Before the freeze, every experiment writes `lab/experiments/EXP-NNNN/math.md` from `docs/experiments/MATH-TEMPLATE.md`: 1 notation, 2 model, 3 estimators (each with the `analysis.py` function that computes it), 4 derivations and proofs (numbered results, full proofs, the Lean theorem in `lab/lean/` where one exists). Sections 5 (every quoted number, recomputed, tied to its `results.json` or `power.json` key) and 6 (assumptions that can fail, and the sensitivity that covers each) come with the decision. `math_check.py` (from `lab/templates/math_check.py`) verifies it in the lab container: sympy simplifies each derivation to 0, a seeded Monte Carlo of each proof's model matches the formulas within its simulation SE, and every quoted number is recomputed. GitHub maths syntax only: `$...$` inline, a ```` ```math ```` fence for display.
 
 # Statistical Analysis
 

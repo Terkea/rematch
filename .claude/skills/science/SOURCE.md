@@ -38,9 +38,10 @@ Each changed `SKILL.md` starts with a "Rematch vendoring note" that lists its ch
 2. **No network citation fetch.** Each skill told the agent to fetch the arXiv record before citing the paper; that paragraph now says to cite it as written.
 3. **No remote service.** `scientific-critical-thinking` offered figures through the scientific-schematics skill, which sends the prompt to OpenRouter and needs `OPENROUTER_API_KEY`. That step is removed; figures are drawn with Matplotlib.
 4. **The `compatibility` line** says the skill runs in the lab container, followed by the upstream text.
+5. **The maths (ADR 0118).** `statistical-analysis` and `sympy` gain a "do the maths" note (math.md and math_check.py, before the freeze); `scientific-critical-thinking` and `peer-review` gain the critic's maths checklist (check every proof, re-derive the key results blind, run math_check.py). Rematch's own text, marked in each vendoring note.
 
 No skill was dropped: none depends on a remote service for its main use. Two scripts need packages the lab does not pin yet, and say so in their notes: `experimental-design/scripts/doe_designs.py` (pydoe) and the survival extensions of `statistical-power` (lifelines).
 
 ## Updating
 
-The monthly sweep compares this commit with upstream `main`. An update is a pull request that bumps the commit here, re-reads every changed file, and re-applies the four changes above.
+The monthly sweep compares this commit with upstream `main`. An update is a pull request that bumps the commit here, re-reads every changed file, and re-applies the five changes above.

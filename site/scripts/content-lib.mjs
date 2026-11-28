@@ -50,20 +50,28 @@ function escapeProse(segment) {
   return segment.replace(/<(\/?[A-Za-z_][\w-]*)>/g, "&lt;$1&gt;");
 }
 
+/**
+ * A code span, `$$...$$`, or GitHub's inline `$...$`: no space just inside either dollar, and the
+ * closing one not followed by a letter or digit (so "$2.24 ... ($2)" is two prices, not maths).
+ */
+const MATH_OR_CODE = /(`+[^`]*`+|\$\$[^$]+\$\$|\$(?=[^\s$])[^$\n]*?[^\s$\\]\$(?!\w))/;
+
 function rewriteLine(line, fromRepoPath) {
   // Reference-style definitions: [label]: target
   const def = /^(\s*\[[^\]]+\]:\s*)(\S+)(.*)$/.exec(line);
   if (def) return `${def[1]}${rewriteLink(def[2] ?? "", fromRepoPath)}${def[3] ?? ""}`;
-  // Split on inline code spans; only the prose between them is touched.
+  // Split on inline code spans and maths; only the prose between them is touched, so a `<` or a
+  // bracket in TeX stays TeX. A dollar left in the prose is a price ("$9.99/month"), so it is
+  // escaped: remark-math would otherwise read "$9.99 and $" as maths, which GitHub does not.
   return line
-    .split(/(`+[^`]*`+)/)
+    .split(MATH_OR_CODE)
     .map((part, i) => {
       if (i % 2 === 1) return part;
       const linked = part.replace(
         /\]\(([^)\s]+)(\s+"[^"]*")?\)/g,
         (_m, t, title) => `](${rewriteLink(t, fromRepoPath)}${title ?? ""})`,
       );
-      return escapeProse(linked);
+      return escapeProse(linked).replace(/(?<!\\)\$/g, "\\$");
     })
     .join("");
 }
@@ -101,20 +109,30 @@ export function howItWorksPage(source, diagram) {
   return `${lifted.replace("@@DIAGRAM@@", diagram.trim())}\n`;
 }
 
-/** Rewrites links and escapes placeholders in a markdown document, leaving fenced code alone. */
+/**
+ * Rewrites links and escapes placeholders in a markdown document, leaving fenced code (a ```math
+ * fence among it) and display maths between lines of `$$` alone.
+ */
 export function rewriteMarkdown(markdown, fromRepoPath) {
   let fence = null;
+  let math = false;
   return markdown
     .split("\n")
     .map((line) => {
-      const f = /^\s*(`{3,}|~{3,})/.exec(line);
+      const f = math ? null : /^\s*(`{3,}|~{3,})/.exec(line);
       if (f) {
         const mark = f[1]?.[0] ?? "`";
         if (fence === null) fence = mark;
         else if (fence === mark) fence = null;
         return line;
       }
-      return fence === null ? rewriteLine(line, fromRepoPath) : line;
+      if (fence !== null) return line;
+      // A line that starts with `$$` and holds an odd number of them opens or closes a block.
+      if (/^\s*\$\$/.test(line) && (line.match(/\$\$/g)?.length ?? 0) % 2 === 1) {
+        math = !math;
+        return line;
+      }
+      return math ? line : rewriteLine(line, fromRepoPath);
     })
     .join("\n");
 }

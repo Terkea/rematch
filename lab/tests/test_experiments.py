@@ -108,6 +108,7 @@ def test_an_experiment_that_calls_the_bridge_runs_with_the_environment(tmp_path:
 
 def test_an_unseeded_experiment_fails(tmp_path: Path) -> None:
     exp = make(tmp_path, ANALYSIS.replace('random.Random(seed("EXP-9999", "draws"))', "random"))
+    experiments.run_once(exp, exp)  # only committed results are rerun
     assert any("two runs" in p for p in experiments.check(exp))
 
 
@@ -352,3 +353,176 @@ def test_the_git_helper_never_touches_a_repository_named_by_git_dir(
     ).stdout
     assert after == before
     assert (inner / ".git").is_dir()
+
+
+def test_an_experiment_without_committed_results_is_not_rerun(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Regression (2026-11-28): with its external inputs present and no results.json, the check
+    ran analysis.py twice, which started an experiment's confirmatory run before its sizing
+    commit. It reruns only an experiment whose results are committed."""
+    data = tmp_path / "data"
+    monkeypatch.setenv("REMATCH_DATA_DIR", str(data))
+    (data / "puzzles").mkdir(parents=True)
+    (data / "puzzles" / "db.csv").write_bytes(b"PuzzleId\n")
+    marker = tmp_path / "ran"
+    analysis = ANALYSIS + f"open({str(marker)!r}, 'a').write('x')\n"
+    exp = make(tmp_path, analysis)
+    digest = hashlib.sha256(b"PuzzleId\n").hexdigest()
+    (exp / "inputs.sha256").write_text(f"{digest}  external:puzzles/db.csv\n")
+    assert experiments.check(exp, algorithm_id="unversioned") == []
+    assert not marker.exists()
+    assert "not rerun: no results committed" in capsys.readouterr().out
+
+
+def test_results_in_a_git_checkout_count_only_once_committed(tmp_path: Path) -> None:
+    git(tmp_path, "init", "-q")
+    exp = make(tmp_path)
+    git(tmp_path, "add", ".")
+    git(tmp_path, "commit", "-qm", "register")
+    experiments.run_once(exp, exp)  # written by a run, not yet committed
+    assert not experiments.results_committed(exp)
+    git(tmp_path, "add", ".")
+    git(tmp_path, "commit", "-qm", "results")
+    assert experiments.results_committed(exp)
+
+
+# ---- the maths (ADR 0118) ---------------------------------------------------------------------
+
+MATH_BODIES = {
+    1: "$n$ games, from `analysis.py` `load`.",
+    2: "$y_i \\sim \\mathrm{Bernoulli}(p)$.",
+    3: "$\\hat p = \\bar y$ (`analysis.py` `estimate`).",
+    4: "**Result 1.** $E[\\hat p] = p$. *Proof.* Linearity. $\\blacksquare$",
+    5: "`mean` = 0.5 in results.json.",
+    6: "Independence of games; sensitivity S1.",
+}
+
+
+def math_md(filled: tuple[int, ...] = (1, 2, 3, 4, 5, 6)) -> str:
+    parts = ["# EXP-9999: the maths\n"]
+    for n, heading in enumerate(experiments.MATH_SECTIONS, start=1):
+        body = MATH_BODIES[n] if n in filled else "<!-- to do -->"
+        parts.append(f"{heading}\n\n{body}\n")
+    return "\n".join(parts)
+
+
+MATH_CHECK_OK = "import sympy\nassert sympy.simplify(sympy.Symbol('p') - sympy.Symbol('p')) == 0\n"
+MATH_CHECK_BAD = (
+    "import sys\nprint('Result 1 does not simplify to 0', file=sys.stderr)\nsys.exit(1)\n"
+)
+
+
+def decide(exp: Path) -> None:
+    (exp / "decision.md").write_text("# ship\n", encoding="utf-8")
+
+
+def test_the_math_template_has_the_checked_headings() -> None:
+    template = experiments.LAB_ROOT.parent / "docs" / "experiments" / "MATH-TEMPLATE.md"
+    if not template.is_file():
+        pytest.skip("the docs are not in this image")
+    lines = template.read_text(encoding="utf-8").splitlines()
+    assert tuple(line for line in lines if line.startswith("## ")) == experiments.MATH_SECTIONS
+
+
+def test_the_template_math_check_runs_and_passes(tmp_path: Path) -> None:
+    exp = make(tmp_path)
+    decide(exp)
+    (exp / "math.md").write_text(math_md(), encoding="utf-8")
+    template = experiments.LAB_ROOT / "templates" / "math_check.py"
+    (exp / "math_check.py").write_text(template.read_text(encoding="utf-8"), encoding="utf-8")
+    assert experiments.math_problems(exp) == []
+    # Its numbers check reads the experiment's results.json: a wrong rate fails it.
+    (exp / "results.json").write_text(
+        '{"n": 400, "wins": 212, "rate": 0.54, "interval": [0.4811, 0.5789]}\n'
+    )
+    assert any("the rate" in p for p in experiments.math_problems(exp))
+
+
+def test_a_pre_registered_experiment_needs_no_maths_yet(tmp_path: Path) -> None:
+    exp = make(tmp_path)
+    assert experiments.math_problems(exp) == []
+
+
+def test_a_decided_experiment_with_its_maths_passes(tmp_path: Path) -> None:
+    exp = make(tmp_path)
+    decide(exp)
+    (exp / "math.md").write_text(math_md(), encoding="utf-8")
+    (exp / "math_check.py").write_text(MATH_CHECK_OK, encoding="utf-8")
+    assert experiments.math_problems(exp) == []
+
+
+def test_a_decided_experiment_without_maths_fails(tmp_path: Path) -> None:
+    exp = make(tmp_path)
+    decide(exp)
+    problems = experiments.math_problems(exp)
+    assert any("[math]" in p and "no math.md" in p for p in problems)
+    assert any("no math_check.py" in p for p in problems)
+
+
+def test_a_missing_or_empty_math_section_fails(tmp_path: Path) -> None:
+    exp = make(tmp_path)
+    decide(exp)
+    (exp / "math_check.py").write_text(MATH_CHECK_OK, encoding="utf-8")
+    (exp / "math.md").write_text(math_md().replace("## 3. Estimators", "## 3. Estimates"))
+    assert any('"## 3. Estimators"' in p for p in experiments.math_problems(exp))
+    (exp / "math.md").write_text(math_md(filled=(1, 2, 3, 4, 6)))
+    problems = experiments.math_problems(exp)
+    assert [p for p in problems if "is empty" in p] == [
+        'EXP-9999: [math] "## 5. Numbers" of math.md is empty'
+    ]
+
+
+def test_a_failing_math_check_fails(tmp_path: Path) -> None:
+    exp = make(tmp_path)
+    decide(exp)
+    (exp / "math.md").write_text(math_md(), encoding="utf-8")
+    (exp / "math_check.py").write_text(MATH_CHECK_BAD, encoding="utf-8")
+    problems = experiments.math_problems(exp)
+    assert any("math_check.py exited 1" in p and "does not simplify" in p for p in problems)
+
+
+def test_math_check_runs_in_the_experiment_folder(tmp_path: Path) -> None:
+    exp = make(tmp_path)
+    decide(exp)
+    (exp / "math.md").write_text(math_md(), encoding="utf-8")
+    (exp / "results.json").write_text('{"mean": 0.5}\n')
+    (exp / "math_check.py").write_text(
+        "import json\nassert json.load(open('results.json'))['mean'] == 0.5\n", encoding="utf-8"
+    )
+    assert experiments.math_problems(exp) == []
+
+
+def test_at_the_freeze_sections_1_to_4_are_due_and_5_6_wait_for_the_decision(
+    tmp_path: Path,
+) -> None:
+    git(tmp_path, "init", "-q")
+    exp = make(tmp_path)
+    git(tmp_path, "add", ".")
+    git(tmp_path, "commit", "-qm", "register")
+    assert experiments.math_problems(exp) == []
+    git(tmp_path, "tag", "exp-9999-freeze")
+    assert any("no math.md" in p for p in experiments.math_problems(exp))
+    (exp / "math_check.py").write_text(MATH_CHECK_OK, encoding="utf-8")
+    (exp / "math.md").write_text(math_md(filled=(1, 2, 3)), encoding="utf-8")
+    assert any('"## 4. Derivations and proofs"' in p for p in experiments.math_problems(exp))
+    (exp / "math.md").write_text(math_md(filled=(1, 2, 3, 4)), encoding="utf-8")
+    assert experiments.math_problems(exp) == []
+    decide(exp)
+    problems = experiments.math_problems(exp)
+    assert len(problems) == 2 and all("is empty" in p for p in problems)
+
+
+def test_the_math_rule_warns_by_default_and_fails_when_asked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    exp = make(tmp_path)
+    (exp / "decision.md").write_text("# closed unrun\n", encoding="utf-8")
+    monkeypatch.delenv("REMATCH_MATH_RULE", raising=False)
+    assert experiments.check(exp) == []
+    assert "warning: EXP-9999: [math] no math.md" in capsys.readouterr().out
+    monkeypatch.setenv("REMATCH_MATH_RULE", "fail")
+    assert any("[math] no math.md" in p for p in experiments.check(exp))
+    monkeypatch.setenv("REMATCH_MATH_RULE", "maybe")
+    with pytest.raises(SystemExit):
+        experiments.check(exp)
