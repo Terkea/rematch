@@ -139,3 +139,9 @@ This departs from ADR 0106's measurement rule (one interval in a band): there is
   - The primary's outcome baseline, R_end(P2), is built partly from the same games as the exposure, so its drift back from September's luck biases every β towards negative. Sections 2 and 8 did not name this; it is the likeliest reason the control failed, and EXP-0029 must fix it.
   - The reads use the point estimate of each reliability, whose standard error is near 0.008; section 8 did not register its uncertainty.
   - The four dumps were streamed with July and October twice, by a mistake in the lane's script; the files are the second, verified copies, identical in content.
+
+From the maths audit (2026-11-28, ADR 0118), recorded after the decision; sections 0 to 10, `analysis.py` and `results.json` are unchanged and outcome 3 stands (`math.md`, Findings):
+
+1. The luck bias's sign is proved (Result 11, given that lucky games also show better rates), but the primary-minus-adjusted shift the decision offers as its evidence measures γ(a + b), not the bias λb: catch-up plus luck in September's change can move it with no shared luck. The adjusted "+3.0" is itself biased, and the shift does not size the bias. EXP-0029 records the consequence as its deviation 2.
+2. The share φ^g − 1 is exact only for luck from before P2's last five games; averaged over the month the memory ratio EXP-0029 registered is low by a factor of 1.05 to 1.15.
+3. The reliability's standard error is about 0.015, not "near 0.008" (that is the split-half correlation's). The quoted ranges are right; W4.allowed's and W6's "below" reads sit about one SE above where they would flip.
