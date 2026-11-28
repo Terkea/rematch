@@ -141,4 +141,8 @@ The comparison rule for a challenger (the arena, ADR 0109), on the registered se
 
 ## 11. Deviations
 
-None.
+From the maths audit (2026-11-28, ADR 0118), recorded after the decision; sections 0 to 10, `analysis.py` and `results.json` are unchanged and the decision stands (`math.md`, Findings):
+
+1. The power analysis assumed the cells are positively correlated; the data show they are not. The 700-player size holds whatever the correlation (Result 7's bound).
+2. Rounding in `decision.md`: 0.75 is 0.74; "six to thirteen" is seven to thirteen; "three in four" is 0.65 to 0.76.
+3. The Glicko-1 asymmetry at 60 games is consistent with chance (p = 0.056); the loader cannot cause it.
