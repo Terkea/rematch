@@ -28,9 +28,8 @@ const ROOT = join(WEB, "../..");
 const BRAND = join(ROOT, "packages/ui/assets/brand");
 const FONTS = join(WEB, "src/app/fonts");
 
-// The small icons are pixel drawings of the mark on a 32 px and a 16 px grid, so a 32 px favicon
-// and a browser tab show them without blur.
-const icon = readFileSync(join(BRAND, "rematch-icon.svg"), "utf8");
+// The tab icon is drawn on a 16 px grid of its own, so a browser tab shows it without blur. From
+// 32 px up every icon is the mid mark, the drawing the header shows.
 const icon16 = readFileSync(join(BRAND, "rematch-icon-16.svg"), "utf8");
 const mark = readFileSync(join(BRAND, "rematch-mark.svg"), "utf8");
 const markMid = readFileSync(join(BRAND, "rematch-mark-mid.svg"), "utf8");
@@ -82,24 +81,21 @@ async function main() {
       await page.close();
       return png;
     };
-    // The tab icon fallback: at 16 and 32 px the pixel drawings, filling the tile on whole
-    // pixels; at 48 px (not a whole multiple of either grid) the mid mark, with a little air.
+    // The tab icon fallback: at 16 px the pixel drawing, filling the tile on whole pixels; at 32
+    // and 48 px the mid mark, with a little air round it.
     const ico = [];
     for (const size of [16, 32, 48])
       ico.push({
         size,
         png: await shot(
-          size === 48
-            ? tile(48, 0.03, 0.18, markMid)
-            : tile(size, 0, 0.18, size === 16 ? icon16 : icon, true),
+          size === 16 ? tile(16, 0, 0.18, icon16, true) : tile(size, 0.03, 0.18, markMid),
           size,
           size,
           true,
         ),
       });
     write(join(WEB, "src/app/favicon.ico"), icoFile(ico));
-    // From 48 px up the tiles carry the mid mark itself (a 32 px pixel drawing blown up reads as
-    // a cartoon). The figure fills about 80% of the tile; iOS rounds the corners itself.
+    // The mid mark fills about 80% of the tile; iOS rounds the corners itself.
     write(
       join(WEB, "src/app/apple-icon.png"),
       await shot(tile(180, 0.1, 0, markMid), 180, 180, false),

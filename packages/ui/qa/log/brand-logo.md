@@ -29,3 +29,7 @@ The owner saw the old logo in the favicon: `rematch-icon.svg` (a line bust, no h
 
 - Blocker: at 16 px the 1 and 2 px forearms still read as a stick or wing, and the cramped figure read as an animal or a trolley. Major: the board still reads as a die. Minor: the 32 px fingers looked like a crossguard.
 - Fixed: the 32 px hand is a pixel wider. At 16 px dad's hand is left out (one more try, a 2 px column from the top edge, read as the boy waving): the boy keeps his upright shape and holds a 3x3 board whose dark squares touch corner to corner. The 3x3 board stays a 3x3, as the mark draws it; the die reading is the mark's own at this size.
+
+## Owner's ruling (2026-11-28)
+
+- The owner saw the round 2 sheet: the 32 px pixel hand read as a raised sword. The 32 and 48 px favicon entries now draw the mid mark, the drawing the header shows, and the 32 px pixel icon (`rematch-icon.svg`) is gone. The 16 px icon stays as drawn (the boy and his 3x3 board, no hand); the large tiles stay on the mid mark.

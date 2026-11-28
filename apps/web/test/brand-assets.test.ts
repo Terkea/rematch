@@ -109,29 +109,29 @@ describe("the favicon set", () => {
 });
 
 describe("the icons by size", () => {
-  // The two small icons are pixel art on whole pixels (rects only, so 16 and 32 px draw without
-  // blur), drawn from the current mark: the boy and his 3x3 board, with his dad's hand on his
-  // shoulder at 32 px (at 16 px the hand read as the boy waving, so it is left out; see the brand
-  // README). From 48 px up (favicon 48, apple-touch, manifest) the tiles use the mid mark itself.
-  for (const [file, viewBox, title] of [
-    ["rematch-icon-16.svg", "0 0 16 16", "a boy with his chess board (16 px grid)"],
-    [
-      "rematch-icon.svg",
-      "0 0 32 32",
-      "a boy with his chess board, his dad's hand on his shoulder (32 px grid)",
-    ],
-  ] as const) {
-    it(`${file} sits on a ${viewBox.split(" ")[2]} px grid, ink only`, () => {
-      const svg = readFileSync(join(BRAND, file), "utf8");
-      expect(svg).toContain(`viewBox="${viewBox}"`);
-      expect(svg).toContain('fill="currentColor"');
-      expect(svg).not.toMatch(/<mask|#[0-9a-f]{3,6}(?![0-9a-z])/i);
-      expect(svg).toContain(`<title>Rematch: ${title}</title>`);
-      const ds = [...svg.matchAll(/ d="([^"]+)"/g)].map((m) => m[1] ?? "");
-      expect(ds.length).toBeGreaterThan(0);
-      for (const d of ds) expect(d).toMatch(/^(M\d+ \d+h\d+v1h-\d+z)+$/);
-    });
-  }
+  // 16 px is pixel art on a 16 px grid (whole-unit rectangles, so a tab draws it without blur): the
+  // boy and his 3x3 board, without dad's hand, which read as the boy waving at that size (see the
+  // brand README). From 32 px up (favicon 32/48, apple-touch, manifest) every icon is the mid mark,
+  // the drawing the header shows (the owner's pick, 2026-11-28: a 32 px pixel hand read as a sword).
+  it("rematch-icon-16.svg sits on a 16 px grid, ink only", () => {
+    const svg = readFileSync(join(BRAND, "rematch-icon-16.svg"), "utf8");
+    expect(svg).toContain('viewBox="0 0 16 16"');
+    expect(svg).toContain('fill="currentColor"');
+    expect(svg).not.toMatch(/<mask|#[0-9a-f]{3,6}(?![0-9a-z])/i);
+    expect(svg).toContain("<title>Rematch: a boy with his chess board (16 px grid)</title>");
+    const ds = [...svg.matchAll(/ d="([^"]+)"/g)].map((m) => m[1] ?? "");
+    expect(ds.length).toBeGreaterThan(0);
+    for (const d of ds) expect(d).toMatch(/^(M\d+ \d+h\d+v1h-\d+z)+$/);
+  });
+
+  it("draws 32 px and up from the mid mark, with no separate 32 px icon", () => {
+    expect(existsSync(join(BRAND, "rematch-icon.svg"))).toBe(false);
+    const script = readFileSync(join(WEB, "scripts/brand-assets.ts"), "utf8");
+    expect(script).not.toContain("rematch-icon.svg");
+    expect(script).toContain(
+      "size === 16 ? tile(16, 0, 0.18, icon16, true) : tile(size, 0.03, 0.18, markMid)",
+    );
+  });
 });
 
 describe("the lockup", () => {
