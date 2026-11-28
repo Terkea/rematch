@@ -513,7 +513,7 @@ export function buildScorecard(board, history = null, opts = {}) {
     const e1 = metric(e1rec, "clean_false_alarms");
     const controls = Object.keys(e1rec?.measures?.clean ?? {}).length;
     const smokeClean = finite(smoke?.clean_players)
-      ? ` where the smoke bench reads ${smoke.clean_top1_false_alarms} of ${smoke.clean_players}, so one of the two measures the wrong thing; that is being checked`
+      ? ` where the smoke bench reads ${smoke.clean_top1_false_alarms} of ${smoke.clean_players}: two different measures (EXP-0001 counts its two pilot controls flagged at any checkpoint up to 80 games; the smoke bench counts one control at its last checkpoint), neither of which can show the 0.05 target`
       : "";
     unmeasured({
       id: "d3",
