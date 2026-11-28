@@ -15,7 +15,7 @@
   "dependencies": {
     "@ci/chess-core": "workspace:*",
     "@ci/db": "workspace:*",
-    "bullmq": "6.7.6",
+    "bullmq": "6.7.8",
     "chess.js": "1.4.0",
     "drizzle-orm": "0.45.4",
     "ioredis": "6.0.0"

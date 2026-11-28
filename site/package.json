@@ -15,10 +15,10 @@
     "links": "node scripts/check-links.mjs"
   },
   "dependencies": {
-    "@astrojs/markdown-remark": "7.3.3",
+    "@astrojs/markdown-remark": "7.3.10",
     "@astrojs/starlight": "0.43.1",
-    "astro": "7.4.1",
-    "katex": "0.16.47",
+    "astro": "7.4.13",
+    "katex": "0.19.1",
     "rehype-katex": "7.0.1",
     "remark-math": "6.0.0"
   },
