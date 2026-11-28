@@ -158,4 +158,10 @@ The decision is computed by `analysis.py` (`decision`), from the cells and guard
 
 ## 11. Deviations
 
-None.
+None during the run. From the maths audit (2026-11-28, ADR 0118), recorded after the decision; sections 0 to 10, `analysis.py` and `results.json` are unchanged and the decision stands (`math.md`, Findings):
+
+1. Section 2's lag-1 bias is 0.0185, not "about 0.015"; with it the model at φ = 0.984 reproduces EXP-0015's measured 0.9655 exactly.
+2. Section 2's "σ ≈ 31, φ ≈ 0.984 at K ≈ 11.6" is 31.9 and 0.983 under its own assumptions; the quoted pair matches the measured plain world instead.
+3. The family-wise level is about 0.024, not the stated 5%: reading a two-sided interval's upper end spends half of α, so the rule is conservative.
+4. Rounding and wording: the detection upper end at 250 games is 0.9951 (quoted 0.99); `run_minutes: 15` is 14.3; "17%" is 17.7%; "74 games apart" is the month's game count, and the windows start about 69 games apart.
+5. `decision.md`'s "between its nominal rate and about twice it" is not a proven bound. It holds only if the model's variance is too small by the cohort's mean z² of 2.37 at every window, which gives 0.20 a side. Without that assumption the real-player rate is unknown, which is EXP-0032's question.
