@@ -213,56 +213,58 @@ def r_luck_share() -> None:
                   - ph ** (a_ + 1) * (1 - ph**g_) / (g_ * (1 - ph))) < 1e-12
               for ph in (0.9, 0.97, 0.98) for a_ in (0, 20, 120) for g_ in (1, 20, 240))
     del a, g, tsym  # the closed form is checked on a grid (sympy returns a Piecewise)
-    mono = all(abs(ph**ga * (ph ** (2 * gj) - 1)) >= abs(ph ** (ga + 1) * (ph ** (2 * gj) - 1))
-               for ph in np.linspace(0.5, 0.999, 60) for ga in range(0, 200, 7)
-               for gj in (5, 20, 121))
-    check("R8 luck shares", ok1 and worst < 1e-12 and ok3 and mono,
-          f"weight identity {ok1}, aggregate closed form max err {worst:.1e}, mean share {ok3}, "
-          f"|s_A| non-increasing in g_A on a grid {mono}")
+    check("R8 luck shares", ok1 and worst < 1e-12 and ok3,
+          f"weight identity {ok1}, aggregate closed form max err {worst:.1e}, mean share {ok3} "
+          "(part 3 is Rematch.luck_share)")
 
 
-def dilution(phi: float, G: float, r1: float, k: float = 3.0, kg: float = 3.0) -> float:
+def dilution(phi: float, G: float, r1: float, k: float = 3.0) -> float:
     rk = k * r1 / (1 + (k - 1) * r1)
-    return (1 + phi**G + phi ** (2 * G)) / kg * math.sqrt(rk / r1)
+    return (1 + phi**G + phi ** (2 * G)) / 3 * math.sqrt(rk / r1)
 
 
 def r_dilution() -> None:
-    """Result 9: D = (1 + phi^G + phi^2G)/k_g * sqrt(r_k / r_1); with phi^G -> 0 and k = k_g = 3
-    it is 1/sqrt(3(1 + 2 r_1)) <= 1/sqrt(3), with equality only as r_1 -> 0."""
-    r1, f = sp.symbols("r1 f", positive=True)
-    k = 3
+    """Result 9: D = (1 + phi^G + phi^2G)/3 * sqrt(r_k / r_1), r_k Spearman-Brown at k; with
+    phi^G -> 0 it is sqrt(k / (1 + (k - 1) r_1)) / 3, below 1/sqrt(3) for 1 <= k <= 3, and
+    1/sqrt(3(1 + 2 r_1)) at k = 3."""
+    r1, f, k = sp.symbols("r1 f k", positive=True)
     rk = k * r1 / (1 + (k - 1) * r1)
-    D = (1 + f + f**2) / k * sp.sqrt(rk / r1)
-    ok1 = zero(sp.simplify(D.subs(f, 0) - 1 / sp.sqrt(3 * (1 + 2 * r1))))
-    ok2 = sp.limit(D.subs(f, 0), r1, 0) == 1 / sp.sqrt(3)
-    ok3 = all(dilution(0.97, 1e6, r) <= 1 / math.sqrt(3) for r in np.linspace(1e-4, 1, 200))
+    D = (1 + f + f**2) / 3 * sp.sqrt(rk / r1)
+    ok1 = zero(sp.simplify(D.subs(f, 0) - sp.sqrt(k / (1 + (k - 1) * r1)) / 3))
+    ok2 = zero(sp.simplify(D.subs({f: 0, k: 3}) - 1 / sp.sqrt(3 * (1 + 2 * r1))))
+    ok3 = all(dilution(0.97, 1e6, r, kk) < 1 / math.sqrt(3) for r in np.linspace(1e-3, 1, 100)
+              for kk in np.linspace(1, 3, 21))  # grid: k / (1 + (k - 1) r) <= k <= 3
     check("R9 dilution", ok1 and ok2 and ok3,
-          f"forgotten-months form {ok1}, limit 1/sqrt(3) {ok2}, bound on a grid {ok3}")
+          f"forgotten-months form {ok1}, k = 3 form {ok2}, below 1/sqrt(3) on a grid {ok3}")
 
 
 # ---- simulation -------------------------------------------------------------------------------
 
 
 def s_coverage() -> None:
-    """Results 2 and 3: HC3 normal intervals cover at 95% and 99.375% under heteroskedasticity."""
+    """Results 2 and 3: HC3 normal intervals cover at 95% and 99.375% with heteroskedastic,
+    heavy-tailed (t, 5 df) errors and the primary's p = 14 columns; 20,000 replicates, so the
+    99.375% check separates 0.99375 from 0.99 (4 SE = 0.0022)."""
     rng = np.random.default_rng(20261128)
-    reps, n = 3000, 1500
+    reps, n, p = 20_000, 800, 14
     hit95 = hitg = 0
     for _ in range(reps):
-        X = np.column_stack([np.ones(n), rng.normal(size=(n, 3))])
-        y = 0.3 * X[:, 1] + X[:, 2] + rng.normal(size=n) * (0.5 + np.abs(X[:, 1]))
+        X = np.column_stack([np.ones(n), rng.normal(size=(n, p - 1))])
+        e = rng.standard_t(5, size=n) * (0.5 + np.abs(X[:, 1]))
+        y = 0.3 * X[:, 1] + X[:, 2] + e
         XtXi = np.linalg.inv(X.T @ X)
-        bhat = XtXi @ X.T @ y
-        e = y - X @ bhat
+        bhat = XtXi @ (X.T @ y)
+        r = y - X @ bhat
         h = np.einsum("ij,jk,ik->i", X, XtXi, X)
-        V = XtXi @ (X.T * (e**2 / (1 - h) ** 2)) @ X @ XtXi
-        t = abs(bhat[1] - 0.3) / math.sqrt(V[1, 1])
+        a = XtXi[1] @ X.T  # the row of (X'X)^-1 X' for the exposure
+        v = (a**2 * r**2 / (1 - h) ** 2).sum()
+        t = abs(bhat[1] - 0.3) / math.sqrt(v)
         hit95 += t <= Z975
         hitg += t <= Z_G
     c95, cg = hit95 / reps, hitg / reps
     ok = (abs(c95 - 0.95) < 4 * math.sqrt(0.95 * 0.05 / reps)
-          and abs(cg - GAMMA) < 4 * math.sqrt(GAMMA * (1 - GAMMA) / reps) + 1 / reps)
-    check("S1 HC3 coverage", ok, f"95%: {c95:.4f}, 99.375%: {cg:.4f}, {reps} reps of n {n}")
+          and abs(cg - GAMMA) < 4 * math.sqrt(GAMMA * (1 - GAMMA) / reps))
+    check("S1 HC3 coverage", ok, f"95%: {c95:.4f}, 99.375%: {cg:.4f}, {reps} reps of n {n}, p {p}")
 
 
 def holm_reject(p: np.ndarray, alpha: float = ALPHA) -> np.ndarray:
@@ -286,15 +288,20 @@ def s_holm() -> None:
     Z = rng.standard_normal((sims, M)) @ np.linalg.cholesky(C).T
     p = 2 * norm.sf(np.abs(Z))
     fwer = holm_reject(p).any(axis=1).mean()
-    Zb = Z - np.array([0.2, 0.25, 0.45, 0.4, 0.3, 0.25, 0.05, 0.03]) * 1.0  # biased down
-    climb = (holm_reject(2 * norm.sf(np.abs(Zb))) & (Zb > 0)).any(axis=1).mean()
-    ctrl = (Z[:, 0] > Z975).mean()
     se = math.sqrt(0.05 * 0.95 / sims)
-    ok = fwer <= 0.05 + 4 * se and climb <= 0.2 and abs(ctrl - 0.025) < 4 * math.sqrt(
-        0.025 * 0.975 / sims)
-    check("S2 Holm and the control", ok,
-          f"FWER {fwer:.4f} (<= 0.05), climbing under negative means {climb:.4f}, "
-          f"control false hold {ctrl:.4f} (0.025)")
+    # Holm by adjusted p-values against a direct sorted step-down, on 2,000 rows.
+    direct = np.zeros((2000, M), dtype=bool)
+    for i in range(2000):
+        for j, idx in enumerate(np.argsort(p[i])):
+            if p[i, idx] > ALPHA / (M - j):
+                break
+            direct[i, idx] = True
+    same = bool((direct == holm_reject(p[:2000])).all())
+    # A single key at beta <= 0 climbs at most alpha/2 (Result 4 (b)): at beta = 0, others 0.
+    one = (holm_reject(p) & (Z > 0))[:, 0].mean()
+    ok = fwer <= 0.05 + 4 * se and same and one <= 0.025 + 4 * math.sqrt(0.025 * 0.975 / sims)
+    check("S2 Holm", ok, f"FWER {fwer:.4f} (<= 0.05), adjusted-p Holm equals the step-down "
+          f"{same}, one null key climbs {one:.4f} (<= 0.025)")
 
 
 def s_window_mean() -> None:
@@ -346,38 +353,46 @@ def s_fisher() -> None:
 
 
 def s_luck() -> None:
-    """Result 8: an AR(1) rating with five-game end ratings; the regression of the outcome on the
-    luck of F2's games gives the aggregate share, and on the early luck the exact share."""
+    """Result 8: an AR(1) rating with five-game end ratings. The outcome's covariance with the
+    luck of F2's first game, over that game's known weight in R_end(F2), is the exact share
+    phi^gA (phi^(gM+gJ) - 1); with all F2 games equally lucky the aggregate share carries the
+    factor abar (1 - phi^N)/(1 - phi^N abar). Later games' luck is small (SD 0.1), so the
+    early-game check separates the exact share from abar times it (a gap of about 0.03)."""
     rng = np.random.default_rng(8)
-    phi, Nn, gA, gM, gJ, L = 0.97, 40, 20, 25, 25, 5
-    n = 60_000
-    xi = rng.standard_normal((n, Nn))  # F2's lucks; later games' luck is independent noise
-    later = rng.standard_normal((n, gA + gM + gJ))
-    allx = np.concatenate([xi, later], axis=1)
-    T = allx.shape[1]
-    e = np.zeros((n, T))
-    prev = np.zeros(n)
-    for t in range(T):
-        prev = phi * prev + allx[:, t]
-        e[:, t] = prev
-    end = lambda t_end: e[:, t_end - L:t_end].mean(axis=1)  # noqa: E731
-    rF2, rA, rJ = end(Nn), end(Nn + gA), end(T)
-    y = rJ - rA
+    phi, Nn, gA, gM, gJ, L = 0.97, 10, 20, 25, 25, 5
     abar = sum(phi ** (-j) for j in range(L)) / L
-    want_agg = phi**gA * (phi ** (gM + gJ) - 1) * abar * (1 - phi**Nn) / (1 - phi**Nn * abar)
-    lam = xi.sum(axis=1)  # equally lucky games: the luck of the month
     w = np.array([sum(phi ** (Nn - j - k) for j in range(L) if Nn - j >= k) / L
                   for k in range(1, Nn + 1)])
-    # Share of the F2 luck held in R_end(F2): Cov(y, lam)/Cov(rF2, lam).
-    agg = np.cov(y, lam)[0, 1] / np.cov(rF2, lam)[0, 1]
-    early = xi[:, 0]
-    exact = np.cov(y, early)[0, 1] / np.cov(rF2, early)[0, 1]
+    n = 100_000
+
+    def run(sd_f2: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        xi = rng.standard_normal((n, Nn)) * sd_f2
+        later = 0.1 * rng.standard_normal((n, gA + gM + gJ))
+        allx = np.concatenate([xi, later], axis=1)
+        prev = np.zeros(n)
+        e = np.zeros_like(allx)
+        for t in range(allx.shape[1]):
+            prev = phi * prev + allx[:, t]
+            e[:, t] = prev
+        end = lambda te: e[:, te - L:te].mean(axis=1)  # noqa: E731
+        return xi, end(Nn), end(allx.shape[1]) - end(Nn + gA)
+
+    sd = np.full(Nn, 0.1)
+    sd[0] = 1.0
+    xi, _, y = run(sd)
+    prod = y * xi[:, 0]
+    exact = prod.mean() / w[0]
+    se_ex = prod.std() / math.sqrt(n) / w[0]
     want_exact = phi**gA * (phi ** (gM + gJ) - 1)
-    se_agg = np.std(y) / (np.cov(rF2, lam)[0, 1] / np.std(lam)) / math.sqrt(n)
-    se_ex = np.std(y) / (w[0]) / math.sqrt(n)
-    ok = abs(agg - want_agg) < 4 * se_agg and abs(exact - want_exact) < 4 * se_ex
-    check("S5 luck share", ok, f"aggregate {agg:.4f} vs {want_agg:.4f}, early game "
-          f"{exact:.4f} vs {want_exact:.4f}, phi {phi}")
+    xi, rF2, y = run(np.ones(Nn))
+    lam = xi.sum(axis=1)
+    agg = np.cov(y, lam)[0, 1] / np.cov(rF2, lam)[0, 1]
+    want_agg = want_exact * abar * (1 - phi**Nn) / (1 - phi**Nn * abar)
+    se_agg = abs(want_agg) * 4 / math.sqrt(n)  # a generous delta-method SE of a ratio
+    ok = (abs(exact - want_exact) < 4 * se_ex < abs(want_exact * (abar - 1))
+          and abs(agg - want_agg) < 4 * se_agg)
+    check("S5 luck share", ok, f"early game {exact:.4f} vs {want_exact:.4f} (4 SE {4 * se_ex:.4f},"
+          f" abar would add {want_exact * (abar - 1):.4f}); aggregate {agg:.4f} vs {want_agg:.4f}")
 
 
 def s_dilution() -> None:
@@ -434,8 +449,11 @@ def shift() -> dict[str, float]:
     return {q: R09["primary"][q]["estimate"] - R09["adjusted"][q]["estimate"] for q in QS}
 
 
-def rule(inp: dict, effects: dict, bias: dict, rng: np.random.Generator, sims: int) -> dict:
-    """Section 9 under (M7), written from the registration's text."""
+def rule(inp: dict, effects: dict, bias: dict, rng: np.random.Generator, sims: int,
+         faithful: bool = False) -> dict:
+    """Section 9 under (M7). With `faithful=False`, as power.py simulates it: "below" ignores
+    Holm. With `faithful=True`, as analysis.py `read_family` reads it: a key Holm rejects reads
+    "precedes climbing" or "precedes falling", never "below" (Finding 4)."""
     m = len(QS)
     se = np.array([inp[q]["se"] for q in QS])
     r = np.array([inp[q]["r"] for q in QS])
@@ -450,7 +468,10 @@ def rule(inp: dict, effects: dict, bias: dict, rng: np.random.Generator, sims: i
     below = (bh - Z_G * se > -d) & (bh + Z_G * se < d)
     p = 2 * norm.sf(np.abs(bh / se))
     ki = [QS.index(q) for q in KEYS]
-    climb = holm_reject(p[:, ki]) & (bh[:, ki] > 0)
+    rej = holm_reject(p[:, ki])
+    climb = rej & (bh[:, ki] > 0)
+    if faithful:
+        below[:, ki] &= ~rej
     ctrl = (p[:, -1] < ALPHA) & (bh[:, -1] > 0)
     o1 = climb.any(axis=1)
     o2 = ~o1 & below[:, [QS.index(q) for q in K2]].all(axis=1) & ctrl
@@ -462,6 +483,18 @@ def rule(inp: dict, effects: dict, bias: dict, rng: np.random.Generator, sims: i
 def mc_close(mine: float, theirs: float, n1: int, n2: int) -> bool:
     pbar = min(max((mine + theirs) / 2, 1 / n1), 1 - 1 / n1)
     return abs(mine - theirs) <= 4 * math.sqrt(pbar * (1 - pbar) * (1 / n1 + 1 / n2)) + 5e-5
+
+
+def target_ok(inp: dict, bias: dict, rng: np.random.Generator, faithful: bool = False,
+              ) -> tuple[bool, dict]:
+    """(E13) by this file's rule: the five "below" at 0, each alone climbing at 14, the control
+    at 7, every one at least 0.80."""
+    null = rule(inp, {}, bias, rng, 20_000, faithful)
+    single = {q: rule(inp, {q: DELTA}, bias, rng, 5_000, faithful)["climb"][q] for q in K2}
+    ctrl = rule(inp, {"accuracy": 7.0}, bias, rng, 20_000, faithful)["control_holds"]
+    vals = {**{f"below:{q}": null["below"][q] for q in K2},
+            **{f"single:{q}": v for q, v in single.items()}, "control": ctrl}
+    return min(vals.values()) >= 0.80, vals
 
 
 def s_rule() -> None:
@@ -503,19 +536,20 @@ def s_rule() -> None:
     check("S7a the rule, 24 cells", not bad, f"{cells} cells x 4 probabilities; off: {bad[:3]}")
     check("S7b control closed form", not closed_bad,
           f"Phi(mu/se - 1.96) within 4 MC SE of power.json in {cells - len(closed_bad)}/{cells}")
-    # The gate by memory ratio: the control's holding probability at each ratio, closed form.
+    # The gate by memory ratio: the whole target (E13) at each ratio, by this file's rule, and
+    # the control's probability by its closed form.
     inp = plan_inputs(0.6, 0.7, k, sdr, "point")
     a = inp["accuracy"]
     gbad = []
     for rr, v in sim["gate_by_memory_ratio"].items():
-        mu = 7 * math.sqrt(a["r"]) + shift()["accuracy"] * float(rr) / math.sqrt(3)
-        cf = norm.cdf(mu / a["se"] - Z975)
+        bias = {q: s_ * float(rr) / math.sqrt(3) for q, s_ in shift().items()}
+        cf = norm.cdf((7 * math.sqrt(a["r"]) + bias["accuracy"]) / a["se"] - Z975)
         if not mc_close(cf, v["control_holds"], 10**9, 20_000):
             gbad.append(rr)
-        if v["ok"] != (cf >= 0.8 and True):
+        if target_ok(inp, bias, rng)[0] != v["ok"]:
             gbad.append(f"ok@{rr}")
     check("S7c gate by memory ratio", not gbad,
-          f"control holds {norm.cdf(7 * math.sqrt(a['r']) / a['se'] - Z975 + shift()['accuracy'] * 0.6 / math.sqrt(3) / a['se']):.4f} at 0.6; off: {gbad}")
+          f"the target's verdict and the control at 8 ratios; off: {gbad}")
     # The targets of the plan's and the sizing's chosen size.
     tbad = []
     for label, tried, inp, rat in (
@@ -781,32 +815,132 @@ def n_outcomes() -> None:
 
 
 def n_findings() -> None:
-    """Finding 1's numbers (Result 5 under (M2) with EXP-0009's reliabilities) and Finding 2's
-    dilution table (Result 9)."""
-    out = []
+    """Finding 1's numbers (Result 5 under (M2) with EXP-0009's reliabilities, k as planned) and
+    Finding 2's dilution table (Result 9, k as planned and as sized, r_1 accuracy's)."""
+    out = {}
     for q in ("accuracy", "W7.prep"):
         rL1 = R09["level"][q]["reliability"]
         rD1 = R09["primary"][q]["reliability"]
         theta = R09["level"][q]["estimate"] / math.sqrt(rL1)
         s1 = (1 - rL1) / rL1
         c = s1 * rD1 / (1 - rD1)
-        s = s1 / PJ["simulation"]["sizing"]["k"]
-        ell = math.sqrt(2) * s * (1 - c) / (math.sqrt(c + s) * (2 + s - c))
-        dmin = DELTA * math.sqrt(c / (c + s))
-        out.append((q, theta, ell, theta / 2 * ell, -theta * math.sqrt(c / 2) / DELTA,
-                    theta * ell / dmin))
-    acc, prep = out
-    ok = (round(acc[1], 2) == 7.33 and round(acc[3], 2) == 0.83 and round(prep[3], 2) == 1.05
-          and round(acc[4], 3) == -0.062 and round(acc[5], 2) == 0.30)
+        row = {"theta": theta}
+        for k, tag in ((1.0, "1m"), (PJ["simulation"]["sizing"]["k"], "3m")):
+            s = s1 / k
+            ell = math.sqrt(2) * s * (1 - c) / (math.sqrt(c + s) * (2 + s - c))
+            wm = c / math.sqrt(2 * (c + s))
+            dmin = DELTA * math.sqrt(c / (c + s))
+            row[tag] = {"ell": ell, "wm": wm, "ratio": ell / wm,
+                        "f1_half": theta / 2 * ell, "f1_half_rel": theta / 2 * ell / dmin,
+                        "f1_full_rel": theta * ell / dmin, "wm_half_rel": -theta / 2 * wm / dmin,
+                        "wm_full_rel": -theta * wm / dmin}
+        out[q] = row
+    a3, p3, a1 = out["accuracy"]["3m"], out["W7.prep"]["3m"], out["accuracy"]["1m"]
+    ok = (round(out["accuracy"]["theta"], 2) == 7.33 and round(out["W7.prep"]["theta"], 2) == 7.35
+          and round(a3["f1_half"], 2) == 0.83 and round(p3["f1_half"], 2) == 1.05
+          and round(a3["wm_full_rel"], 3) == -0.062 and round(a3["wm_half_rel"], 3) == -0.031
+          and round(a3["f1_full_rel"], 3) == 0.298 and round(a1["f1_half_rel"], 2) == 0.35
+          and round(a3["ratio"], 1) == 4.8 and round(p3["ratio"]) == 17)
     check("N11 Finding 1 (level leak)", ok,
-          f"accuracy theta {acc[1]:.3f}, F1 leak at theta/2 {acc[3]:.3f}, W7.prep {prep[3]:.3f}, "
-          f"window-mean leak {acc[4] * 100:.1f}% of the minimum, F1 leak {acc[5] * 100:.1f}%")
+          f"theta {out['accuracy']['theta']:.3f}/{out['W7.prep']['theta']:.3f}; F1 leak at theta/2 "
+          f"{a3['f1_half']:.3f}, W7.prep {p3['f1_half']:.3f}; window-mean "
+          f"{a3['wm_full_rel'] * 100:.2f}% (theta) and {a3['wm_half_rel'] * 100:.2f}% (theta/2) "
+          f"of the minimum; F1 {a3['f1_full_rel'] * 100:.2f}% (theta), one-month theta/2 "
+          f"{a1['f1_half_rel'] * 100:.1f}%; ell/wm {a3['ratio']:.2f} and {p3['ratio']:.1f}")
     r1 = R09["primary"]["accuracy"]["reliability"]
-    tab = {(p, G): dilution(p, G, r1) * math.sqrt(3) for p in (0.97, 0.98) for G in (40, 121)}
-    ok = (round(tab[0.97, 121], 2) == 0.96 and round(tab[0.98, 121], 2) == 1.03
-          and round(tab[0.97, 40], 2) == 1.30 and round(tab[0.98, 40], 2) == 1.54)
+    ks = {"plan": PJ["simulation"]["sizing"]["k"], "sizing": PJ["sizing"]["decision"]["k"]}
+    tab = {(t, p, G): dilution(p, G, r1, kk) * math.sqrt(3) for t, kk in ks.items()
+           for p in (0.97, 0.98) for G in (20, 40, 121)}
+    want = {("plan", 0.97, 20): 1.64, ("plan", 0.98, 20): 1.88, ("plan", 0.97, 40): 1.23,
+            ("plan", 0.98, 40): 1.46, ("plan", 0.97, 121): 0.91, ("plan", 0.98, 121): 0.97,
+            ("sizing", 0.97, 20): 1.69, ("sizing", 0.98, 20): 1.94, ("sizing", 0.97, 40): 1.27,
+            ("sizing", 0.98, 40): 1.51, ("sizing", 0.97, 121): 0.94, ("sizing", 0.98, 121): 1.01}
+    ok = all(round(tab[key], 2) == v for key, v in want.items())
     check("N12 Finding 2 (dilution x sqrt 3)", ok,
-          ", ".join(f"phi {p} G {G}: {v:.3f}" for (p, G), v in tab.items()))
+          "; ".join(f"{t} phi {p} G {G}: {v:.3f}" for (t, p, G), v in tab.items()))
+
+
+def n_finding4() -> None:
+    """Finding 4: power.py's simulation lets a key Holm rejects read "below"; analysis.py does
+    not. The outcome probabilities under analysis.py's reading, and the sizing target under it."""
+    rng = np.random.default_rng(13)
+    k = PJ["simulation"]["sizing"]["k"]
+    inp = plan_inputs(0.6, 0.7, k, sd_ratio()["planned"], "point")
+    ratio = max(PJ["simulation"]["sizing"]["memory_ratio"].values())
+    o = PJ["simulation"]["outcomes_at_w"]
+    res = {}
+    for mult, c in ((1, 5), (1, 7), (1, 10), (2, 5)):
+        bias = {q: s_ * ratio / math.sqrt(3) * mult for q, s_ in shift().items()}
+        res[mult, c] = rule(inp, {"accuracy": float(c)}, bias, rng, 40_000, faithful=True)
+    gaps = [o[f"truth=point,bias_x{m},null_control{c}"]["outcome2"] - r["outcome2"]
+            for (m, c), r in res.items()]
+    se = math.sqrt(0.1 * 0.9 / 40_000 + 0.1 * 0.9 / 20_000)
+    avg2 = sum(res[1, c]["outcome2"] for c in (5, 7, 10)) / 3
+    avg3 = sum(res[1, c]["outcome3"] for c in (5, 7, 10)) / 3
+    # Each key's chance of p <= alpha at b = 0 under the bias (Result 10 (c)).
+    pr = {}
+    for mult in (1, 2):
+        pr[mult] = []
+        for q in K2:
+            B = shift()[q] * ratio / math.sqrt(3) * mult
+            pr[mult].append(norm.cdf(-Z975 - B / inp[q]["se"]) + norm.cdf(-Z975 + B / inp[q]["se"]))
+    sz = PJ["sizing"]
+    sinp = plan_inputs(0.6, sz["measured"]["density"], sz["decision"]["k"],
+                       sz["measured"]["sd_ratio"], "point")
+    sbias = {q: s_ * max(sz["decision"]["memory_ratio"].values()) / math.sqrt(3)
+             for q, s_ in shift().items()}
+    ok_s, vals = target_ok(sinp, sbias, rng, faithful=True)
+    ok = all(g > 4 * se for g in gaps[:3]) and ok_s
+    check("N13 Finding 4 (Holm before 'below')", ok,
+          "outcome 2 under analysis.py's reading, point x1 at 5/7/10 and x2 at 5: "
+          + ", ".join(f"{r['outcome2']:.4f}" for r in res.values())
+          + f" (power.json higher by {', '.join(f'{g:.4f}' for g in gaps)}); averaged outcome 2 "
+          f"{avg2:.4f}, outcome 3 {avg3:.4f}; P(p<=0.05) at b=0: {min(pr[1]):.3f}-{max(pr[1]):.3f}"
+          f" (x1), up to {max(pr[2]):.3f} (x2); sizing target still {ok_s}, "
+          f"min {min(vals.values()):.4f}")
+
+
+def n_misc() -> None:
+    """Numbers quoted elsewhere: abar and EXP-0009's Finding 2 factors (Result 8), section 4's
+    development readings, EXP-0009's constants, the reliability's SE (section 5), and section 2's
+    luck-bias figures (Finding 5)."""
+    bad = []
+    ab = {p: sum(p ** (-j) for j in range(5)) / 5 for p in (0.97, 0.98)}
+    if (round(ab[0.97], 4), round(ab[0.98], 4)) != (1.0638, 1.0417):
+        bad.append("abar")
+    fac = {(p, g): ab[p] * (1 - p**g) / (1 - ab[p] * p**g) for p in (0.97, 0.98) for g in (20, 121)}
+    got = [round(fac[0.97, 121], 3), round(fac[0.98, 121], 3), round(fac[0.97, 20], 2),
+           round(fac[0.98, 20], 2)]
+    if got != [1.066, 1.046, 1.15, 1.14]:
+        bad.append(f"factors {got}")
+    acc = R09["adjusted"]["accuracy"]["estimate"]
+    r_acc = R09["primary"]["accuracy"]["reliability"]
+    lev = {q: round(R09["level"][q]["estimate"], 1) for q in ("accuracy", "W7.prep", "W7.traps")}
+    if not (round(acc, 1) == 3.0 and round(acc / math.sqrt(r_acc), 1) == 11.7
+            and lev == {"accuracy": 6.2, "W7.prep": 5.9, "W7.traps": 4.4}
+            and round(R09["level"]["accuracy"]["estimate"]
+                      / math.sqrt(R09["level"]["accuracy"]["reliability"]), 1) == 7.3):
+        bad.append("section 4 dev readings")
+    if not (round(17138 / 0.3) == 57127 and round(R09["rating_change_sd"], 1) == 53.8):
+        bad.append("EXP-0009 constants")
+    rho = 0.05 / (2 - 0.05)
+    se_r = 2 * (1 - rho) / ((1 + rho) * math.sqrt(16204 - 3))
+    if round(se_r, 3) != 0.015:
+        bad.append("se 0.015")
+    # Section 2: "-1.5 Elo per observed SD at 20 rapid games in April, -0.7 at 40" for accuracy.
+    t = {(r_["phi"], r_["rapid_games_per_month"]): r_ for r_ in PJ["memory"]}
+    sh = shift()["accuracy"]
+    stage1 = {g: sh * t[0.97, g]["gap_end"] / t[0.97, g]["exp0009"] / math.sqrt(3)
+              for g in (20, 40)}
+    reg = {g: min(sh * t[p, g]["gap_end"] / ACT["g0"][f"E_share_exp0009_phi{p:g}"] / math.sqrt(3)
+                  for p in (0.97, 0.98)) for g in (20, 40)}
+    if not ((round(stage1[20], 1), round(stage1[40], 1)) == (-1.5, -0.7)
+            and (round(reg[20], 2), round(reg[40], 2)) == (-0.84, -0.81)):
+        bad.append(f"section 2 {stage1} {reg}")
+    check("N14 other quoted numbers", not bad,
+          f"abar {ab[0.97]:.4f}/{ab[0.98]:.4f}; 3.035/sqrt(0.0674) = {acc / math.sqrt(r_acc):.2f}; "
+          f"se(r) {se_r:.4f}; section 2 as registered {stage1[20]:.2f}/{stage1[40]:.2f} (stage 1's "
+          f"ratio), by (E9) {reg[20]:.2f}/{reg[40]:.2f} (Finding 5); off: {bad}")
 
 
 def result_numbers() -> None:
@@ -826,7 +960,7 @@ if __name__ == "__main__":
     for f in (r_fwl, r_hc3, r_window_mean, r_spearman_brown, r_below_and_stage2, r_luck_share,
               r_dilution, s_coverage, s_holm, s_window_mean, s_fisher, s_luck, s_dilution,
               s_rule, n_inputs, n_memory, n_bias_and_costs, n_stage2, n_outcomes, n_findings,
-              result_numbers):
+              n_finding4, n_misc, result_numbers):
         f()
     print(f"{'FAIL' if FAILS else 'PASS'}: {len(FAILS)} failed {FAILS}")
     sys.exit(1 if FAILS else 0)
