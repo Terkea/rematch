@@ -1,9 +1,14 @@
 // The Rematch site: a landing page (src/pages/index.astro) and Starlight docs under /docs/.
 // Served from GitHub Pages at https://terkea.github.io/rematch/ (ADR 0096).
+import { existsSync } from "node:fs";
+import { unified } from "@astrojs/markdown-remark";
 import starlight from "@astrojs/starlight";
 import { defineConfig, passthroughImageService } from "astro/config";
+import { rehypePlugins, remarkPlugins } from "./scripts/math-config.mjs";
 
 const REPO = "https://github.com/Terkea/rematch";
+// The algorithm's maths page exists once algorithm/MATH.md does (scripts/sync-content.mjs).
+const ALGORITHM_MATH = existsSync(new URL("../algorithm/MATH.md", import.meta.url));
 
 export default defineConfig({
   site: "https://terkea.github.io",
@@ -12,7 +17,8 @@ export default defineConfig({
   // Screenshots are plain files in public/, so no image pipeline (and no sharp) is needed.
   image: { service: passthroughImageService() },
   // Code is set in the app's own type on a well (DESIGN.md: no monospace, no rainbow tokens).
-  markdown: { syntaxHighlight: false },
+  // Maths in GitHub's syntax ($...$, $...$, ```math), rendered by KaTeX at build time (ADR 0118).
+  markdown: { syntaxHighlight: false, processor: unified({ remarkPlugins, rehypePlugins }) },
   integrations: [
     starlight({
       title: "Rematch",
@@ -36,6 +42,9 @@ export default defineConfig({
         "./src/styles/generated/tokens.css",
         "./src/styles/docs.css",
         "./src/styles/diagram.css",
+        // KaTeX's stylesheet and fonts, bundled from node_modules, never a CDN (ADR 0096, 0118).
+        "katex/dist/katex.min.css",
+        "./src/styles/math.css",
       ],
       sidebar: [
         {
@@ -61,6 +70,9 @@ export default defineConfig({
           items: [
             { label: "Experiments", link: "/docs/experiments/" },
             { label: "Progress", link: "/docs/progress/" },
+            ...(ALGORITHM_MATH
+              ? [{ label: "The algorithm's maths", link: "/docs/algorithm/math/" }]
+              : []),
           ],
         },
         {

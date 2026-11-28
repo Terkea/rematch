@@ -74,6 +74,7 @@ export function loadExperiments(labDir) {
         results: has("results.json"),
         review: has("review.md"),
         decision: has("decision.md"),
+        math: has("math.md"),
       },
     });
   }
@@ -111,6 +112,7 @@ const RERUN_TEXT = {
 
 export function experimentPage(e) {
   const links = [];
+  if (e.files.math) links.push(`[The maths](${BASE}/docs/experiments/${e.slug}/math/)`);
   if (e.files.preregistration)
     links.push(`[Pre-registration](${fileUrl(e, "preregistration.md")})`);
   if (e.files.results) links.push(`[Results](${fileUrl(e, "results.json")})`);
@@ -133,6 +135,25 @@ export function experimentPage(e) {
     `<p class="generated-source">Generated at build time from <a href="${GITHUB_BLOB}/lab/experiments/${e.folder}/summary.md">${e.folder}/summary.md</a>; edit it there.</p>`,
     "",
   ].join("\n");
+}
+
+/**
+ * An experiment's maths page, from its math.md (ADR 0118): comments and the title dropped (the
+ * page has its own), links rewritten, the maths left for KaTeX.
+ */
+export function mathPage(e, text) {
+  return generatedPage(text, `lab/experiments/${e.folder}/math.md`);
+}
+
+/** algorithm/MATH.md as the site's page on the algorithm's maths. */
+export function algorithmMathPage(text) {
+  return generatedPage(text, "algorithm/MATH.md");
+}
+
+function generatedPage(text, repoPath) {
+  const source = text.replace(/\r\n/g, "\n").replace(/<!--[\s\S]*?-->\s*/g, "");
+  const body = rewriteMarkdown(source, repoPath).replace(/^# [^\n]*\n+/, "");
+  return `${body.trimEnd()}\n\n<p class="generated-source">Generated at build time from <a href="${GITHUB_BLOB}/${repoPath}">${repoPath}</a>; edit it there.</p>\n`;
 }
 
 /**

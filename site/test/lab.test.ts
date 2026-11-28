@@ -11,6 +11,7 @@ import {
   leaderboardSection,
   loadExperiments,
   loadLeaderboard,
+  mathPage,
   missingSummaries,
   parseProgress,
   parseSummary,
@@ -39,6 +40,22 @@ describe("experiments", () => {
     expect(page).not.toContain("/review.md");
     expect(page).toContain("Live: re-run against the champion on every pull request");
     expect(experimentPage(exps[0] as never)).not.toContain("Live:");
+  });
+  it("links the maths page when the experiment has a math.md", () => {
+    expect(exps[1]?.files).toMatchObject({ math: true });
+    expect(experimentPage(exps[1] as never)).toContain(
+      "[The maths](/rematch/docs/experiments/exp-9001/math/)",
+    );
+    expect(experimentPage(exps[0] as never)).not.toContain("The maths");
+  });
+  it("builds the maths page from math.md, its links rewritten and its comments dropped", () => {
+    const text = readFileSync(join(FIXTURE, "experiments", "EXP-9001", "math.md"), "utf8");
+    const page = mathPage(exps[1] as never, text);
+    expect(page).not.toMatch(/^# /m);
+    expect(page).not.toContain("<!--");
+    expect(page).toContain("## 4. Derivations and proofs");
+    expect(page).toContain("blob/main/docs/experiments/MATH-TEMPLATE.md");
+    expect(page).toContain("lab/experiments/EXP-9001/math.md");
   });
   it("builds an index with every status and a note when empty", () => {
     expect(experimentsIndex(exps as never)).toContain("/rematch/docs/experiments/exp-9002/");

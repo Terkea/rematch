@@ -54,6 +54,33 @@ describe("rewriteMarkdown", () => {
       "available &lt;when&gt; now, `<anchor>`",
     );
   });
+  it("leaves inline and display maths alone, as it leaves code", () => {
+    expect(rewriteMarkdown("a <x> and $a<b>c$ then $$\\langle <y> \\rangle$$", FROM)).toBe(
+      "a &lt;x&gt; and $a<b>c$ then $$\\langle <y> \\rangle$$",
+    );
+    const block = ["$$", "f(<n>) = [a](0091.md)", "$$", "after <z>"].join("\n");
+    expect(rewriteMarkdown(block, FROM)).toBe(
+      ["$$", "f(<n>) = [a](0091.md)", "$$", "after &lt;z&gt;"].join("\n"),
+    );
+    const fence = ["```math", "g(<m>)", "```", "<w>"].join("\n");
+    expect(rewriteMarkdown(fence, FROM)).toBe(["```math", "g(<m>)", "```", "&lt;w&gt;"].join("\n"));
+    // A one-line $$...$$ does not open a block.
+    expect(rewriteMarkdown("$$x$$\n<v>", FROM)).toBe("$$x$$\n&lt;v&gt;");
+    // A single-letter formula is maths too.
+    expect(rewriteMarkdown("games $n$ and $y_i$.", FROM)).toBe("games $n$ and $y_i$.");
+  });
+  it("escapes prices, which GitHub does not read as maths", () => {
+    expect(rewriteMarkdown("$9.99/month and $71.99/year", FROM)).toBe(
+      "\\$9.99/month and \\$71.99/year",
+    );
+    expect(rewriteMarkdown("spend ($2.24) past the budget ($2)", FROM)).toBe(
+      "spend (\\$2.24) past the budget (\\$2)",
+    );
+    expect(rewriteMarkdown("Input $/MTok | Output $/MTok", FROM)).toBe(
+      "Input \\$/MTok | Output \\$/MTok",
+    );
+    expect(rewriteMarkdown("`WHERE id = $1`", FROM)).toBe("`WHERE id = $1`");
+  });
 });
 
 describe("howItWorksPage", () => {

@@ -1,0 +1,28 @@
+/*
+ * Maths on the docs (ADR 0118): KaTeX's own stylesheet (katex.min.css) sets the formulas in its
+ * maths fonts, the one exception to "our typefaces only", because Literata and Schibsted Grotesk
+ * have no maths glyphs. This file only fits KaTeX into the page, with tokens.
+ */
+
+/* Formulas take the ink of the text around them, day and night. */
+.sl-markdown-content .katex {
+  color: inherit;
+}
+
+/* A display formula sits on the page, not in a well, and scrolls sideways on a phone rather than
+   pushing the page wider. */
+.sl-markdown-content .katex-display {
+  margin-block: calc(var(--spacing) * 4);
+  padding-block: calc(var(--spacing) * 1);
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.sl-markdown-content .katex-display > .katex {
+  max-width: 100%;
+}
+
+/* A formula KaTeX could not parse keeps its source, in the soft ink, never pen red. */
+.sl-markdown-content .katex-error {
+  color: var(--color-ink-soft);
+}
