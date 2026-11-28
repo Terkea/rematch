@@ -76,9 +76,166 @@ export function loadExperiments(labDir) {
         decision: has("decision.md"),
         math: has("math.md"),
       },
+      figures: loadFigures(join(dir, name), name),
     });
   }
   return out.sort((a, b) => b.updated.localeCompare(a.updated) || b.id.localeCompare(a.id));
+}
+
+// ---- figures ---------------------------------------------------------------------------------
+
+const unquote = (lit) =>
+  lit
+    .replace(/^f?["']|["']$/g, "")
+    .replace(/\{[^}]*\}/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+/**
+ * The axis labels and titles the analysis gave a figure: the block that saves it (from the
+ * previous `savefig` or `def`), or the body of the function the file name is passed to.
+ * @returns {{ kind: string, text: string }[]}
+ */
+export function figureLabels(analysis, file) {
+  const src = String(analysis ?? "").replace(/\r\n/g, "\n");
+  const at = src.indexOf(`"${file}"`);
+  if (at < 0) return [];
+  const lineStart = src.lastIndexOf("\n", at) + 1;
+  const lineEnd = src.indexOf("\n", at);
+  const theLine = src.slice(lineStart, lineEnd < 0 ? undefined : lineEnd);
+  let block;
+  if (/savefig/.test(theLine)) {
+    const before = src.slice(0, lineStart);
+    const from = Math.max(before.lastIndexOf("savefig"), before.lastIndexOf("\ndef "), 0);
+    block = src.slice(from, lineEnd);
+  } else {
+    const fn = /^\s*(\w+)\(/.exec(theLine)?.[1];
+    const def = fn ? src.indexOf(`\ndef ${fn}(`) : -1;
+    if (def < 0) return [];
+    const next = src.indexOf("\ndef ", def + 1);
+    block = src.slice(def, next < 0 ? undefined : next);
+  }
+  // A loop over a literal tuple (`for i, metric in enumerate(("precision", "recall"))`) names the
+  // values an f-string's placeholder takes; any other placeholder drops the label.
+  const loops = {};
+  for (const m of block.matchAll(/for\s+([\w\s,]+?)\s+in\s+[^\n]*?\(((?:\s*"[^"]*"\s*,?)+)\)/g)) {
+    const v = (m[1] ?? "").split(",").at(-1)?.trim();
+    if (v) loops[v] = [...(m[2] ?? "").matchAll(/"([^"]*)"/g)].map((x) => x[1]);
+  }
+  const out = [];
+  for (const m of block.matchAll(/set_(title|xlabel|ylabel)\(\s*(f?"[^"]*"|f?'[^']*')/g)) {
+    const kind = m[1] ?? "";
+    let texts = [m[2] ?? ""];
+    for (;;) {
+      const ph = /\{(\w+)\}/.exec(texts[0] ?? "");
+      if (!ph || !loops[ph[1] ?? ""]) break;
+      texts = texts.flatMap((t) => loops[ph[1] ?? ""].map((v) => t.replace(`{${ph[1]}}`, v)));
+    }
+    for (const raw of texts) {
+      // A placeholder left, or a title that runs on into another literal ("when true = ").
+      if (/\{/.test(raw) || /[=:]\s*["']$/.test(raw)) continue;
+      const text = unquote(raw);
+      if (text && !out.some((o) => o.kind === kind && o.text === text)) out.push({ kind, text });
+    }
+  }
+  return out;
+}
+
+/** A sentence about a figure, without its path or a leading "Figure:" or "Results:". */
+export function cleanContext(context, file) {
+  const path = `figures/${file.replace(/[.-]/g, "\\$&")}`;
+  const s = String(context ?? "")
+    .replace(/^(?:Figures?|Results|Algorithm)\b[^:]*:\s*/, "")
+    .replace(new RegExp(`^${path}\\s+(?:is|are|shows)\\s+`), "")
+    .replace(new RegExp(`^${path}`), "")
+    .replace(new RegExp(path, "g"), "the figure")
+    .replace(/^[,;:\s]+|[,;\s]+$/g, "")
+    .replace(/^\((.*)\)$/, "$1")
+    .trim();
+  // A bookkeeping line ("results.json (commit …), the figure in") says nothing about the figure.
+  if (!s || /commit|sha256|the figure in$/.test(s)) return "";
+  const short = s.length > 240 ? `${s.slice(0, s.lastIndexOf(", ", 240))}…` : s;
+  return cap(short.replace(/[.;]$/, ""));
+}
+
+/** The first sentence of the experiment's own files that names the figure, as plain text. */
+export function figureContext(texts, file) {
+  for (const t of texts) {
+    const plain = String(t ?? "")
+      .replace(/\r\n/g, "\n")
+      .replace(/<!--[\s\S]*?-->/g, "");
+    for (const para of plain.split(/\n\s*\n|\n(?=[-*] |\d+\. )/)) {
+      if (!para.includes(`figures/${file}`)) continue;
+      const sentences = para.replace(/\s+/g, " ").split(/(?<=[.;])\s+(?=[A-Z`(])/);
+      const hit = sentences.find((x) => x.includes(`figures/${file}`));
+      if (hit)
+        return hit
+          .replace(/^[-*]\s+|^\d+\.\s+/, "")
+          .replace(/\*\*/g, "")
+          .replace(/`/g, "")
+          .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+          .trim();
+    }
+  }
+  return "";
+}
+
+const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+
+/** A figure's alt text: what it plots, from the analysis's labels, else from its context. */
+export function figureAlt(expId, file, labels, context) {
+  const get = (k) => labels.filter((l) => l.kind === k).map((l) => l.text);
+  const [titles, xs, ys] = [get("title"), get("xlabel"), get("ylabel")];
+  const parts = [];
+  if (ys.length && xs.length) parts.push(`${cap(ys[0])} against ${xs[0]}`);
+  else if (xs.length) parts.push(cap(xs[0]));
+  else if (ys.length) parts.push(cap(ys[0]));
+  if (titles.length)
+    parts.push(
+      `${parts.length ? "p" : "P"}${titles.length > 1 ? "anels" : "anel"}: ${titles.join("; ")}`,
+    );
+  const what = parts.join(", ");
+  if (what) return `${expId} figure: ${what}.`;
+  if (context) return `${expId} figure: ${context}.`;
+  return `${expId} figure ${file.replace(/\.png$/, "").replace(/-/g, " ")}, from its analysis.`;
+}
+
+/** The PNGs in an experiment's figures/ folder, each with its alt text and the sentence naming it. */
+export function loadFigures(expDir, expId) {
+  const figDir = join(expDir, "figures");
+  if (!existsSync(figDir)) return [];
+  const read = (f) => (existsSync(join(expDir, f)) ? readFileSync(join(expDir, f), "utf8") : "");
+  const analysis = read("analysis.py");
+  const texts = ["decision.md", "review.md", "preregistration.md", "summary.md"].map(read);
+  return readdirSync(figDir)
+    .filter((f) => /\.png$/i.test(f))
+    .sort()
+    .map((file) => {
+      const context = cleanContext(figureContext(texts, file), file);
+      return { file, alt: figureAlt(expId, file, figureLabels(analysis, file), context), context };
+    });
+}
+
+/** Where a copied figure is served (sync-content.mjs copies it to public/lab-figures/). */
+export const figureHref = (e, f) => `${BASE}/lab-figures/${e.slug}/${f.file}`;
+
+const attr = (s) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+
+/** The experiment's own matplotlib figures, as published in its folder. */
+function figuresSection(e) {
+  const figs = e.figures ?? [];
+  if (!figs.length) return [];
+  return [
+    "## Figures",
+    "",
+    "Drawn by the experiment's frozen `analysis.py` from its `results.json`, and copied here unchanged.",
+    "",
+    ...figs.map(
+      (f) =>
+        `<figure class="lab-figure"><img src="${figureHref(e, f)}" alt="${attr(f.alt)}" loading="lazy" decoding="async"><figcaption>${esc(f.alt.replace(/^EXP-\d+ figure: /, ""))}${f.context && !f.alt.includes(f.context) ? ` ${esc(f.context)}.` : ""} <a href="${fileUrl(e, `figures/${f.file}`)}">figures/${esc(f.file)}</a></figcaption></figure>`,
+    ),
+    "",
+  ];
 }
 
 /** Experiments whose folder holds a decision.md but whose summary does not say `decided`. */
@@ -132,6 +289,7 @@ export function experimentPage(e) {
     "",
     links.map((l) => `- ${l}`).join("\n"),
     "",
+    ...figuresSection(e),
     `<p class="generated-source">Generated at build time from <a href="${GITHUB_BLOB}/lab/experiments/${e.folder}/summary.md">${e.folder}/summary.md</a>; edit it there.</p>`,
     "",
   ].join("\n");

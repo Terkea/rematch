@@ -68,6 +68,7 @@ export default defineConfig({
         {
           label: "The lab",
           items: [
+            { label: "Engine scorecard", link: "/docs/scorecard/" },
             { label: "Experiments", link: "/docs/experiments/" },
             { label: "Progress", link: "/docs/progress/" },
             ...(ALGORITHM_MATH

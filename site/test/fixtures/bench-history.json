@@ -1,0 +1,40 @@
+{
+  "schema": "bench-history-v1",
+  "fixture": true,
+  "runs": [
+    {
+      "schema": "run-record-v1",
+      "suite": "full",
+      "date": "2026-11-26",
+      "algorithm_id": "algo-5.0.0+3cabedf4c935",
+      "commit": "0000000000000000000000000000000000000000",
+      "seeds": "fixture",
+      "tier": "synthetic",
+      "metrics": {
+        "recall_at_2_macro": { "value": 0.62, "interval": [0.55, 0.69], "level": 0.8, "n": 150 },
+        "clean_false_weakness": { "value": 0.0625, "interval": [0.021, 0.152], "level": 0.8, "n": 32 },
+        "km_median_games": { "value": 44, "interval": [38, 52], "level": 0.8, "n": 150 },
+        "top2_jaccard": { "value": 0.9, "interval": [0.87, 0.93], "level": 0.8, "n": 150 },
+        "cpu_seconds_per_game": { "value": 39.4, "interval": [38.1, 40.9], "level": 0.8, "n": 300, "unit": "s" },
+        "deterministic": { "value": 1, "interval": null, "level": "exact" }
+      }
+    },
+    {
+      "schema": "run-record-v1",
+      "suite": "full",
+      "date": "2026-11-27",
+      "algorithm_id": "algo-6.0.0+f40a2b27677a",
+      "commit": "0000000000000000000000000000000000000001",
+      "seeds": "fixture",
+      "tier": "synthetic",
+      "metrics": {
+        "recall_at_2_macro": { "value": 0.64, "interval": [0.57, 0.71], "level": 0.8, "n": 150 },
+        "clean_false_weakness": { "value": 0.03125, "interval": [0.006, 0.112], "level": 0.8, "n": 32 },
+        "km_median_games": { "value": 41, "interval": [35, 48], "level": 0.8, "n": 150 },
+        "top2_jaccard": { "value": 0.91, "interval": [0.88, 0.94], "level": 0.8, "n": 150 },
+        "cpu_seconds_per_game": { "value": 39.1, "interval": [37.9, 40.6], "level": 0.8, "n": 300, "unit": "s" },
+        "deterministic": { "value": 1, "interval": null, "level": "exact" }
+      }
+    }
+  ]
+}
