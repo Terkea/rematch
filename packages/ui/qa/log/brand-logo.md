@@ -33,3 +33,4 @@ The owner saw the old logo in the favicon: `rematch-icon.svg` (a line bust, no h
 ## Owner's ruling (2026-11-28)
 
 - The owner saw the round 2 sheet: the 32 px pixel hand read as a raised sword. The 32 and 48 px favicon entries now draw the mid mark, the drawing the header shows, and the 32 px pixel icon (`rematch-icon.svg`) is gone. The 16 px icon stays as drawn (the boy and his 3x3 board, no hand); the large tiles stay on the mid mark.
+- Second ruling, the same day: the mid mark smears at 32 px (strokes under a pixel turn grey; the board and hand blur). The 32 px favicon entry is now the 16 px icon at exactly 2x, crisp, with no hand. 48 px and up stay on the mid mark.

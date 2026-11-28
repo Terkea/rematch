@@ -28,8 +28,8 @@ const ROOT = join(WEB, "../..");
 const BRAND = join(ROOT, "packages/ui/assets/brand");
 const FONTS = join(WEB, "src/app/fonts");
 
-// The tab icon is drawn on a 16 px grid of its own, so a browser tab shows it without blur. From
-// 32 px up every icon is the mid mark, the drawing the header shows.
+// The tab icon is drawn on a 16 px grid of its own, so a browser tab shows it without blur, and
+// the 32 px favicon is the same drawing at 2x. From 48 px up every icon is the mid mark.
 const icon16 = readFileSync(join(BRAND, "rematch-icon-16.svg"), "utf8");
 const mark = readFileSync(join(BRAND, "rematch-mark.svg"), "utf8");
 const markMid = readFileSync(join(BRAND, "rematch-mark-mid.svg"), "utf8");
@@ -81,14 +81,14 @@ async function main() {
       await page.close();
       return png;
     };
-    // The tab icon fallback: at 16 px the pixel drawing, filling the tile on whole pixels; at 32
-    // and 48 px the mid mark, with a little air round it.
+    // The tab icon fallback: at 16 and 32 px the 16 px pixel drawing (at 1x and exactly 2x),
+    // filling the tile on whole pixels; at 48 px the mid mark, with a little air round it.
     const ico = [];
     for (const size of [16, 32, 48])
       ico.push({
         size,
         png: await shot(
-          size === 16 ? tile(16, 0, 0.18, icon16, true) : tile(size, 0.03, 0.18, markMid),
+          size === 48 ? tile(48, 0.03, 0.18, markMid) : tile(size, 0, 0.18, icon16, true),
           size,
           size,
           true,
