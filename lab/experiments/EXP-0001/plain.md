@@ -24,4 +24,4 @@ It tests the weakness ranking end to end and re-runs on every release: every ver
 
 ## What we still don't know
 
-The size rests on a guess of how much rankings shuffle between versions, which moves the answer threefold. The full suite has never run. The maths audit found the coverage rule trips on noise alone 19% to 71% of the time, not the 20% we meant; a false alarm blocks a pull request until someone looks, never lets a regression through. EXP-0033 is filed to fix it.
+The size rests on a guess of how much rankings shuffle between versions, which moves the answer threefold. The full suite had never run until its first run on 28 November 2026. The maths audit found the coverage rule trips on noise alone 19% to 71% of the time, not the 20% we meant; a false alarm blocks a pull request until someone looks, never lets a regression through. EXP-0033 is filed to fix it.
