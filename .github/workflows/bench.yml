@@ -2,7 +2,8 @@ name: Benchmark
 # The Tier 1 pipeline benchmark (ADR 0100, docs/benchmark.md): synthetic players with injected
 # flaws through the real analysis, enrichment, profile engine and CoachingInput. The smoke suite
 # runs on pull requests and pushes to main that touch the pipeline and fails on a regression against
-# bench/baseline.json; the full suite runs weekly and on demand, and only reports.
+# bench/baseline.json; the full suite runs weekly and on demand, only reports, and records its KPIs
+# in bench-out/bench-history.json (ADR 0119).
 on:
   pull_request:
     paths:
@@ -64,9 +65,10 @@ jobs:
         run: |
           mkdir -p bench-out
           # The single quotes are deliberate: $BENCH_SUITE and $base expand inside the container.
+          # The full suite also writes its run record (ADR 0119) into the artifact.
           # shellcheck disable=SC2016
-          $COMPOSE run --rm -e BENCH_SUITE="$SUITE" rust-dev sh -c \
-            'if [ "$BENCH_SUITE" = smoke ]; then base="--baseline /work/bench/baseline.json"; else base=""; fi;
+          $COMPOSE run --rm -e BENCH_SUITE="$SUITE" -e GITHUB_SHA rust-dev sh -c \
+            'if [ "$BENCH_SUITE" = smoke ]; then base="--baseline /work/bench/baseline.json"; else base="--record /work/bench-out/bench-history.json"; fi;
             cargo run --locked -p cli -- bench run --suite "$BENCH_SUITE" --out /work/bench-out $base'
       - name: Scorecard in the job summary
         if: always()

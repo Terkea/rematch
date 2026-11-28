@@ -7,6 +7,13 @@
     "reason": "EXP-0006's side-by-side variant: every added statement runs only with a variant, which EXP-0001 never sets (ADR 0109 Amendment 1)"
   },
   {
+    "adr": "docs/decisions/0119-what-success-means-for-the-engine.md",
+    "blob": "5a403ccd02294bf429cd0af5da797bae9d3ae50c",
+    "experiment": "EXP-0001",
+    "path": "backend/crates/bench/src/kpi.rs",
+    "reason": "a new module, the KPIs with intervals and cli bench compare; the scorer calls it after the metrics EXP-0001 reads, and it changes none of them: a smoke run before and after gives the same players (only generation.seconds, the wall clock, differs) and identical metrics, cases and verdicts, so recall_at_2, coverage and the clean count are unchanged (ADR 0119)"
+  },
+  {
     "adr": "docs/decisions/0109-champion-and-challenger.md",
     "blob": "ffca35ef107715d3ca83e12378a95bd78e81903a",
     "experiment": "EXP-0001",
@@ -56,6 +63,13 @@
     "reason": "declares the lab_rules module only (ADR 0115)"
   },
   {
+    "adr": "docs/decisions/0119-what-success-means-for-the-engine.md",
+    "blob": "a314f5443cce92dd6e575e4d865d8e363c3d687c",
+    "experiment": "EXP-0001",
+    "path": "backend/crates/bench/src/lib.rs",
+    "reason": "pub mod kpi only; nothing EXP-0001 runs changed (ADR 0119)"
+  },
+  {
     "adr": "docs/decisions/0113-analyse-at-1-million-nodes.md",
     "blob": "63bb0a0ec2faaefe7d54452c58136df55167e345",
     "experiment": "EXP-0001",
@@ -68,6 +82,13 @@
     "experiment": "EXP-0001",
     "path": "backend/crates/bench/src/results.rs",
     "reason": "the optional variant result, skipped in JSON when None (ADR 0109 Amendment 1)"
+  },
+  {
+    "adr": "docs/decisions/0119-what-success-means-for-the-engine.md",
+    "blob": "df5ac6784add7ca20de5b348043df470c8233642",
+    "experiment": "EXP-0001",
+    "path": "backend/crates/bench/src/results.rs",
+    "reason": "the scorecard gains kpis and km_curves, units(), a KPI table in the Markdown and two tests; the pooled metrics' code is untouched: a smoke run before and after gives the same players (only generation.seconds, the wall clock, differs) and identical metrics, cases and verdicts, so recall_at_2, coverage and the clean count are unchanged (ADR 0119)"
   },
   {
     "adr": "docs/decisions/0109-champion-and-challenger.md",

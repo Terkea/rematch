@@ -120,6 +120,7 @@ One file per decision: context, decision, alternatives, consequences. New decisi
 - [0116. Hide the trajectory's rating verdict until a rule clears EXP-0015](0116-hide-the-trajectory-rating-verdict.md)
 - [0117. A trajectory verdict that counts the rating's memory](0117-a-trajectory-verdict-that-counts-the-ratings-memory.md)
 - [0118. The maths is written, proved and checked](0118-the-maths-is-written-proved-and-checked.md)
+- [0119. What success means for the engine](0119-what-success-means-for-the-engine.md)
 
 ## Records with placeholder numbers
 

@@ -92,9 +92,42 @@ and the true rate adds the clean control's own rate `b` of the same weakness (se
 
 1. **Diagnosis (a).** Recall at 2: the share of flawed players whose target is in the CoachingInput's top 2 ranked weaknesses at the last checkpoint. Top-1 precision: of all players with a rank-1 weakness, the share whose rank 1 is their injected flaw (a clean control with a rank-1 weakness counts against it). Clean false alarms: the count of the suite's clean controls with any rank-1 weakness at the last checkpoint (80 games), so the smoke suite's "0 of 1" is `bench-clean` at 80 games. It is not the lab leaderboard's EXP-0001 `clean_false_alarms`, which is a share over EXP-0001's two pilot controls (`exp1-clean-0` and `-1`, other seeds) flagged at any of the checkpoints 30, 45, 60 and 80, with an 80% Wilson interval.
 2. **Calibration (b).** The share of the target's 80% intervals (the `weakness_estimates` row, every checkpoint of every flawed player) that hold the true rate. Well calibrated is about 80%; the threshold band is 65% to 95%.
-3. **Plan targeting (c).** The share of flawed players whose top-1 weakness's drills (`drills_for`) include a drill for their flaw, for example `mate_patterns` for `miss_mate`. A player with no rank-1 weakness gets no drill and counts as a miss.
-4. **Data efficiency (d).** The first checkpoint (30, 45, 60, 80 games) at which the target is in the top 2. Under 30 games nothing is ranked (`MIN_GAMES`).
+3. **Plan targeting (c).** The share of flawed players whose top-1 weakness's drills (`drills_for`) include a drill for their flaw, for example `mate_patterns` for `miss_mate`. A player with no rank-1 weakness gets no drill and counts as a miss. Not a KPI since ADR 0119: it is at least recall at 1, and equal to it unless another key at rank 1 shares the flaw's drills, so it measures the drill catalogue. The unit test `every_rankable_key_has_a_drill` now holds the catalogue side.
+4. **Data efficiency (d).** The first checkpoint (30, 45, 60, 80 games) at which the target is in the top 2. Under 30 games nothing is ranked (`MIN_GAMES`). The scorecard's mean over detected players (`mean_games_to_detection`) is deprecated: it leaves out the players never detected. The Kaplan–Meier median below replaces it, and the old field stays in the JSON for one version.
 5. **Stability (e).** Determinism: the CoachingInput built twice from the same rows and clock gives the same weaknesses. Perturbation: each player is rebuilt as a second account with about 10% of its games left out, and the top 2 are compared (mean Jaccard overlap).
+
+## The KPIs (ADR 0119)
+
+Since ADR 0119 the scorecard also carries every Tier 1 KPI as `{value, interval, level, n}` at 80% (`scorecard.kpis` in `bench-results.json`, `bench::kpi`), the shape the arena's leaderboard uses. All of them are synthetic: they describe simulated players, not people. The maths, with proofs and checks, is in [`algorithm/MATH.md`, "KPIs"](../algorithm/MATH.md#kpis).
+
+| Key | KPI | Interval |
+|---|---|---|
+| `recall_at_2` | pooled recall at 2, as before (EXP-0001 reads it) | Wilson |
+| `recall_at_2.<flaw>` | recall at 2 per flaw type | Wilson |
+| `flaw_types_detectable` | D1a: types whose Wilson lower end is at least 0.8 (`_point`: by point estimate) | – |
+| `recall_at_2_macro` | D1b: the mean of the per-type recalls | stratified bootstrap, 2,000 resamples, seed 119 |
+| `km_median_games`, `km_median_games.<flaw>` | D5: Kaplan–Meier median games to a top-2 detection on the checkpoint grid; undetected players are censored at 80 games | Greenwood band, inverted at 0.5 |
+| `top2_jaccard` | D6: the top-2 agreement with and without 10% of the games | bootstrap over players |
+| `coverage` | (b), as before | bootstrap of players by flaw |
+| `clean_false_weakness` | D3: clean controls with a rank-1 weakness | Wilson |
+| `plan_hit_rate` | (c), reported, not a KPI | Wilson |
+| `deterministic` | (e), level `exact` | – |
+
+The smoke suite on `algo-6.0.0+f40a2b27677a` (2026-11-28, the same players as the scorecard above, all synthetic):
+
+| KPI | Value | 80% interval | n |
+|---|---|---|---|
+| Recall at 2, pooled | 0.600 | [0.436, 0.744] | 15 |
+| Recall at 2, macro | 0.600 | [0.600, 0.600] | 15 |
+| Flaw types detectable (D1a), by interval / by point | 0 / 3 of 5 | – | 5 |
+| KM median games to detection | 45 | [45, 60] | 15 |
+| Top-2 Jaccard | 0.927 | [0.885, 0.969] | 16 |
+| Coverage | 0.800 | [0.717, 0.883] | 60 |
+| Clean false weakness | 0 of 1 | [0.000, 0.622] | 1 |
+
+Per type, hanging pieces, low-clock blunders and thrown-away wins are 3 of 3 (each [0.646, 1.000]) with medians of 30, 30 and 45 games; missed mates and opening blunders are 0 of 3 ([0.000, 0.354]) and their medians are not reached by 80 games. The macro interval has width 0 because every type is all or nothing, so the bootstrap has nothing to resample (MATH.md K3).
+
+With fewer than 7 players a type, D1a by interval is 0 whatever the engine does (MATH.md K2): only the full suite can show it. `km_curves` holds the Kaplan–Meier curves, pooled and per type.
 
 The smoke suite's thresholds are recall at 2 of at least 0.8, no clean false alarm, and coverage between 0.65 and 0.95 (`bench::results::THRESHOLDS`). They were set before the first run and are not tuned to pass.
 
@@ -108,7 +141,15 @@ COMPOSE_FILE=docker-compose.yml docker compose -p ci-bench run --rm -e LANE=benc
 COMPOSE_FILE=docker-compose.yml docker compose -p ci-bench down -v
 ```
 
-Options: `--suite smoke|full`, `--json` (print `bench-results.json` instead of the scorecard), `--out DIR`, `--baseline FILE` (exit 2 on a regression), `--engines N` (parallel Stockfish processes, default 4), `--nodes N`, `--keep-db`. The run writes `bench-results.json` (the scorecard, the suite, and every player's games summary, tallies, rankings and estimate rows per checkpoint) and `bench-scorecard.md`.
+Options: `--suite smoke|full`, `--json` (print `bench-results.json` instead of the scorecard), `--out DIR`, `--baseline FILE` (exit 2 on a regression), `--engines N` (parallel Stockfish processes, default 4), `--nodes N`, `--keep-db`, `--record FILE` (append the run's KPIs as a `run-record-v1` to the `bench-history-v1` JSON at FILE, created when missing; the commit comes from `GITHUB_SHA`). The run writes `bench-results.json` (the scorecard, the suite, and every player's games summary, tallies, rankings and estimate rows per checkpoint) and `bench-scorecard.md`.
+
+To compare two runs, metric by metric:
+
+```sh
+cli bench compare a/bench-results.json b/bench-results.json [--json]
+```
+
+It prints B minus A for every KPI with an 80% bootstrap interval, paired by player when both runs have the same players on the same seeds, and a verdict read from the interval only: "higher", "lower" or "no clear difference". A column says which way is better. One interval is for one metric; reading several at once needs Holm.
 
 The suites:
 
@@ -117,7 +158,7 @@ The suites:
 
 The sizes come from EXP-0001 ([the decision](../lab/experiments/EXP-0001/decision.md)): with the player as the unit, detecting a change of 0.1 in recall at 2 80% of the time needs about 40 players a flaw at 80 games under the assumed churn, more than the weekly budget of 9,000 games allows; the full suite detects 0.15 that often, and the smoke suite is a tripwire for large drops. The rate sweep left the full suite so that the recall it scores is the recall that was sized.
 
-`.github/workflows/bench.yml` runs the smoke suite on pull requests that touch `enrich`, `profile`, `profile-core`, `coaching-input` or `bench`, compares it with `bench/baseline.json` and fails on a regression beyond the baseline's tolerance: a fall in recall at 2 of more than 0.1 (two net lost detections of 15) or coverage moving more than 0.05 further from 0.8, both from EXP-0001. It runs the full suite every Monday and on demand. Both upload the scorecard and the results as an artifact. The absolute thresholds are reported, not enforced, because the first baseline does not meet them (below).
+`.github/workflows/bench.yml` runs the smoke suite on pull requests that touch `enrich`, `profile`, `profile-core`, `coaching-input` or `bench`, compares it with `bench/baseline.json` and fails on a regression beyond the baseline's tolerance: a fall in recall at 2 of more than 0.1 (two net lost detections of 15) or coverage moving more than 0.05 further from 0.8, both from EXP-0001. It runs the full suite every Monday and on demand. Both upload the scorecard and the results as an artifact; the full suite's artifact also holds `bench-history.json`, its run record. Still to do: push each record to a `bench-history` branch for the site's scorecard. That needs a write permission the workflow does not have, and its own review (ADR 0119). The absolute thresholds are reported, not enforced, because the first baseline does not meet them (below).
 
 ## What Tier 1 does not show
 
