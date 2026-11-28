@@ -12,6 +12,7 @@
       "!**/tests/fixtures/**",
       "!backend/fixtures/**",
       "!algorithm/manifest.json",
+      "!lab/lean/lake-manifest.json",
       "!backend/crates/*/schema/**",
       "!**/*.md",
       "!**/assets/pieces/**/*.svg",
