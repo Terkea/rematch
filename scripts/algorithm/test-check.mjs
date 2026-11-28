@@ -5,7 +5,19 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { bumpOf, CHANGELOG, MANIFEST, canonical, check, idOf, requiredBump } from "./check.mjs";
+import {
+  bumpOf,
+  CHANGELOG,
+  canonical,
+  changelogVersions,
+  check,
+  idOf,
+  MANIFEST,
+  MATH,
+  mathVersions,
+  missingMath,
+  requiredBump,
+} from "./check.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "../..");
 let passed = 0;
@@ -152,6 +164,54 @@ test("the committed manifest and changelog pass on their own", () => {
   const head = JSON.parse(readFileSync(join(root, MANIFEST), "utf8"));
   const changelog = readFileSync(join(root, CHANGELOG), "utf8");
   assert.deepEqual(check({ base: null, head, changelog, goldensChanged: false }), []);
+});
+
+const log = "# Changelog\n\n## algo-2.0.0+383bff27f04f\n\nText.\n\n## algo-1.0.0+fd96e117c013\n";
+
+test("the changelog's versions are read from its entry headings", () => {
+  assert.deepEqual(changelogVersions(log), ["2.0.0", "1.0.0"]);
+  assert.deepEqual(changelogVersions("## algo-1.0.0\n### algo-2.0.0+ab12\n"), []);
+});
+
+test("MATH.md sections are `## algo-X.Y.Z`, with or without the hash", () => {
+  assert.deepEqual(mathVersions("## algo-2.0.0\n## algo-1.0.0+fd96e117c013\n# algo-3.0.0\n"), [
+    "2.0.0",
+    "1.0.0",
+  ]);
+  assert.deepEqual(mathVersions("## algo-2.0.0 and more\n### algo-1.0.0\n"), []);
+});
+
+test("a version without its maths fails; a section for every version passes", () => {
+  assert.deepEqual(missingMath(log, "# Maths\n\n## algo-2.0.0\n\n## algo-1.0.0\n"), []);
+  const errors = missingMath(log, "# Maths\n\n## algo-1.0.0\n");
+  assert.equal(errors.length, 1);
+  assert.match(errors[0], /no `## algo-2\.0\.0` section/);
+  assert.match(missingMath(log, null)[0], /MATH\.md does not exist/);
+});
+
+test("check reports missing maths when it is given MATH.md", () => {
+  const m = manifest("1.0.0");
+  const changelog = entry(m);
+  assert.deepEqual(check({ base: null, head: m, changelog, goldensChanged: false }), []);
+  assert.match(
+    check({ base: null, head: m, changelog, goldensChanged: false, math: "# Maths\n" })[0],
+    /no `## algo-1\.0\.0` section/,
+  );
+  assert.match(
+    check({ base: null, head: m, changelog, goldensChanged: false, math: null })[0],
+    /does not exist/,
+  );
+  assert.deepEqual(
+    check({ base: null, head: m, changelog, goldensChanged: false, math: "## algo-1.0.0\n" }),
+    [],
+  );
+});
+
+test("the committed MATH.md has a section for every changelog version", () => {
+  const changelog = readFileSync(join(root, CHANGELOG), "utf8");
+  const math = readFileSync(join(root, MATH), "utf8");
+  assert.ok(changelogVersions(changelog).length >= 10);
+  assert.deepEqual(missingMath(changelog, math), []);
 });
 
 console.log(`${passed} passed`);

@@ -6,18 +6,21 @@
 //      to 3 output can change (any facts, profile or recommendation field other than a source
 //      digest, or new replay goldens), minor when only the language layer changed, patch when
 //      only a source digest changed and the replay goldens did not;
-//   3. algorithm/CHANGELOG.md has no `## <id>` heading for the manifest's id.
+//   3. algorithm/CHANGELOG.md has no `## <id>` heading for the manifest's id;
+//   4. algorithm/MATH.md has no `## algo-X.Y.Z` section for a version in the changelog, so no
+//      version ships without its maths (ADR 0118).
 // That the manifest matches the code is the Rust test's job (backend/crates/algo/tests).
 // Run: node scripts/algorithm/check.mjs. Its tests: node scripts/algorithm/test-check.mjs.
 // No dependencies.
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const MANIFEST = "algorithm/manifest.json";
 export const CHANGELOG = "algorithm/CHANGELOG.md";
+export const MATH = "algorithm/MATH.md";
 export const GOLDENS = "backend/fixtures/replay";
 /** The layers whose output the replay goldens hold. */
 export const OUTPUT_LAYERS = ["facts", "profile", "recommendation"];
@@ -91,9 +94,38 @@ export function bumpOf(a, b) {
   return "none";
 }
 
-/** Every problem, as readable lines (empty: the check passes). */
-export function check({ base, head, changelog, goldensChanged }) {
+/** The versions of the changelog's `## algo-X.Y.Z+<hash>` entries, in file order. */
+export function changelogVersions(changelog) {
+  return changelog
+    .split(/\r?\n/)
+    .map((l) => /^## algo-(\d+\.\d+\.\d+)\+[0-9a-f]+\s*$/.exec(l)?.[1])
+    .filter((v) => v !== undefined);
+}
+
+/** The versions MATH.md has a `## algo-X.Y.Z` section for (a `+<hash>` suffix is allowed). */
+export function mathVersions(math) {
+  return math
+    .split(/\r?\n/)
+    .map((l) => /^## algo-(\d+\.\d+\.\d+)(?:\+[0-9a-f]+)?\s*$/.exec(l)?.[1])
+    .filter((v) => v !== undefined);
+}
+
+/** One line per changelog version without a MATH.md section (or one line: no MATH.md). */
+export function missingMath(changelog, math) {
+  if (math === null) return [`${MATH} does not exist`];
+  const have = new Set(mathVersions(math));
+  return changelogVersions(changelog)
+    .filter((v) => !have.has(v))
+    .map((v) => `${MATH} has no \`## algo-${v}\` section (the maths of that version)`);
+}
+
+/**
+ * Every problem, as readable lines (empty: the check passes). `math` is MATH.md's text, or null
+ * when the file is missing; left undefined, the maths is not checked.
+ */
+export function check({ base, head, changelog, goldensChanged, math }) {
   const errors = [];
+  if (math !== undefined) errors.push(...missingMath(changelog, math));
   const id = idOf(head);
   if (head.id !== id)
     errors.push(
@@ -130,6 +162,8 @@ function main() {
   const root = join(dirname(fileURLToPath(import.meta.url)), "../..");
   const head = JSON.parse(readFileSync(join(root, MANIFEST), "utf8"));
   const changelog = readFileSync(join(root, CHANGELOG), "utf8");
+  const mathPath = join(root, MATH);
+  const math = existsSync(mathPath) ? readFileSync(mathPath, "utf8") : null;
   const ref = process.env.ALGO_BASE ?? "origin/main";
   let base = null;
   let goldensChanged = false;
@@ -139,7 +173,7 @@ function main() {
   } catch {
     console.log(`algorithm check: no manifest at ${ref}; checking the manifest on its own`);
   }
-  const errors = check({ base, head, changelog, goldensChanged });
+  const errors = check({ base, head, changelog, goldensChanged, math });
   if (errors.length > 0) {
     for (const e of errors) console.error(`algorithm check: ${e}`);
     process.exit(1);
