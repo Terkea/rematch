@@ -75,7 +75,9 @@ export function loadExperiments(labDir) {
         review: has("review.md"),
         decision: has("decision.md"),
         math: has("math.md"),
+        plain: has("plain.md"),
       },
+      plain: has("plain.md") ? readFileSync(join(dir, name, "plain.md"), "utf8") : null,
       figures: loadFigures(join(dir, name), name),
     });
   }
@@ -267,6 +269,19 @@ const RERUN_TEXT = {
   release: "on every release",
 };
 
+/**
+ * The experiment in plain words (plain.md), as the page's first section: its title dropped (the
+ * section has its own), its headings one level down, links rewritten, `<` escaped.
+ */
+function plainSection(e) {
+  if (!e.plain) return [];
+  const src = e.plain.replace(/\r\n/g, "\n").replace(/<!--[\s\S]*?-->\s*/g, "");
+  const body = rewriteMarkdown(esc(src), `lab/experiments/${e.folder}/plain.md`)
+    .replace(/^# [^\n]*\n+/, "")
+    .replace(/^(#{2,5}) /gm, "#$1 ");
+  return ["## In plain words", "", body.trim(), "", "## The record", ""];
+}
+
 export function experimentPage(e) {
   const links = [];
   if (e.files.math) links.push(`[The maths](${BASE}/docs/experiments/${e.slug}/math/)`);
@@ -285,6 +300,7 @@ export function experimentPage(e) {
           "",
         ]
       : []),
+    ...plainSection(e),
     ...e.bullets.map((b) => `- ${b}`),
     "",
     links.map((l) => `- ${l}`).join("\n"),

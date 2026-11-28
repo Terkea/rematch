@@ -17,6 +17,11 @@ The maths goes in its own file, lab/experiments/EXP-NNNN/math.md, from MATH-TEMP
 this one, with a math_check.py that verifies it (ADR 0118). Its sections 1 to 4 (notation, model,
 estimators, derivations and proofs) are committed before the freeze; sections 5 and 6 (numbers,
 assumptions that can fail) with the decision.
+
+Once decided, the folder also needs, with decision.md:
+- [ ] summary.md (status decided, live or retired)
+- [ ] plain.md: the experiment in plain words for a chess player (lab/experiments/README.md)
+- [ ] the line in lab/findings.md
 Delete these comments when you fill the file.
 -->
 
